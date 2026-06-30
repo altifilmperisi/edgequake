@@ -176,9 +176,9 @@ services:
 
 volumes:
   postgres-data:
-    driver: local
-    # NOT: NTFS (/mnt/ai_storage) üzerinde chown çalışmadığı için PostgreSQL verisi
-    # Docker'ın kendi volume alanında (ext4) saklanır. Periyodik yedekleme için:
+    # NOT: NTFS (/mnt/ai_storage) üzerinde PostgreSQL chown yapamadığı için
+    # veri Docker'ın ext4 volume alanında saklanır. Taşınabilirlik için
+    # periyodik yedekleme:
     #   docker run --rm -v edgequake-dev_postgres-data:/from -v /mnt/ai_storage/edgequake/postgres:/to alpine cp -a /from/. /to/
 
 networks:
