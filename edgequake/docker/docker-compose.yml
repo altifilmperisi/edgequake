@@ -146,6 +146,8 @@ services:
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-edgequake_secret}
       - POSTGRES_DB=edgequake
     volumes:
+      # EdgeQuake PostgreSQL verileri Docker named volume'de saklanır.
+      # Veri yedekleme: docker run --rm -v edgequake-dev_postgres-data:/from -v /mnt/ai_storage/edgequake/postgres:/to alpine cp -a /from/. /to/
       - postgres-data:/var/lib/postgresql/data
       - ./init-extensions.sql:/docker-entrypoint-initdb.d/init.sql:ro
     networks:
@@ -175,6 +177,9 @@ services:
 volumes:
   postgres-data:
     driver: local
+    # NOT: NTFS (/mnt/ai_storage) üzerinde chown çalışmadığı için PostgreSQL verisi
+    # Docker'ın kendi volume alanında (ext4) saklanır. Periyodik yedekleme için:
+    #   docker run --rm -v edgequake-dev_postgres-data:/from -v /mnt/ai_storage/edgequake/postgres:/to alpine cp -a /from/. /to/
 
 networks:
   edgequake-network:

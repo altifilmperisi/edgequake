@@ -216,8 +216,12 @@ impl AppState {
         let migration_bootstrap =
             super::migration_bootstrap::run_postgres_migrations(&pool).await?;
 
-        // Auto-configure vector dimension from embedding provider
-        let embedding_dim = embedding_provider.dimension();
+        // Auto-configure vector dimension from embedding provider,
+        // but allow EDGEQUAKE_EMBEDDING_DIMENSION env var to override
+        let embedding_dim = std::env::var("EDGEQUAKE_EMBEDDING_DIMENSION")
+            .ok()
+            .and_then(|d| d.parse::<usize>().ok())
+            .unwrap_or_else(|| embedding_provider.dimension());
         tracing::info!(
             "Using vector dimension {} from {} provider",
             embedding_dim,

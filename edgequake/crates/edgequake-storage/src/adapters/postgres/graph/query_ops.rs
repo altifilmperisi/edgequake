@@ -282,24 +282,24 @@ impl PostgresAGEGraphStorage {
         let sql = format!(
             "WITH node_props AS (
                 SELECT 
-                    v.id as vertex_id,
+                    v.id::text as vertex_id,
                     ag_catalog.agtype_to_json(v.properties) as props
                 FROM {graph}.\"_ag_label_vertex\" v
                 WHERE {where_clause}
             ),
             edge_counts AS (
                 SELECT 
-                    e.start_id as node_id,
+                    e.start_id::text as node_id,
                     COUNT(*) as out_degree
                 FROM {graph}.\"_ag_label_edge\" e
-                GROUP BY e.start_id
+                GROUP BY e.start_id::text
             ),
             in_edge_counts AS (
                 SELECT 
-                    e.end_id as node_id,
+                    e.end_id::text as node_id,
                     COUNT(*) as in_degree
                 FROM {graph}.\"_ag_label_edge\" e
-                GROUP BY e.end_id
+                GROUP BY e.end_id::text
             )
             SELECT 
                 np.props,

@@ -405,7 +405,7 @@ impl PostgresAGEGraphStorage {
               SELECT (to_json(v)::text)::agtype AS node_id, ord FROM input
             ),
             vids AS (
-              SELECT n.id AS vid, i.node_id
+              SELECT n.id::text AS vid, i.node_id
               FROM {}."Node" AS n
               JOIN ids i ON ag_catalog.agtype_access_operator(
                   VARIADIC ARRAY[n.properties, '"node_id"'::agtype]
@@ -415,8 +415,8 @@ impl PostgresAGEGraphStorage {
                    src.node_id::text AS source_id,
                    tgt.node_id::text AS target_id
             FROM {}."EDGE" AS e
-            JOIN vids src ON src.vid = e.start_id
-            JOIN vids tgt ON tgt.vid = e.end_id
+            JOIN vids src ON src.vid = e.start_id::text
+            JOIN vids tgt ON tgt.vid = e.end_id::text
             "#,
             self.graph_name, self.graph_name
         );
