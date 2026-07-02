@@ -474,14 +474,21 @@ pub async fn list_documents(
     };
 
     let total = documents.len();
-    let page_size = 20usize;
+    let page_size = params.page_size.max(1).min(100);
+    let page = params.page.max(1);
     let total_pages = (total + page_size - 1) / page_size.max(1);
-    let page = 1usize;
     let has_more = page < total_pages;
+
+    let start = (page - 1) * page_size;
+    let page_documents: Vec<DocumentSummary> = documents
+        .into_iter()
+        .skip(start)
+        .take(page_size)
+        .collect();
 
     Ok(Json(ListDocumentsResponse {
         total,
-        documents,
+        documents: page_documents,
         page,
         page_size,
         total_pages,

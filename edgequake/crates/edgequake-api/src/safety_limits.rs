@@ -17,14 +17,13 @@ use edgequake_llm::{
 };
 use futures::stream::BoxStream;
 
-/// Default maximum tokens for generation (16384).
+/// Default maximum tokens for generation (4096).
 ///
-/// WHY 16384: Entity extraction prompts generate structured JSON that can contain
-/// 100+ entities with descriptions. At an average of ~100 tokens per entity, a
-/// moderately complex chunk produces 10 000+ output tokens. 8 192 was too
-/// conservative and caused JSON-EOF truncation errors on attempt 3 of 3.
-/// 16 384 matches the `max_tokens` the LLM extractor already requests.
-pub const DEFAULT_MAX_TOKENS: usize = 16384;
+/// Set to 4096 as a balance: the 12B model runs at ~3.9 t/s so 16384 tokens
+/// would lock a llama-server slot for 70+ minutes. 4096 keeps each request
+/// under 18 minutes. Previous value was 16384 but caused massive queue
+/// backpressure with a slow model.
+pub const DEFAULT_MAX_TOKENS: usize = 4096;
 
 /// Default request timeout in seconds (600 = 10 minutes).
 pub const DEFAULT_TIMEOUT_SECS: u64 = 600;

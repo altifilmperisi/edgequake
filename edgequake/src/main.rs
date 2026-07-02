@@ -85,7 +85,11 @@ fn redact_database_url(url: &str) -> String {
 ///
 /// Startup is a safe recovery point because no workers are active yet, so every
 /// processing task is orphaned by definition and can be returned to pending.
-async fn recover_orphaned_tasks(task_storage: Arc<dyn TaskStorage>) -> Result<()> {
+/// Also re-enqueues all pending tasks to the in-memory channel.
+async fn recover_orphaned_tasks(
+    task_storage: Arc<dyn TaskStorage>,
+    task_queue: Option<edgequake_tasks::SharedTaskQueue>,
+) -> Result<()> {
     info!("🔍 Checking for orphaned tasks from previous backend session...");
 
     let filter = TaskFilter {
@@ -165,6 +169,53 @@ async fn recover_orphaned_tasks(task_storage: Arc<dyn TaskStorage>) -> Result<()
         info!("✅ No orphaned tasks found - clean startup");
     }
 
+    // Re-enqueue all pending tasks to the in-memory channel
+    // WHY: Tasks persisted in PostgreSQL but not in the channel (e.g., after
+    // restart or when channel capacity was exceeded during initial scan) must
+    // be re-enqueued so workers can pick them up.
+    if let Some(ref queue) = task_queue {
+        info!("🔍 Re-enqueuing pending tasks to channel...");
+        let mut reenqueued = 0u64;
+        let mut page = 1u32;
+        let page_size = 500u32;
+
+        let pending_filter = TaskFilter {
+            status: Some(TaskStatus::Pending),
+            ..Default::default()
+        };
+
+        loop {
+            let pagination = Pagination {
+                page,
+                page_size,
+                ..Default::default()
+            };
+
+            match task_storage.list_tasks(pending_filter.clone(), pagination).await {
+                Ok(task_list) => {
+                    let batch_len = task_list.tasks.len() as u32;
+                    for task in task_list.tasks {
+                        if queue.send(task).await.is_ok() {
+                            reenqueued += 1;
+                        }
+                    }
+                    if batch_len < page_size {
+                        break;
+                    }
+                    page += 1;
+                }
+                Err(e) => {
+                    warn!("⚠️ Failed to list pending tasks for re-enqueue: {}", e);
+                    break;
+                }
+            }
+        }
+
+        if reenqueued > 0 {
+            info!("📤 Re-enqueued {} pending tasks to worker channel", reenqueued);
+        }
+    }
+
     Ok(())
 }
 
@@ -216,7 +267,6 @@ async fn recover_orphaned_documents(
         "summarizing",
         "embedding",
         "storing",
-        "pending",
         "processing",
         "indexing",
     ];
@@ -639,7 +689,10 @@ async fn main() -> Result<()> {
     // Recover orphaned tasks from previous backend session (PRODUCTION_BUG_FIX)
     // MUST run BEFORE starting workers to prevent race conditions
     if let Err(e) =
-        recover_orphaned_tasks(Arc::clone(&state.tasks.storage) as Arc<dyn TaskStorage>).await
+        recover_orphaned_tasks(
+            Arc::clone(&state.tasks.storage) as Arc<dyn TaskStorage>,
+            Some(Arc::clone(&state.tasks.queue) as edgequake_tasks::SharedTaskQueue),
+        ).await
     {
         ErrorEvent::log_domain_warn(
             "startup",

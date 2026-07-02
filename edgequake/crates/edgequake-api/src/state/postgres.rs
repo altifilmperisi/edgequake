@@ -311,8 +311,10 @@ impl AppState {
         let task_storage: edgequake_tasks::SharedTaskStorage = Arc::new(
             edgequake_tasks::postgres::PostgresTaskStorage::new(pool.clone()),
         );
-        let task_queue = Arc::new(edgequake_tasks::queue::ChannelTaskQueue::new(100));
+        let task_queue: edgequake_tasks::SharedTaskQueue =
+            Arc::new(edgequake_tasks::queue::UnboundedChannelTaskQueue::new());
         tracing::info!("✓ Task storage: PostgreSQL (persistent across restarts)");
+        tracing::info!("✓ Task queue: Unbounded channel (no capacity limit)");
 
         let reranker = create_bm25_reranker();
         let (query_engine, sota_engine) = super::query_bootstrap::build_production_query_engines(
