@@ -37,6 +37,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   const runtimeConfig = getRuntimeConfig();
+  const clientConfig = {
+    ...runtimeConfig,
+    apiUrl: process.env.EDGEQUAKE_CLIENT_API_URL ?? runtimeConfig.apiUrl,
+  };
 
   return (
     <html lang="en" suppressHydrationWarning>
@@ -44,7 +48,7 @@ export default function RootLayout({
         <script
           suppressHydrationWarning
           dangerouslySetInnerHTML={{
-            __html: `window.__EDGEQUAKE_RUNTIME_CONFIG__ = ${JSON.stringify(runtimeConfig)};`,
+            __html: `window.__EDGEQUAKE_RUNTIME_CONFIG__ = ${JSON.stringify(clientConfig)};`,
           }}
         />
         <AppProviders>{children}</AppProviders>
