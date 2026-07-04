@@ -287,6 +287,42 @@ curl -H "Authorization: Bearer key1" http://localhost:8080/api/v1/query
 curl -H "X-API-Key: key1" http://localhost:8080/api/v1/query
 ```
 
+#### Development Mode (Local Deployment)
+
+For local development and testing, disable authentication:
+
+```bash
+# Disable authentication
+EDGEQUAKE_AUTH_ENABLED=false
+EDGEQUAKE_DEV_MODE=true
+```
+
+**Use cases:**
+- Local development
+- Testing environments
+- Single-user deployments
+- Frontend integration testing
+
+**Security Warning:** Never enable `EDGEQUAKE_DEV_MODE=true` in production. Always use strong API keys and enable authentication in production environments.
+
+#### Production Authentication
+
+For production deployments:
+
+```bash
+# Enable authentication with master key
+EDGEQUAKE_AUTH_ENABLED=true
+EDGEQUAKE_MASTER_API_KEY=<strong-random-key>
+
+# Or use multiple API keys
+EDGEQUAKE_API_KEYS=key1,key2,key3
+```
+
+**Frontend Configuration:**
+When deploying the EdgeQuake frontend, ensure authentication settings match:
+- If `EDGEQUAKE_AUTH_ENABLED=false`: Frontend can access API without tokens
+- If `EDGEQUAKE_AUTH_ENABLED=true`: Frontend must include valid API keys in requests
+
 ### CORS Configuration
 
 For production, restrict CORS origins:
