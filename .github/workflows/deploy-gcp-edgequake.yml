@@ -126,7 +126,8 @@ jobs:
               --strict-host-key-checking=no \
               --command="$1"
           }
-          gcloud_ssh 'mkdir -p /tmp/edgequake-overlay && rm -rf /tmp/edgequake-overlay/compose /tmp/edgequake-overlay/scripts'
+          # sudo: prior operator installs may leave root-owned overlay files
+          gcloud_ssh 'sudo mkdir -p /tmp/edgequake-overlay && sudo rm -rf /tmp/edgequake-overlay/compose /tmp/edgequake-overlay/scripts && sudo chown -R "$(id -u):$(id -g)" /tmp/edgequake-overlay'
           gcloud compute scp --tunnel-through-iap --quiet \
             --strict-host-key-checking=no \
             --project="${PROJECT}" --zone="${ZONE}" --recurse \
