@@ -49,8 +49,10 @@ API image is **distroless** (`ENTRYPOINT ["/usr/local/bin/edgequake"]`). Migrate
 
 | Path | Upstream |
 |------|----------|
-| `/api*`, `/health`, `/live`, `/ready`, `/metrics`, `/version`, `/swagger-ui*`, `/api-docs*`, `/ws*` | `api:8080` |
-| everything else | `frontend:3000` |
+| `/api/*`, `/health`, `/live`, `/ready`, `/metrics`, `/version`, `/swagger-ui*`, `/api-docs*`, `/ws*` | `api:8080` |
+| everything else (incl. WebUI `/api-explorer`) | `frontend:3000` |
+
+Use `/api/*` (not `/api*`): Caddy `/api*` is a string prefix and steals `/api-explorer` from the frontend.
 
 `:80` contains **only** `redir https://{host}{uri} permanent`. No `reverse_proxy` on HTTP.
 

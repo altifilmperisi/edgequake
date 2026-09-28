@@ -147,6 +147,30 @@ if [[ "${https_ok}" -ne 1 ]]; then
   exit 1
 fi
 
+# Path-collision gate: /api* would steal WebUI /api-explorer (SPEC-035).
+log "E2E-148-06 /api-explorer → frontend; /api/v1/* → api"
+if [[ "${CADDY_MODE}" == "le" ]]; then
+  explorer_hdr="$(curl -sI --max-time 15 --resolve "${EDGEQUAKE_HOSTNAME}:443:127.0.0.1" \
+    "https://${EDGEQUAKE_HOSTNAME}/api-explorer" 2>/dev/null || true)"
+  api_hdr="$(curl -sI --max-time 15 --resolve "${EDGEQUAKE_HOSTNAME}:443:127.0.0.1" \
+    "https://${EDGEQUAKE_HOSTNAME}/api/v1/auth/me" 2>/dev/null || true)"
+else
+  explorer_hdr="$(curl -skI --max-time 15 https://127.0.0.1/api-explorer 2>/dev/null || true)"
+  api_hdr="$(curl -skI --max-time 15 https://127.0.0.1/api/v1/auth/me 2>/dev/null || true)"
+fi
+echo "${explorer_hdr}" | tee -a "${LOG}"
+echo "${api_hdr}" | tee -a "${LOG}"
+# Frontend auth gate: 307/302 to /login (not bare Axum 404).
+echo "${explorer_hdr}" | grep -qiE '^HTTP/.* (302|307)\b' \
+  || { log "FAIL: /api-explorer not redirected by frontend (got non-3xx)"; exit 1; }
+echo "${explorer_hdr}" | grep -qiE '^[Ll]ocation:[[:space:]]*.*/login' \
+  || { log "FAIL: /api-explorer Location is not /login (Caddy /api* collision?)"; exit 1; }
+# API still owns /api/v1/*: expect auth challenge, not Next login redirect.
+echo "${api_hdr}" | grep -qiE '^HTTP/.* (401|403)\b' \
+  || { log "FAIL: /api/v1/auth/me not served by api (expected 401/403)"; exit 1; }
+echo "${api_hdr}" | grep -qiE '^[Ll]ocation:[[:space:]]*.*/login' \
+  && { log "FAIL: /api/v1/auth/me redirected to frontend login"; exit 1; } || true
+
 log "E2E-148-03 extensions"
 dx="$("${COMPOSE[@]}" exec -T postgres psql -U edgequake -d edgequake -c '\dx')"
 echo "${dx}" | tee -a "${LOG}"
