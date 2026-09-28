@@ -29,7 +29,13 @@ import {
 } from '@/lib/utils/markdown-highlight';
 import { injectPageAnchors } from '@/lib/utils/page-markers';
 import type { Document } from '@/types';
-import { Suspense, useEffect, useMemo, useRef } from 'react';
+import {
+  Suspense,
+  useEffect,
+  useMemo,
+  useRef,
+  type RefObject,
+} from 'react';
 import { CodeRenderer } from './code-renderer';
 import { DocumentContentEmptyState } from './document-content-empty-state';
 import { PlainTextRenderer } from './plain-text-renderer';
@@ -41,12 +47,19 @@ interface ContentRendererProps {
   endLine?: number;
   /** SPEC-143: active page from sync controller. */
   activePage?: number;
-  /** SPEC-143: when true, observe MD anchors and follow PDF-driven scrolls. */
+  /** SPEC-143: any directional sync selected (page badge). */
   syncEnabled?: boolean;
-  /** SPEC-143: report page when user scrolls markdown. */
+  /** SPEC-143: markdown follows PDF (pdf-to-md). */
+  followMarkdown?: boolean;
+  /** SPEC-143: report page when user scrolls markdown (always records). */
   onPageFromMd?: (page: number) => void;
   /** SPEC-143: skip MD auto-scroll when markdown is the driver. */
   syncDriver?: PageSyncDriver;
+  /** SPEC-143: user gesture ownership for the sync controller. */
+  onMdGestureStart?: () => void;
+  onMdGestureEnd?: () => void;
+  /** Optional explicit markdown scrollport (side-by-side pane). */
+  mdScrollRootRef?: RefObject<HTMLElement | null>;
 }
 
 export function ContentRenderer({
@@ -56,25 +69,40 @@ export function ContentRenderer({
   endLine,
   activePage,
   syncEnabled = false,
+  followMarkdown = false,
   onPageFromMd,
   syncDriver = 'none',
+  onMdGestureStart,
+  onMdGestureEnd,
+  mdScrollRootRef,
 }: ContentRendererProps) {
   const contentRef = useRef<HTMLDivElement>(null);
 
   const renderer = useMemo(() => {
-    return getRendererForDocument(document, highlightText, startLine, endLine);
-  }, [document, highlightText, startLine, endLine]);
+    return getRendererForDocument(
+      document,
+      highlightText,
+      startLine,
+      endLine,
+      followMarkdown ? activePage : undefined,
+    );
+  }, [document, highlightText, startLine, endLine, followMarkdown, activePage]);
 
   useMarkdownPageObserver({
     containerRef: contentRef,
-    enabled: Boolean(syncEnabled && onPageFromMd),
+    scrollRootRef: mdScrollRootRef,
+    enabled: Boolean(onPageFromMd),
     onPage: (page) => onPageFromMd?.(page),
-    scrollToPage: activePage ?? null,
-    skipScroll: syncDriver === 'md',
+    scrollToPage: followMarkdown ? activePage ?? null : null,
+    skipScroll: !followMarkdown || syncDriver === 'md',
+    onGestureStart: onMdGestureStart,
+    onGestureEnd: onMdGestureEnd,
   });
 
-  // Scroll to and highlight the text when highlightText or line numbers change
+  // Citation highlight scroll. Page sync owns the pane scrollport; scrollIntoView
+  // would move that pane and its ancestors and undo the page alignment.
   useEffect(() => {
+    if (followMarkdown && activePage != null && activePage >= 1) return;
     if ((!highlightText && startLine === undefined) || !contentRef.current) return;
 
     const timer = setTimeout(() => {
@@ -101,7 +129,7 @@ export function ContentRenderer({
     }, 100);
 
     return () => clearTimeout(timer);
-  }, [highlightText, startLine, endLine]);
+  }, [highlightText, startLine, endLine, followMarkdown, activePage]);
 
   return (
     <div ref={contentRef} className="relative px-4 pt-4 pb-16 max-w-4xl">
@@ -121,7 +149,13 @@ export function ContentRenderer({
   );
 }
 
-function getRendererForDocument(doc: Document, highlightText?: string, startLine?: number, endLine?: number) {
+function getRendererForDocument(
+  doc: Document,
+  highlightText?: string,
+  startLine?: number,
+  endLine?: number,
+  syncPage?: number,
+) {
   const mimeType = doc.mime_type?.toLowerCase() || '';
   const fileName = doc.file_name?.toLowerCase() || '';
   // MV-28: rewrite `![…](assets/…)` to document-scoped API URLs so figures render
@@ -198,6 +232,7 @@ function getRendererForDocument(doc: Document, highlightText?: string, startLine
           content={pageContent}
           className="text-sm leading-relaxed"
           highlightLineRange={localRange}
+          revealPage={syncPage ?? null}
         />
       </article>
     );
@@ -207,6 +242,7 @@ function getRendererForDocument(doc: Document, highlightText?: string, startLine
         <VirtualizedMarkdownContent
           content={content}
           highlightLineRange={highlightLineRange}
+          scrollToPage={syncPage ?? null}
         >
           {(pageContent, ctx) => markdownArticle(pageContent, ctx.highlightLineRange)}
         </VirtualizedMarkdownContent>

@@ -169,7 +169,7 @@ export function ResizablePanel({
   return (
     <div
       ref={panelRef}
-      className={cn('relative flex shrink-0', className)}
+      className={cn('relative flex h-full min-h-0 shrink-0', className)}
       style={{ width }}
     >
       {/* Resize Handle */}

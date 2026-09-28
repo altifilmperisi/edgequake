@@ -157,6 +157,10 @@ pub struct PdfProcessingData {
     /// SPEC-015V: resolved vision extract policy for this task (defaults all ON).
     #[serde(default)]
     pub vision_extract: edgequake_pdf::VisionExtractConfig,
+
+    /// SPEC-151: optional page-scoped reprocess (selected pages + stages).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub page_scope: Option<edgequake_pdf::PageScope>,
 }
 
 /// Text insert task payload
@@ -166,6 +170,9 @@ pub struct TextInsertData {
     pub file_source: String,
     pub workspace_id: String,
     pub metadata: Option<serde_json::Value>,
+    /// SPEC-151: when set, Insert reuses extractions for chunks outside these pages.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reuse_excluded_pages: Option<Vec<u32>>,
 }
 
 /// Knowledge injection task payload (SPEC-024 Phase 1.2).

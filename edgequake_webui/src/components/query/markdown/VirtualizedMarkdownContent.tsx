@@ -235,6 +235,26 @@ interface VirtualizedMarkdownContentProps {
   className?: string;
   /** Document-absolute citation highlight (1-based inclusive). */
   highlightLineRange?: HighlightLineRange;
+  /**
+   * SPEC-143: reveal the virtualized chunk that contains page N so the
+   * markdown page observer can fine-align `#eq-md-page-N`.
+   */
+  scrollToPage?: number | null;
+}
+
+/** Index of the chunk that contains the injected page anchor for `page`. */
+export function chunkIndexForPage(chunks: string[], page: number): number {
+  if (chunks.length === 0 || page < 1) return 0;
+  const idNeedle = `id="eq-md-page-${page}"`;
+  const attrNeedle = `data-eq-page="${page}"`;
+  const markerNeedle = `<!-- edgequake-page:${page} -->`;
+  for (let i = 0; i < chunks.length; i++) {
+    const c = chunks[i]!;
+    if (c.includes(idNeedle) || c.includes(attrNeedle) || c.includes(markerNeedle)) {
+      return i;
+    }
+  }
+  return 0;
 }
 
 /**
@@ -260,6 +280,7 @@ export const VirtualizedMarkdownContent = memo(function VirtualizedMarkdownConte
   children,
   className,
   highlightLineRange,
+  scrollToPage = null,
 }: VirtualizedMarkdownContentProps) {
   const wrapperRef = useRef<HTMLDivElement>(null);
 
@@ -313,17 +334,43 @@ export const VirtualizedMarkdownContent = memo(function VirtualizedMarkdownConte
   });
 
   // Reset virtualizer when content changes (new document loaded).
-  // Citation deeplinks own scroll position — do not yank to top.
+  // Citation deeplinks / page sync own scroll position — do not yank to top.
   useEffect(() => {
     if (!scrollElement || highlightLineRange) return;
+    if (scrollToPage != null && scrollToPage >= 1) return;
     virtualizer.scrollToOffset(0);
-  }, [content, virtualizer, scrollElement, highlightLineRange]);
+  }, [content, virtualizer, scrollElement, highlightLineRange, scrollToPage]);
 
   useEffect(() => {
     if (!scrollElement || !highlightLineRange || chunks.length === 0) return;
     const index = findChunkIndexForRange(chunks, content, highlightLineRange);
     virtualizer.scrollToIndex(index, { align: 'center' });
   }, [scrollElement, highlightLineRange, chunks, content, virtualizer]);
+
+  // SPEC-143: reveal chunk containing page anchor before fine-align.
+  // Retry a few frames — first scrollToIndex can no-op before row sizes exist.
+  useEffect(() => {
+    if (!scrollElement || scrollToPage == null || scrollToPage < 1) return;
+    if (highlightLineRange || chunks.length === 0) return;
+    const index = chunkIndexForPage(chunks, scrollToPage);
+    let cancelled = false;
+    let attempts = 0;
+    const reveal = () => {
+      if (cancelled || attempts > 8) return;
+      attempts += 1;
+      virtualizer.scrollToIndex(index, { align: 'start' });
+      const mounted = scrollElement.querySelector(
+        `#eq-md-page-${scrollToPage}, [data-eq-page="${scrollToPage}"]`,
+      );
+      if (!mounted) {
+        window.setTimeout(reveal, 50);
+      }
+    };
+    reveal();
+    return () => {
+      cancelled = true;
+    };
+  }, [scrollElement, scrollToPage, chunks, highlightLineRange, virtualizer]);
 
   // Below threshold — pass content through directly (no virtualization).
   if (chunks.length <= 1) {

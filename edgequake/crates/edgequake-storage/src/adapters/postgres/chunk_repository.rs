@@ -116,6 +116,31 @@ impl PostgresChunkRepository {
     }
 }
 
+/// Replace the document chunk spine before inserting a new authority batch.
+///
+/// First principles: `(document_id, chunk_index)` is unique. Reprocess (and any
+/// generation that rebuilds chunks) allocates new prepared IDs and/or content at
+/// the same indexes. `INSERT … ON CONFLICT DO NOTHING` + verify then fails with
+/// "prepared chunk index N conflicts with an existing row". Clearing the spine
+/// inside the committer transaction keeps replace atomic with the insert and
+/// covers full/entities reprocess (not only SPEC-151 page reprocess).
+///
+/// Only `batch_ordinal == 0` clears — later ordinals of the same generation must
+/// append without wiping earlier batches.
+pub(crate) async fn clear_document_chunks_in_transaction(
+    tx: &mut Transaction<'_, Postgres>,
+    document_id: Uuid,
+) -> Result<u64, StorageError> {
+    let result = sqlx::query("DELETE FROM public.chunks WHERE document_id = $1")
+        .bind(document_id)
+        .execute(&mut **tx)
+        .await
+        .map_err(|e| {
+            StorageError::Database(format!("clear document chunks for ingest replace failed: {e}"))
+        })?;
+    Ok(result.rows_affected())
+}
+
 /// Insert prepared chunk records using the committer-owned transaction.
 ///
 /// A prepared payload may be the canonical JSON shape represented by
@@ -123,6 +148,9 @@ impl PostgresChunkRepository {
 /// compatibility ingestion path and receive an ordinal-derived chunk index.
 /// Every conflict is read back and compared so `ON CONFLICT` never turns a
 /// mismatched replay into success.
+///
+/// When `batch_ordinal == 0`, the existing chunk spine is cleared first so a
+/// generation advance with new chunk identities cannot collide with stale rows.
 pub(crate) async fn insert_prepared_chunks_in_transaction(
     tx: &mut Transaction<'_, Postgres>,
     document_id: Uuid,
@@ -131,12 +159,16 @@ pub(crate) async fn insert_prepared_chunks_in_transaction(
     batch_ordinal: i32,
     records: &[PreparedRecord],
 ) -> Result<(), StorageError> {
+    ensure_document_parent_in_transaction(tx, document_id, Some(tenant_id), Some(workspace_id))
+        .await?;
+
+    if batch_ordinal == 0 {
+        clear_document_chunks_in_transaction(tx, document_id).await?;
+    }
+
     if records.is_empty() {
         return Ok(());
     }
-
-    ensure_document_parent_in_transaction(tx, document_id, Some(tenant_id), Some(workspace_id))
-        .await?;
 
     let base_index = batch_ordinal.checked_mul(10_000).ok_or_else(|| {
         StorageError::InvalidInput("batch ordinal exceeds chunk index range".into())

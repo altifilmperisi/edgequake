@@ -184,6 +184,7 @@ async fn create_postgres_state(pool: &PgPool) -> (AppState, PostgresConfig) {
             original_storage: None,
             mm_asset_storage: None,
             page_layout_storage: None,
+            page_state_storage: None,
             mode: StorageMode::PostgreSQL,
         },
         query: edgequake_api::state::QueryRuntime {

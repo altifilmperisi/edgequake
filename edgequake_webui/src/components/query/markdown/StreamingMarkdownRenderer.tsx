@@ -44,6 +44,8 @@ interface StreamingMarkdownRendererProps {
    *      (which would destroy heading/list/table parsing).
    */
   highlightLineRange?: { startLine: number; endLine: number };
+  /** SPEC-143: force-mount the lazy section that contains this page anchor. */
+  revealPage?: number | null;
 }
 
 /**
@@ -312,6 +314,7 @@ export const StreamingMarkdownRenderer = memo(function StreamingMarkdownRenderer
   className,
   onCitationClick,
   highlightLineRange,
+  revealPage = null,
 }: StreamingMarkdownRendererProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollRequestRef = useRef<number | null>(null);
@@ -478,6 +481,7 @@ export const StreamingMarkdownRenderer = memo(function StreamingMarkdownRenderer
           isStreaming={false}
           onSourceClick={onCitationClick}
           highlightedIndices={highlightedIndices}
+          revealPage={revealPage}
         />
       ) : (
         <MarkdownTokens

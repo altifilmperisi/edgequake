@@ -9,6 +9,12 @@ import {
     ReprocessDialog,
     type ReprocessChoice,
 } from '@/components/documents/reprocess-dialog';
+import { ReprocessPagesDialog } from '@/components/documents/reprocess-pages-dialog';
+import { PageHealthStrip } from '@/components/documents/page-health-strip';
+import { PageSyncModeControl } from '@/components/documents/page-sync-mode-control';
+import { usePageHealth } from '@/hooks/use-page-health';
+import { resolveDetailLifecycle } from '@/lib/documents/detail-lifecycle';
+import { pdfCurrentPageForMode } from '@/lib/documents/page-sync-mode';
 import { SideBySideViewer } from '@/components/documents/side-by-side-viewer';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -41,6 +47,7 @@ import {
     ArrowLeft,
     ChevronLeft,
     ChevronRight,
+    FileText,
     Loader2,
     Network,
     RefreshCw,
@@ -52,15 +59,6 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-
-type DocumentStatus =
-  | 'pending'
-  | 'processing'
-  | 'completed'
-  | 'indexed'
-  | 'partial_failure'
-  | 'failed'
-  | 'cancelled';
 
 export default function DocumentViewPage() {
   const { t } = useTranslation();
@@ -75,6 +73,13 @@ export default function DocumentViewPage() {
   // WHY: Previously the detail page had NO reprocess action for failed/cancelled docs —
   // the cancelled message literally told users to go back to the list.
   const [reprocessDialogOpen, setReprocessDialogOpen] = useState(false);
+  const [pagesReprocessOpen, setPagesReprocessOpen] = useState(false);
+  /** Seed selection when opening the reprocess-pages modal. */
+  const [selectedPages, setSelectedPages] = useState<number[]>([]);
+  /** Pages marked running optimistically until /pages/health catches up. */
+  const [pendingReprocessPages, setPendingReprocessPages] = useState<number[]>(
+    [],
+  );
   // Progress SSOT: server task_id (not batch reprocess_*). GAP-051-03.
   const [reprocessTrackId, setReprocessTrackId] = useState<string | null>(null);
   const [reprocessMode, setReprocessMode] = useState<'entities' | 'full'>('entities');
@@ -195,7 +200,6 @@ export default function DocumentViewPage() {
   // SPEC-143: shared PDF ↔ Markdown page sync controller
   const pageSync = usePageSyncController({
     initialPage: activePdfPage ?? 1,
-    initialSyncEnabled: true,
   });
 
   // Inbound deeplink / chunk resolution → controller
@@ -206,8 +210,9 @@ export default function DocumentViewPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only react to URL/chunk page
   }, [activePdfPage]);
 
-  // Debounced URL write when user navigates via PDF or Markdown (not external)
+  // Debounced URL write when user navigates via the publishing pane
   useEffect(() => {
+    if (pageSync.syncMode === 'none') return;
     if (pageSync.driver !== 'pdf' && pageSync.driver !== 'md') return;
     const page = pageSync.activePage;
     if (page < 1) return;
@@ -312,6 +317,7 @@ export default function DocumentViewPage() {
       return true;
     }
   });
+  const inFlightCollapseApplied = useRef(false);
 
   const toggleSidebar = useCallback(() => {
     setIsSidebarOpen((prev) => {
@@ -428,11 +434,76 @@ export default function DocumentViewPage() {
     !documentWithContent?.content?.trim();
 
   const syncAvailable = hasPageMarkers(documentWithContent?.content);
+  const effectiveSyncMode = syncAvailable ? pageSync.syncMode : 'none';
+  const pdfCurrentPage = pdfCurrentPageForMode(
+    effectiveSyncMode,
+    pageSync.activePage,
+  );
+  const followMarkdown = syncAvailable && pageSync.followMarkdown;
 
-  // Derived status values (safe to compute even if document is null)
-  const status = (document?.status || 'completed') as DocumentStatus;
-  const isFailed = status === 'failed' || status === 'partial_failure';
-  const isCancelled = status === 'cancelled';
+  const pageHealthQuery = usePageHealth(
+    isPdfDocument ? documentId : undefined,
+    Boolean(isPdfDocument && document),
+    { forcePollMs: reprocessTrackId ? 1500 : false },
+  );
+
+  // Clear optimistic pending once health reports running/terminal for those pages.
+  useEffect(() => {
+    if (pendingReprocessPages.length === 0) return;
+    const pages = pageHealthQuery.data?.pages ?? [];
+    if (pages.length === 0) return;
+    const pending = new Set(pendingReprocessPages);
+    const anyRunning = pages.some(
+      (p) =>
+        pending.has(p.page_number) &&
+        (p.parse?.status === 'running' ||
+          p.figures?.status === 'running' ||
+          p.entities?.status === 'running'),
+    );
+    const allSettled = pendingReprocessPages.every((n) => {
+      const p = pages.find((x) => x.page_number === n);
+      if (!p) return false;
+      const statuses = [p.parse?.status, p.figures?.status, p.entities?.status];
+      return statuses.every((s) => s === 'ok' || s === 'failed' || s === 'skipped');
+    });
+    if (anyRunning || (allSettled && !reprocessTrackId)) {
+      setPendingReprocessPages([]);
+    }
+  }, [
+    pageHealthQuery.data?.pages,
+    pendingReprocessPages,
+    reprocessTrackId,
+  ]);
+
+  const lifecycle = useMemo(
+    () =>
+      resolveDetailLifecycle({
+        status: document?.status,
+        display_status: document?.display_status,
+        current_stage: document?.current_stage,
+        ui_phase: document?.ui_phase,
+        track_id: document?.track_id,
+        stage_message: document?.stage_message,
+        progress_counts: document?.progress_counts as
+          | { unit?: string; current?: number; total?: number }
+          | null
+          | undefined,
+        page_count: document?.page_count,
+      }),
+    [document],
+  );
+
+  // Viewer-first: collapse Details once when we first see an in-flight doc.
+  useEffect(() => {
+    if (!document || inFlightCollapseApplied.current) return;
+    if (lifecycle.isInFlight) {
+      setIsSidebarOpen(false);
+      inFlightCollapseApplied.current = true;
+    }
+  }, [document, lifecycle.isInFlight]);
+
+  const isFailed = lifecycle.kind === 'failed' || lifecycle.kind === 'partial';
+  const isCancelled = lifecycle.kind === 'cancelled';
 
   // Loading state — SPEC-100: match final 2-column shell (CLS)
   if (coldLoad) {
@@ -495,28 +566,44 @@ export default function DocumentViewPage() {
           </div>
           
           <div className="flex items-center gap-1 shrink-0">
-            {status === 'processing' && (
-              <Badge variant="outline" className="text-xs">
+            {lifecycle.showSpinner && (
+              <Badge
+                variant="outline"
+                className="text-xs"
+                data-testid="detail-lifecycle-badge"
+              >
                 <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                Processing
+                {lifecycle.label}
               </Badge>
             )}
-            {status === 'partial_failure' && (
-              <Badge variant="outline" className="text-xs border-orange-500 text-orange-500">
+            {!lifecycle.showSpinner && lifecycle.kind === 'partial' && (
+              <Badge
+                variant="outline"
+                className="text-xs border-orange-500 text-orange-500"
+                data-testid="detail-lifecycle-badge"
+              >
                 <AlertCircle className="h-3 w-3 mr-1" />
-                Partial Failure
+                {lifecycle.label}
               </Badge>
             )}
-            {status === 'failed' && (
-              <Badge variant="destructive" className="text-xs">
+            {!lifecycle.showSpinner && lifecycle.kind === 'failed' && (
+              <Badge
+                variant="destructive"
+                className="text-xs"
+                data-testid="detail-lifecycle-badge"
+              >
                 <AlertCircle className="h-3 w-3 mr-1" />
-                Failed
+                {lifecycle.label}
               </Badge>
             )}
-            {isCancelled && (
-              <Badge variant="outline" className="text-xs border-gray-500 text-gray-500">
+            {!lifecycle.showSpinner && isCancelled && (
+              <Badge
+                variant="outline"
+                className="text-xs border-gray-500 text-gray-500"
+                data-testid="detail-lifecycle-badge"
+              >
                 <StopCircle className="h-3 w-3 mr-1" />
-                Cancelled
+                {lifecycle.label}
               </Badge>
             )}
             <DocumentDownloadMenu
@@ -527,10 +614,31 @@ export default function DocumentViewPage() {
             <Button variant="ghost" size="sm" className="h-8" onClick={handleViewInGraph}>
               <Network className="h-3.5 w-3.5" />
             </Button>
-            {/* SPEC-051 GAP-051-01: Reprocess button on detail page.
-                WHY: Previously only the documents list had a reprocess action.
-                Users with a failed/cancelled/completed doc open had to navigate away. */}
-            {(isFailed || isCancelled || status === 'completed') && !reprocessMutationDetail.isPending && (
+            {/* SPEC-051 GAP-051-01: Reprocess — hidden while in-flight (lifecycle SSOT). */}
+            {isPdfDocument && lifecycle.canReprocessPages && (
+              <Button
+                variant="default"
+                size="sm"
+                className="h-8 gap-1.5"
+                disabled={Boolean(reprocessTrackId)}
+                onClick={() => {
+                  setSelectedPages([]);
+                  setPagesReprocessOpen(true);
+                }}
+                data-testid="detail-page-reprocess-pages-button"
+              >
+                <RefreshCw
+                  className={`h-3.5 w-3.5${reprocessTrackId ? ' animate-spin' : ''}`}
+                />
+                {reprocessTrackId
+                  ? t('documents.pageHealth.reprocessingBusy', 'Reprocessing…')
+                  : t(
+                      'documents.pageHealth.menuAction',
+                      'Reprocess specific pages',
+                    )}
+              </Button>
+            )}
+            {lifecycle.canReprocess && !reprocessMutationDetail.isPending && (
               <Button
                 variant="outline"
                 size="sm"
@@ -542,9 +650,7 @@ export default function DocumentViewPage() {
                 {t('documents.reprocess.action', 'Reprocess')}
               </Button>
             )}
-            {/* SPEC-051 GAP-051-01: Cancel button when document is processing.
-                WHY: The detail page imported StopCircle but never rendered a cancel button. */}
-            {(status === 'processing' || status === 'pending') && document?.track_id && (
+            {lifecycle.canCancel && document?.track_id && (
               <Button
                 variant="outline"
                 size="sm"
@@ -610,10 +716,19 @@ export default function DocumentViewPage() {
                 )}
                 onComplete={() => {
                   setReprocessTrackId(null);
+                  setPendingReprocessPages([]);
                   void refetch();
+                  void pageHealthQuery.refetch();
                 }}
-                onFailed={() => setReprocessTrackId(null)}
-                onCancel={() => setReprocessTrackId(null)}
+                onFailed={() => {
+                  setReprocessTrackId(null);
+                  setPendingReprocessPages([]);
+                  void pageHealthQuery.refetch();
+                }}
+                onCancel={() => {
+                  setReprocessTrackId(null);
+                  setPendingReprocessPages([]);
+                }}
                 data-testid="detail-page-reprocess-panel"
               />
             </div>
@@ -635,94 +750,158 @@ export default function DocumentViewPage() {
         } : null}
         onConfirm={(choice: ReprocessChoice) => {
           setReprocessDialogOpen(false);
+          if (choice.mode === 'pages') {
+            setSelectedPages([]);
+            setPagesReprocessOpen(true);
+            return;
+          }
           reprocessMutationDetail.mutate({ mode: choice.mode });
         }}
         onCancel={() => setReprocessDialogOpen(false)}
       />
 
-      {/* Main Content Area - Two Column Layout */}
-      <div className="flex-1 flex overflow-hidden">
+      <ReprocessPagesDialog
+        open={pagesReprocessOpen}
+        documentId={documentId}
+        documentName={
+          document?.file_name || document?.title || undefined
+        }
+        pageCount={document?.page_count ?? pageHealthQuery.data?.page_count}
+        initialPages={selectedPages}
+        onClose={() => {
+          setPagesReprocessOpen(false);
+          setSelectedPages([]);
+        }}
+        onQueued={(trackId, pages) => {
+          setPendingReprocessPages(pages);
+          setSelectedPages([]);
+          setReprocessTrackId(trackId);
+          setReprocessMode('entities');
+          void pageHealthQuery.refetch();
+        }}
+      />
+
+      {/* Main Content Area - Two Column Layout
+          WHY (layout): Viewer + Details must be flex-row siblings. Nesting Details
+          inside the viewer flex-col stacked it under the PDF and let lineage height
+          collapse the viewer to empty whitespace (broken detail view). */}
+      <div className="flex min-h-0 flex-1 overflow-hidden">
         {/* OODA-43: Desktop layout with PDF side-by-side support */}
-        <div className="hidden lg:flex flex-1 overflow-hidden">
-          {/* Content Area - 65% (or full width for PDF side-by-side) */}
-          <div className={isPdfDocument ? "flex-1 overflow-hidden" : "flex-1 overflow-auto"}>
-            {isPdfDocument ? (
-              /* OODA-43: PDF documents show side-by-side PDF and Markdown viewer */
-              <SideBySideViewer
-                height={undefined}
-                className="h-full"
-                leftTitle="PDF Document"
-                rightTitle="Extracted Markdown"
-                syncEnabled={pageSync.syncEnabled}
-                onSyncToggle={pageSync.toggleSync}
-                syncAvailable={syncAvailable}
-                leftPanel={
-                  // OODA-48: Use pdfIdForViewer which is guaranteed to exist when isPdfDocument is true
-                  <PDFViewer
-                    file={getPdfDownloadUrl(pdfIdForViewer!)}
-                    initialPage={pageSync.activePage}
-                    currentPage={pageSync.activePage}
-                    onPageChange={pageSync.setPageFromPdf}
-                    documentId={documentId}
-                  />
-                }
-                rightPanel={
-                  // OODA-91: Show loading state while PDF markdown is being fetched
-                  isPdfContentLoading ? (
-                    <div className="flex items-center justify-center h-full">
-                      <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                    </div>
-                  ) : pdfMarkdownMissing ? (
-                    <PdfMarkdownEmptyState
-                      isError={isPdfContentError}
-                      onRetry={() => {
-                        void refetchPdfContent();
-                        void refetch();
-                      }}
+        <div className="hidden min-h-0 lg:flex lg:flex-1 lg:flex-row lg:overflow-hidden">
+          {/* Main column: page health + document viewer */}
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+            {/* Quiet header: no idle page selector. Progress banner only while a
+                page-reprocess track is live (CTA lives in the document header). */}
+            {isPdfDocument &&
+            Boolean(reprocessTrackId) &&
+            (pageHealthQuery.data?.pages?.length ?? 0) > 0 ? (
+              <div className="shrink-0 border-b px-3 py-2">
+                <PageHealthStrip
+                  mode="overview"
+                  pages={pageHealthQuery.data!.pages}
+                  reprocessActive
+                  pendingPages={pendingReprocessPages}
+                  hideChrome
+                  hideMeters
+                  hideTiles
+                />
+              </div>
+            ) : null}
+            {/* Content Area fills remaining height beside Details */}
+            <div
+              className={
+                isPdfDocument
+                  ? 'min-h-0 flex-1 overflow-hidden'
+                  : 'min-h-0 flex-1 overflow-auto'
+              }
+            >
+              {isPdfDocument ? (
+                /* OODA-43: PDF documents show side-by-side PDF and Markdown viewer */
+                <SideBySideViewer
+                  height={undefined}
+                  className="h-full"
+                  leftTitle="PDF Document"
+                  rightTitle="Extracted Markdown"
+                  syncMode={pageSync.syncMode}
+                  onSyncModeChange={pageSync.setSyncMode}
+                  syncAvailable={syncAvailable}
+                  leftPanel={
+                    // OODA-48: Use pdfIdForViewer which is guaranteed to exist when isPdfDocument is true
+                    <PDFViewer
+                      file={getPdfDownloadUrl(pdfIdForViewer!)}
+                      initialPage={pageSync.activePage}
+                      currentPage={pdfCurrentPage}
+                      onPageChange={pageSync.setPageFromPdf}
+                      onGestureStart={() => pageSync.beginGesture('pdf')}
+                      onGestureEnd={pageSync.endGesture}
+                      documentId={documentId}
                     />
-                  ) : (
-                    <ContentRenderer
-                      document={documentWithContent}
-                      highlightText={highlightText}
-                      startLine={activeStartLine}
-                      endLine={activeEndLine}
-                      activePage={pageSync.activePage}
-                      syncEnabled={pageSync.syncEnabled}
-                      onPageFromMd={pageSync.setPageFromMd}
-                      syncDriver={pageSync.driver}
-                    />
-                  )
-                }
-              />
-            ) : (
-              /* Non-PDF documents show ContentRenderer only */
-              <ContentRenderer 
-                document={documentWithContent} 
-                highlightText={highlightText}
-                startLine={activeStartLine}
-                endLine={activeEndLine}
-              />
-            )}
+                  }
+                  rightPanel={
+                    // OODA-91: Show loading state while PDF markdown is being fetched
+                    isPdfContentLoading ? (
+                      <div className="flex h-full items-center justify-center">
+                        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                      </div>
+                    ) : pdfMarkdownMissing ? (
+                      <PdfMarkdownEmptyState
+                        mode={lifecycle.emptyMarkdownMode}
+                        isError={isPdfContentError}
+                        onRetry={() => {
+                          void refetchPdfContent();
+                          void refetch();
+                        }}
+                        onReprocessPages={
+                          lifecycle.canReprocessPages
+                            ? () => setPagesReprocessOpen(true)
+                            : undefined
+                        }
+                      />
+                    ) : (
+                      <ContentRenderer
+                        document={documentWithContent}
+                        highlightText={highlightText}
+                        startLine={activeStartLine}
+                        endLine={activeEndLine}
+                        activePage={pageSync.activePage}
+                        syncEnabled={pageSync.syncEnabled && syncAvailable}
+                        followMarkdown={followMarkdown}
+                        onPageFromMd={pageSync.setPageFromMd}
+                        syncDriver={pageSync.driver}
+                        onMdGestureStart={() => pageSync.beginGesture('md')}
+                        onMdGestureEnd={pageSync.endGesture}
+                      />
+                    )
+                  }
+                />
+              ) : (
+                /* Non-PDF documents show ContentRenderer only */
+                <ContentRenderer
+                  document={documentWithContent}
+                  highlightText={highlightText}
+                  startLine={activeStartLine}
+                  endLine={activeEndLine}
+                />
+              )}
+            </div>
           </div>
 
-          {/* Metadata Sidebar - Resizable + Collapsible (RP-02).
-              WHY: The sidebar contains the LineageTree which shows the Vision LLM
-              used for PDF → Markdown transcription. Hiding it for PDF documents
-              would make lineage information inaccessible to the user.
-              SPEC-040: Vision LLM lineage must be visible in document detail view. */}
+          {/* Metadata Sidebar - sibling of main column (RP-02 / SPEC-040). */}
           {!isSidebarOpen ? (
-            /* Collapsed state: thin bar matching RightPanel collapse style */
             <div
-              className="w-10 border-l bg-card/50 flex flex-col items-center py-4 cursor-pointer hover:bg-muted/70 transition-colors shrink-0"
+              className="flex w-10 shrink-0 cursor-pointer flex-col items-center border-l bg-card/50 py-4 transition-colors hover:bg-muted/70"
               onClick={toggleSidebar}
               role="button"
               tabIndex={0}
               aria-label="Expand details panel"
               onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleSidebar(); }
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  toggleSidebar();
+                }
               }}
             >
-              <ChevronLeft className="h-4 w-4 text-muted-foreground mb-2" />
+              <ChevronLeft className="mb-2 h-4 w-4 text-muted-foreground" />
               <span
                 className="text-xs text-muted-foreground"
                 style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}
@@ -731,20 +910,20 @@ export default function DocumentViewPage() {
               </span>
             </div>
           ) : (
-            /* Expanded state: resizable panel with collapse toggle */
             <ResizablePanel
               side="right"
-              defaultWidth={400}
+              defaultWidth={360}
               minWidth={280}
-              maxWidth={700}
+              maxWidth={560}
               storageKey="document-detail-sidebar-width"
               ariaLabel="Resize metadata sidebar"
+              className="h-full min-h-0"
             >
-              {/* border-l here so the full panel edge (incl. strip) has the separator */}
-              <div className="flex flex-col h-full overflow-hidden border-l bg-background">
-                {/* Collapse toggle strip */}
-                <div className="flex items-center justify-between px-3 py-1.5 shrink-0 border-b bg-muted/20">
-                  <span className="text-xs font-medium text-muted-foreground">Details</span>
+              <div className="flex h-full min-h-0 flex-col overflow-hidden border-l bg-background">
+                <div className="flex shrink-0 items-center justify-between border-b bg-muted/20 px-3 py-1.5">
+                  <span className="text-xs font-medium text-muted-foreground">
+                    Details
+                  </span>
                   <Button
                     variant="ghost"
                     size="icon"
@@ -755,8 +934,7 @@ export default function DocumentViewPage() {
                     <ChevronRight className="h-3.5 w-3.5" />
                   </Button>
                 </div>
-                <div className="flex-1 overflow-hidden">
-                  {/* border-l-0: outer wrapper already provides the left border */}
+                <div className="min-h-0 flex-1 overflow-hidden">
                   <MetadataSidebar
                     document={document}
                     onChunkSelect={handleChunkSelect}
@@ -788,19 +966,36 @@ export default function DocumentViewPage() {
               <TabsTrigger value="content">Markdown</TabsTrigger>
               <TabsTrigger value="metadata">Details</TabsTrigger>
             </TabsList>
+            {isPdfDocument ? (
+              <div className="flex shrink-0 items-center justify-end border-b px-2 py-1">
+                <PageSyncModeControl
+                  mode={pageSync.syncMode}
+                  onModeChange={pageSync.setSyncMode}
+                  available={syncAvailable}
+                  compact
+                  testId="pdf-md-sync-mode-mobile"
+                />
+              </div>
+            ) : null}
             {/* OODA-48: Use pdfIdForViewer which is guaranteed to exist when isPdfDocument is true */}
             {isPdfDocument && pdfIdForViewer && (
               <TabsContent value="pdf" className="flex-1 overflow-hidden m-0 mt-0">
                 <PDFViewer
                   file={getPdfDownloadUrl(pdfIdForViewer)}
                   initialPage={pageSync.activePage}
-                  currentPage={pageSync.activePage}
+                  currentPage={pdfCurrentPage}
                   onPageChange={pageSync.setPageFromPdf}
+                  onGestureStart={() => pageSync.beginGesture('pdf')}
+                  onGestureEnd={pageSync.endGesture}
                   documentId={documentId}
                 />
               </TabsContent>
             )}
-            <TabsContent value="content" className="flex-1 overflow-auto m-0 mt-0">
+            <TabsContent
+              value="content"
+              className="flex-1 overflow-auto m-0 mt-0"
+              data-testid="md-scroll-container-mobile"
+            >
               {/* OODA-91: Show loading state for PDF markdown on mobile */}
               {isPdfDocument && isPdfContentLoading ? (
                 <div className="flex items-center justify-center h-full">
@@ -808,11 +1003,17 @@ export default function DocumentViewPage() {
                 </div>
               ) : pdfMarkdownMissing ? (
                 <PdfMarkdownEmptyState
+                  mode={lifecycle.emptyMarkdownMode}
                   isError={isPdfContentError}
                   onRetry={() => {
                     void refetchPdfContent();
                     void refetch();
                   }}
+                  onReprocessPages={
+                    lifecycle.canReprocessPages
+                      ? () => setPagesReprocessOpen(true)
+                      : undefined
+                  }
                 />
               ) : (
                 <ContentRenderer
@@ -821,9 +1022,12 @@ export default function DocumentViewPage() {
                   startLine={activeStartLine}
                   endLine={activeEndLine}
                   activePage={pageSync.activePage}
-                  syncEnabled={pageSync.syncEnabled}
+                  syncEnabled={pageSync.syncEnabled && syncAvailable}
+                  followMarkdown={followMarkdown}
                   onPageFromMd={pageSync.setPageFromMd}
                   syncDriver={pageSync.driver}
+                  onMdGestureStart={() => pageSync.beginGesture('md')}
+                  onMdGestureEnd={pageSync.endGesture}
                 />
               )}
             </TabsContent>
@@ -843,39 +1047,85 @@ export default function DocumentViewPage() {
 }
 
 function PdfMarkdownEmptyState({
+  mode,
   isError,
   onRetry,
+  onReprocessPages,
 }: {
+  mode: 'in_flight' | 'failed' | 'missing';
   isError: boolean;
   onRetry: () => void;
+  onReprocessPages?: () => void;
 }) {
   const { t } = useTranslation();
+  const inFlight = mode === 'in_flight' && !isError;
+  const title = isError
+    ? t('documents.pdf.markdownUnavailable', 'Extracted markdown is not available yet')
+    : inFlight
+      ? t(
+          'documents.pdf.emptyMarkdown.inFlightTitle',
+          'Markdown is preparing…',
+        )
+      : mode === 'failed'
+        ? t(
+            'documents.pdf.emptyMarkdown.failedTitle',
+            'No markdown to show',
+          )
+        : t(
+            'documents.pdf.emptyMarkdown.missingTitle',
+            'No markdown stored',
+          );
+  const body = isError
+    ? t(
+        'documents.pdf.markdownLoadError',
+        'Could not load markdown from the server. Retry or reprocess the document.',
+      )
+    : inFlight
+      ? t(
+          'documents.pdf.emptyMarkdown.inFlight',
+          'Convert is running. Text appears here as pages finish.',
+        )
+      : mode === 'failed'
+        ? t(
+            'documents.pdf.emptyMarkdown.failed',
+            'Processing stopped before markdown was stored. Reprocess pages or the full document to recover.',
+          )
+        : t(
+            'documents.pdf.emptyMarkdown.missing',
+            'This PDF has no stored markdown. Reprocess to generate it.',
+          );
+
   return (
-    <div className="flex flex-col items-center justify-center h-full gap-4 p-8 text-center">
-      <AlertCircle className="h-10 w-10 text-muted-foreground" />
+    <div
+      className="flex flex-col items-center justify-center h-full gap-4 p-8 text-center"
+      data-testid="pdf-markdown-empty-state"
+      data-mode={isError ? 'error' : mode}
+    >
+      {inFlight ? (
+        <Loader2 className="h-10 w-10 animate-spin text-muted-foreground" />
+      ) : mode === 'failed' || isError ? (
+        <AlertCircle className="h-10 w-10 text-muted-foreground" />
+      ) : (
+        <FileText className="h-10 w-10 text-muted-foreground" />
+      )}
       <div className="space-y-2 max-w-md">
-        <p className="text-sm font-medium">
-          {t(
-            'documents.pdf.markdownUnavailable',
-            'Extracted markdown is not available yet',
-          )}
-        </p>
-        <p className="text-xs text-muted-foreground">
-          {isError
-            ? t(
-                'documents.pdf.markdownLoadError',
-                'Could not load markdown from the server. Retry or reprocess the document.',
-              )
-            : t(
-                'documents.pdf.markdownPending',
-                'Processing may still be running, or markdown was not stored. Try refresh or reprocess from the documents list.',
-              )}
-        </p>
+        <p className="text-sm font-medium">{title}</p>
+        <p className="text-xs text-muted-foreground">{body}</p>
       </div>
-      <Button variant="outline" size="sm" onClick={onRetry}>
-        <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
-        {t('common.retry', 'Retry')}
-      </Button>
+      {!inFlight ? (
+        <div className="flex flex-wrap items-center justify-center gap-2">
+          <Button variant="outline" size="sm" onClick={onRetry}>
+            <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+            {t('common.retry', 'Retry')}
+          </Button>
+          {onReprocessPages ? (
+            <Button variant="default" size="sm" onClick={onReprocessPages}>
+              <RotateCcw className="h-3.5 w-3.5 mr-1.5" />
+              {t('documents.pageHealth.menuAction', 'Reprocess specific pages')}
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }

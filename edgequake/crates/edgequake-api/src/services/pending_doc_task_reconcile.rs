@@ -296,15 +296,19 @@ fn meta_str<'a>(meta: &'a Value, key: &str) -> Option<&'a str> {
 }
 
 /// Resolve vision provider for PDF recovery (metadata → env default).
-fn resolve_pdf_recovery_vision_provider(metadata: &Value) -> String {
+/// Resolve vision provider for PDF recovery (metadata → env).
+pub fn resolve_pdf_recovery_vision_provider(metadata: &Value) -> String {
     meta_str(metadata, "vision_provider")
         .filter(|p| !p.is_empty())
         .map(str::to_string)
         .unwrap_or_else(crate::vision_env::resolved_vision_provider_from_env)
 }
 
-/// Resolve vision model for PDF recovery (metadata only; env default when absent).
-fn resolve_pdf_recovery_vision_model(metadata: &Value, vision_provider: &str) -> Option<String> {
+/// Resolve vision model for PDF recovery (metadata → provider default).
+pub fn resolve_pdf_recovery_vision_model(
+    metadata: &Value,
+    vision_provider: &str,
+) -> Option<String> {
     meta_str(metadata, "vision_model")
         .filter(|m| !m.is_empty())
         .map(str::to_string)
@@ -376,6 +380,7 @@ pub fn build_pdf_recovery_task_data_with_mode(
         multimodal_process_options: None,
         vision_reasoning_effort,
         vision_extract: Default::default(),
+        page_scope: None,
     }
 }
 
@@ -625,6 +630,7 @@ fn text_insert_task_value(
             "tenant_id": tenant_id.to_string(),
             "workspace_id": workspace_id.to_string(),
         })),
+        reuse_excluded_pages: None,
     };
     Ok((
         TaskType::Insert,
@@ -950,6 +956,37 @@ pub async fn reconcile_pending_documents_missing_tasks(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn vision_model_resolves_when_metadata_omits_it() {
+        // SPEC-151 regression: page reprocess used metadata-only vision_model and
+        // enqueued None → VisionConversionConfig → "backend not configured: vision model".
+        let meta = json!({"source_type": "pdf"});
+        let provider = resolve_pdf_recovery_vision_provider(&meta);
+        assert!(!provider.is_empty());
+        let model = resolve_pdf_recovery_vision_model(&meta, &provider);
+        assert!(
+            model
+                .as_deref()
+                .map(|m| !m.trim().is_empty())
+                .unwrap_or(false),
+            "expected provider-default vision model, got {model:?} for provider {provider}"
+        );
+    }
+
+    #[test]
+    fn vision_model_prefers_metadata_over_default() {
+        let meta = json!({
+            "vision_provider": "ollama",
+            "vision_model": "llava:latest"
+        });
+        let provider = resolve_pdf_recovery_vision_provider(&meta);
+        assert_eq!(provider, "ollama");
+        assert_eq!(
+            resolve_pdf_recovery_vision_model(&meta, &provider).as_deref(),
+            Some("llava:latest")
+        );
+    }
 
     #[test]
     fn orphan_waiting_statuses() {

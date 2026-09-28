@@ -42,6 +42,31 @@ impl ExtractionResult {
         }
     }
 
+    /// SPEC-151: re-attach this extraction to a new positional chunk id.
+    ///
+    /// Updates `source_chunk_id` and entity/relationship source chunk lists
+    /// that referenced the previous id.
+    pub fn rebind_chunk_id(mut self, new_chunk_id: &str) -> Self {
+        let old = self.source_chunk_id.clone();
+        self.source_chunk_id = new_chunk_id.to_string();
+        for entity in &mut self.entities {
+            entity.source_chunk_ids.retain(|id| id != &old);
+            if !entity.source_chunk_ids.iter().any(|id| id == new_chunk_id) {
+                entity.source_chunk_ids.push(new_chunk_id.to_string());
+            }
+        }
+        for rel in &mut self.relationships {
+            rel.source_chunk_ids.retain(|id| id != &old);
+            if !rel.source_chunk_ids.iter().any(|id| id == new_chunk_id) {
+                rel.add_source_chunk_id(new_chunk_id);
+            }
+            if rel.source_chunk_id.as_deref() == Some(old.as_str()) {
+                rel.source_chunk_id = Some(new_chunk_id.to_string());
+            }
+        }
+        self
+    }
+
     /// Add an entity.
     pub fn add_entity(&mut self, entity: ExtractedEntity) {
         self.entities.push(entity);

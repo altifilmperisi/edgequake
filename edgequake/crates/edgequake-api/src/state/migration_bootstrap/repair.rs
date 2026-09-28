@@ -12,19 +12,33 @@ pub use super::checksum_repair::{
     ALLOW_CHECKSUM_REPAIR_ENV,
 };
 
-/// SPEC-150: for every version with production fossils, if the ledger stores a
-/// known fossil hash, rewrite it to the current embedded MIGRATOR checksum.
+fn dev_mode_enabled() -> bool {
+    match std::env::var("EDGEQUAKE_DEV_MODE") {
+        Ok(v) => {
+            let t = v.trim();
+            t == "1" || t.eq_ignore_ascii_case("true") || t.eq_ignore_ascii_case("yes")
+        }
+        Err(_) => false,
+    }
+}
+
+/// Rewrite `_sqlx_migrations.checksum` for known fossils that match the ledger.
+///
+/// - Production fossils (`dev_only = false`): always auto-accept (fleet + local).
+/// - Dev-only fossils: auto-accept only when `EDGEQUAKE_DEV_MODE` is on (make_dev).
+///   Production stays fail-closed so accidental local SQL never silently ships.
 pub(crate) async fn repair_known_production_fossils(pool: &PgPool) -> Result<usize, sqlx::Error> {
     if !helpers::sqlx_migrations_table_exists(pool).await? {
         return Ok(0);
     }
     let manifest = edgequake_migrate_manifest::load();
+    let accept_dev_only = dev_mode_enabled();
     let mut repaired = 0usize;
     for entry in &manifest.migration {
         let fossils: Vec<&str> = entry
             .fossils
             .iter()
-            .filter(|f| !f.dev_only)
+            .filter(|f| !f.dev_only || accept_dev_only)
             .map(|f| f.sha384.as_str())
             .collect();
         if fossils.is_empty() {
@@ -63,12 +77,22 @@ pub(crate) async fn repair_known_production_fossils(pool: &PgPool) -> Result<usi
         .bind(&stored)
         .execute(pool)
         .await?;
+        let kind = if entry
+            .fossils
+            .iter()
+            .any(|f| f.dev_only && f.sha384.eq_ignore_ascii_case(stored.as_str()))
+        {
+            "dev_only"
+        } else {
+            "production"
+        };
         info!(
             target: "edgequake.migration",
             version = entry.version,
             from = %stored,
             to = %current_hex,
-            "Auto-accepted known production fossil checksum (SPEC-150)"
+            fossil_kind = kind,
+            "Auto-accepted known fossil checksum (SPEC-150)"
         );
         repaired += 1;
     }

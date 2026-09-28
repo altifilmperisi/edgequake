@@ -117,6 +117,7 @@ pub mod outbox;
 #[cfg(feature = "postgres")]
 pub mod outbox_drain;
 pub mod page_layout_storage;
+pub mod page_state_storage;
 pub mod pdf_storage;
 #[cfg(feature = "postgres")]
 pub mod projection;
@@ -231,6 +232,10 @@ pub use page_layout_storage::{
     LayoutBBoxPdf, PageLayoutBundle, PageLayoutRegion, ReplaceDocumentPagesRequest,
     UpsertDocumentPage, UpsertPageLayoutRegion,
 };
+pub use page_state_storage::{
+    DocumentPageState, PageStateStorage, UpsertPageEntities, UpsertPageFigures, UpsertPageParse,
+    PAGE_STAGE_FAILED, PAGE_STAGE_OK, PAGE_STAGE_PENDING, PAGE_STAGE_RUNNING, PAGE_STAGE_SKIPPED,
+};
 pub use pdf_storage::{
     calculate_pdf_checksum, validate_pdf_data, CreatePdfRequest, DocumentStatsUpdate,
     ExtractionMethod, ListPdfFilter, PdfDocument, PdfDocumentStorage, PdfList, PdfProcessingStatus,
@@ -299,8 +304,8 @@ pub use traits::{
 // Re-export adapters
 pub use adapters::memory::{
     MemoryChunkRepository, MemoryConversationStorage, MemoryGraphStorage, MemoryKVStorage,
-    MemoryMmAssetStorage, MemoryOriginalStorage, MemoryPageLayoutStorage, MemoryPdfStorage,
-    MemoryVectorStorage, MemoryWorkspaceVectorRegistry,
+    MemoryMmAssetStorage, MemoryOriginalStorage, MemoryPageLayoutStorage, MemoryPageStateStorage,
+    MemoryPdfStorage, MemoryVectorStorage, MemoryWorkspaceVectorRegistry,
 };
 
 #[cfg(feature = "sqlite")]
@@ -350,13 +355,13 @@ pub use adapters::postgres::{
     PgServingFenceOpener, PgStandaloneEmbeddingStore, PgVectorStorage, PgVisibilityRepository,
     PgWorkspaceVectorRegistry, PoolBudgetReport, PoolRole, PostgresAGEGraphStorage,
     PostgresChunkRepository, PostgresConfig, PostgresConversationStorage, PostgresKVStorage,
-    PostgresMmAssetStorage, PostgresOriginalStorage, PostgresPageLayoutStorage, PostgresPdfStorage,
-    PostgresPool, ScaleGateEvidence, StandaloneEmbeddingCapabilities, VectorIndexType,
-    VectorStorageMode, WorkspaceLabelMap, DEFAULT_ANN_REORDER_CANDIDATE_K,
-    DEFAULT_BINARY_CANDIDATE_K, DISKANN_OPTIN_RESCORE, DISKANN_OPTIN_SEARCH_LIST,
-    LAST_SOURCE_PREFIX_COUNT_LEN, LINEAGE_GIN_INDEXES, LINEAGE_GIN_PENDING_LIST_LIMIT_KB,
-    MAX_WORKSPACE_LABELS, SOURCE_COUNT_STATEMENT_TIMEOUT_MS, SOURCE_PREFIX_BATCH_LIMIT,
-    SOURCE_PREFIX_DISCOVERY_CALLS,
+    PostgresMmAssetStorage, PostgresOriginalStorage, PostgresPageLayoutStorage,
+    PostgresPageStateStorage, PostgresPdfStorage, PostgresPool, ScaleGateEvidence,
+    StandaloneEmbeddingCapabilities, VectorIndexType, VectorStorageMode, WorkspaceLabelMap,
+    DEFAULT_ANN_REORDER_CANDIDATE_K, DEFAULT_BINARY_CANDIDATE_K, DISKANN_OPTIN_RESCORE,
+    DISKANN_OPTIN_SEARCH_LIST, LAST_SOURCE_PREFIX_COUNT_LEN, LINEAGE_GIN_INDEXES,
+    LINEAGE_GIN_PENDING_LIST_LIMIT_KB, MAX_WORKSPACE_LABELS, SOURCE_COUNT_STATEMENT_TIMEOUT_MS,
+    SOURCE_PREFIX_BATCH_LIMIT, SOURCE_PREFIX_DISCOVERY_CALLS,
 };
 
 // SPEC-091 W3 dual-read counters.

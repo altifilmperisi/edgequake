@@ -252,6 +252,7 @@ async fn create_postgres_test_state_named(
             original_storage: None,
             mm_asset_storage: None,
             page_layout_storage: None,
+            page_state_storage: None,
             mode: StorageMode::Memory,
         },
         query: edgequake_api::state::QueryRuntime {

@@ -113,6 +113,7 @@ impl ResolvedParseOptions {
                 no_resume: true,
                 progress_callback,
                 status_hook: None,
+                page_result_sink: None,
                 pages: self.pages.clone(),
                 reasoning_effort: None,
                 api_timeout_secs: None,

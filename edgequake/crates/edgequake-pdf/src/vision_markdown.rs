@@ -13,6 +13,7 @@ use crate::drawing_tags::{
 };
 use crate::embedded_images::WrittenFigureAsset;
 use crate::page_marker::{PageMarkerWriter, PAGE_MARKER_PREFIX, PAGE_MARKER_SUFFIX};
+use crate::page_sections::PageSectionText;
 use crate::region_assets::WrittenTableAsset;
 
 fn page_marker(page_num: usize) -> String {
@@ -793,22 +794,28 @@ pub fn stitch_page_markdown_in_order(parts: &[String]) -> String {
     let mut by_page: BTreeMap<usize, String> = BTreeMap::new();
     let mut tails = Vec::new();
     for part in parts {
-        let sections = split_marked_page_sections(part);
+        let (sections, tail) = crate::page_sections::split_sections(part);
         if sections.is_empty() {
             if !part.trim().is_empty() {
                 tails.push(part.clone());
             }
             continue;
         }
-        for (num, section) in sections {
-            match by_page.get(&num) {
+        for PageSectionText { page, section } in sections {
+            match by_page.get(&page) {
                 Some(existing) => {
-                    by_page.insert(num, prefer_page_section(existing, &section));
+                    by_page.insert(
+                        page,
+                        crate::page_sections::prefer_section(existing, &section),
+                    );
                 }
                 None => {
-                    by_page.insert(num, section);
+                    by_page.insert(page, section);
                 }
             }
+        }
+        if !tail.is_empty() {
+            tails.push(tail);
         }
     }
     let mut out = by_page.into_values().collect::<Vec<_>>().join("\n\n");
@@ -817,50 +824,6 @@ pub fn stitch_page_markdown_in_order(parts: &[String]) -> String {
             out.push_str("\n\n");
         }
         out.push_str(&tail);
-    }
-    out
-}
-
-fn section_body_is_empty_or_placeholder(section: &str) -> bool {
-    let body = match section.find('\n') {
-        Some(idx) => section[idx + 1..].trim(),
-        None => "",
-    };
-    body.is_empty() || body == EMPTY_VISION_PAGE_PLACEHOLDER
-}
-
-fn prefer_page_section(existing: &str, incoming: &str) -> String {
-    let existing_empty = section_body_is_empty_or_placeholder(existing);
-    let incoming_empty = section_body_is_empty_or_placeholder(incoming);
-    match (existing_empty, incoming_empty) {
-        (false, true) => existing.to_string(),
-        (true, false) => incoming.to_string(),
-        // Both real or both empty: keep first (stable, one section per page).
-        _ => existing.to_string(),
-    }
-}
-
-fn split_marked_page_sections(markdown: &str) -> Vec<(usize, String)> {
-    let mut starts: Vec<(usize, usize)> = Vec::new();
-    let mut rest_idx = 0usize;
-    while let Some(rel) = markdown[rest_idx..].find(PAGE_MARKER_PREFIX) {
-        let idx = rest_idx + rel;
-        let after = &markdown[idx + PAGE_MARKER_PREFIX.len()..];
-        if let Some(end) = after.find(PAGE_MARKER_SUFFIX) {
-            if let Ok(n) = after[..end].trim().parse::<usize>() {
-                if n > 0 {
-                    starts.push((idx, n));
-                }
-            }
-            rest_idx = idx + PAGE_MARKER_PREFIX.len() + end + PAGE_MARKER_SUFFIX.len();
-        } else {
-            break;
-        }
-    }
-    let mut out = Vec::with_capacity(starts.len());
-    for (i, (start, num)) in starts.iter().enumerate() {
-        let end = starts.get(i + 1).map(|(s, _)| *s).unwrap_or(markdown.len());
-        out.push((*num, markdown[*start..end].trim_end().to_string()));
     }
     out
 }

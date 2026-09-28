@@ -240,6 +240,7 @@ pub async fn admit_document_for_processing(
         file_source: input.title.clone(),
         workspace_id: workspace_id.clone(),
         metadata: Some(task_meta),
+        reuse_excluded_pages: None,
     };
 
     let mut task = Task::new(
@@ -679,6 +680,7 @@ mod tests {
                 "document_id": "doc-123",
                 "title": "sample.md",
             })),
+            reuse_excluded_pages: None,
         };
         let serialized = serde_json::to_value(&task_data).unwrap();
         assert_eq!(serialized.get("text").and_then(|v| v.as_str()), Some(""));

@@ -211,6 +211,7 @@ pub async fn scan_directory(
                     "tenant_id": tenant_id,
                     "workspace_id": workspace_id,
                 })),
+                reuse_excluded_pages: None,
             };
 
             let task = Task::new(

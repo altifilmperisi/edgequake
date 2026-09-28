@@ -158,22 +158,30 @@ pg_isready -h localhost -p 5432
 
 #### Symptom: OrbStack stops unexpectedly or `make dev` says Docker daemon is unavailable
 
-**Cause**: this is usually a **host network route conflict**, not an EdgeQuake crash. On the affected machine, the route table already claims broad private ranges such as `10/8`, `172.16/12`, or `192.168/16` through another interface (for example a VPN, Homebridge, or router helper). OrbStack/Docker then cannot create its bridge network and reports errors such as "failed to add network" or "conflict with existing route".
+**Cause**: often Docker/OrbStack was already down, **or** an older EdgeQuake recipe called `open -ga OrbStack`, which can trigger an OrbStack VM handoff (`vmgr`) and drop the Docker socket / containers. Make must **never** open, wake, kill, or restart OrbStack.
 
-**What changed**: `make dev` and `make dev-bg` now use **incremental startup**. They reuse healthy services, avoid blind stop/start cycles, and fail with a clear diagnosis instead of hammering Docker repeatedly.
+**What `make db-start` does now**:
+
+1. Reuse any reachable EdgeQuake Postgres (`/tmp/edgequake-db-url`, ports **5432–5449**).
+2. If Docker is down and no Postgres is reachable → **fail fast** with instructions. Do **not** call `open -ga`.
+3. VPN-aware tips only (`make docker-network-diagnose`); home LAN `en*` routes are ignored.
 
 **Solution**:
 
 ```bash
-# Show the targeted diagnosis
+# Prefer reuse when Postgres is still up
 make db-start
 
-# If OrbStack still reports route conflicts:
-# 1. stop the conflicting VPN / bridge helper
-# 2. restart OrbStack
-# 3. rerun the stack
-make dev-bg
+# If Docker is down: open OrbStack.app yourself, wait, then:
+docker info
+make dev
+
+# External / shared Postgres (skips Docker entirely)
+export DATABASE_URL='postgresql://edgequake:edgequake_secret@localhost:5432/edgequake'
+make dev
 ```
+
+**Do not**: `open -ga OrbStack` from scripts, `killall OrbStack`, or `docker system prune` as first recovery.
 
 #### Symptom: "Extension 'vector' not found"
 

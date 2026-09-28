@@ -96,6 +96,31 @@ export function splitTokensIntoSections(
   return sections;
 }
 
+/** True when `blob` mentions page N and not a longer page such as N+10. */
+function blobHasPage(blob: string, page: number): boolean {
+  if (
+    blob.includes(`id="eq-md-page-${page}"`) ||
+    blob.includes(`data-eq-page="${page}"`)
+  ) {
+    return true;
+  }
+  // Comment form has no closing delimiter before the next digit.
+  return new RegExp(`edgequake-page:${page}(?!\\d)`).test(blob);
+}
+
+/** Section that contains the SPEC-143 page anchor for `page`, or -1. */
+export function sectionIndexForPage(sections: Token[][], page: number): number {
+  if (page < 1 || sections.length === 0) return -1;
+  for (let i = 0; i < sections.length; i++) {
+    for (const token of sections[i]!) {
+      const raw = (token as { raw?: string }).raw ?? '';
+      const text = (token as { text?: string }).text ?? '';
+      if (blobHasPage(`${raw}\n${text}`, page)) return i;
+    }
+  }
+  return -1;
+}
+
 // ---------------------------------------------------------------------------
 // Height estimator
 // ---------------------------------------------------------------------------
@@ -295,6 +320,8 @@ interface LazyMarkdownSectionsProps {
   className?: string;
   onSourceClick?: (id: string) => void;
   highlightedIndices?: Set<number>;
+  /** SPEC-143: mount the section that contains this page anchor immediately. */
+  revealPage?: number | null;
 }
 
 /**
@@ -311,6 +338,7 @@ export const LazyMarkdownSections = memo(function LazyMarkdownSections({
   className,
   onSourceClick,
   highlightedIndices,
+  revealPage = null,
 }: LazyMarkdownSectionsProps) {
   // 1. Split tokens into sections.
   const sections = useMemo(() => splitTokensIntoSections(tokens), [tokens]);
@@ -354,8 +382,17 @@ export const LazyMarkdownSections = memo(function LazyMarkdownSections({
       if (perSectionHighlights[i]) set.add(i);
     }
 
+    // SPEC-143: the page anchor often sits in the section before the heading.
+    if (revealPage != null && revealPage >= 1) {
+      const idx = sectionIndexForPage(sections, revealPage);
+      if (idx >= 0) {
+        set.add(idx);
+        if (idx + 1 < sections.length) set.add(idx + 1);
+      }
+    }
+
     return set;
-  }, [sections.length, perSectionHighlights]);
+  }, [sections, perSectionHighlights, revealPage]);
 
   return (
     <div className={className} data-lazy-sections={sections.length}>

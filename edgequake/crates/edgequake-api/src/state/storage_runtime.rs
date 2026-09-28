@@ -21,6 +21,8 @@ pub struct StorageRuntime {
     #[cfg(feature = "postgres")]
     pub mm_asset_storage: Option<Arc<dyn edgequake_storage::DocumentMmAssetStorage>>,
     pub page_layout_storage: Option<Arc<dyn edgequake_storage::DocumentPageLayoutStorage>>,
+    /// SPEC-151 per-page parse/figures/entities health.
+    pub page_state_storage: Option<Arc<dyn edgequake_storage::PageStateStorage>>,
     pub mode: StorageMode,
 }
 
@@ -54,6 +56,7 @@ impl StorageRuntime {
             #[cfg(feature = "postgres")]
             mm_asset_storage: None,
             page_layout_storage: Some(Arc::new(edgequake_storage::MemoryPageLayoutStorage::new())),
+            page_state_storage: Some(Arc::new(edgequake_storage::MemoryPageStateStorage::new())),
             mode: StorageMode::Memory,
         }
     }
@@ -77,6 +80,9 @@ impl StorageRuntime {
         }
         if self.page_layout_storage.is_none() {
             return Err("PostgreSQL mode requires PostgresPageLayoutStorage adapter".into());
+        }
+        if self.page_state_storage.is_none() {
+            return Err("PostgreSQL mode requires PostgresPageStateStorage adapter".into());
         }
         Ok(())
     }
@@ -136,6 +142,7 @@ mod tests {
             original_storage: None,
             mm_asset_storage: None,
             page_layout_storage: None,
+            page_state_storage: None,
             mode: StorageMode::PostgreSQL,
         };
         assert!(missing_pdf.validate_postgres_adapters().is_err());
@@ -158,6 +165,8 @@ mod tests {
             Arc::new(MemoryMmAssetStorage::new());
         let layout: Arc<dyn edgequake_storage::DocumentPageLayoutStorage> =
             Arc::new(MemoryPageLayoutStorage::new());
+        let page_state: Arc<dyn edgequake_storage::PageStateStorage> =
+            Arc::new(edgequake_storage::MemoryPageStateStorage::new());
 
         let storage = StorageRuntime {
             kv_storage: Arc::clone(&kv) as Arc<dyn edgequake_storage::traits::KVStorage>,
@@ -170,6 +179,7 @@ mod tests {
             original_storage: Some(original),
             mm_asset_storage: Some(mm),
             page_layout_storage: Some(layout),
+            page_state_storage: Some(page_state),
             mode: StorageMode::Memory,
         };
 

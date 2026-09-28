@@ -6,6 +6,7 @@ import type { Token, Tokens } from "marked";
 import { describe, expect, it } from "vitest";
 import {
   LAZY_SECTION_THRESHOLD,
+  sectionIndexForPage,
   splitTokensIntoSections,
 } from "../LazyMarkdownSections";
 
@@ -142,6 +143,38 @@ describe("splitTokensIntoSections", () => {
     const reconstructed = sections.flat();
     expect(reconstructed).toHaveLength(tokens.length);
     expect(reconstructed).toEqual(tokens);
+  });
+});
+
+describe("sectionIndexForPage", () => {
+  it("finds the section that contains the page anchor", () => {
+    const sections = [
+      [paragraph('<div data-eq-page="1" id="eq-md-page-1"></div>')],
+      [heading(2, "Page 2"), paragraph("UNIQUE_MARKER_PAGE_2")],
+      [
+        {
+          type: "html",
+          raw: '<div data-eq-page="22" id="eq-md-page-22" class="eq-page-anchor"></div>\n',
+          text: "",
+        } as unknown as Token,
+      ],
+    ];
+    expect(sectionIndexForPage(sections, 22)).toBe(2);
+    expect(sectionIndexForPage(sections, 9)).toBe(-1);
+  });
+
+  it("does not treat page 22 as page 2", () => {
+    const sections = [
+      [
+        {
+          type: "html",
+          raw: "<!-- edgequake-page:22 -->\n",
+          text: "",
+        } as unknown as Token,
+      ],
+    ];
+    expect(sectionIndexForPage(sections, 2)).toBe(-1);
+    expect(sectionIndexForPage(sections, 22)).toBe(0);
   });
 });
 

@@ -326,6 +326,45 @@ fn contribution_record(fact_id: Uuid, revision: u64, body: serde_json::Value) ->
     }
 }
 
+fn command_with_chunks(
+    tenant_id: Uuid,
+    workspace_id: Uuid,
+    document_id: Uuid,
+    generation: u64,
+    chunks: Vec<PreparedRecord>,
+) -> PreparedIngestionBatch {
+    let idempotency_key = format!("{document_id}:{generation}:0");
+    let mut batch = PreparedIngestionBatch {
+        scope: AccessScope::new(TenantId::new(tenant_id), WorkspaceId::new(workspace_id)),
+        document_id: DocumentId::new(document_id),
+        ingest_generation: generation,
+        batch_ordinal: 0,
+        expected_revision: Some(generation.saturating_sub(1)),
+        idempotency_key: idempotency_key.clone(),
+        schema_version: 1,
+        canonical_digest: [0u8; 32],
+        chunks,
+        facts: Vec::new(),
+        contributions: Vec::new(),
+        embeddings: Vec::new(),
+    };
+    let canonical = serde_json::to_vec(&serde_json::json!({
+        "scope": batch.scope,
+        "document_id": document_id,
+        "ingest_generation": generation,
+        "batch_ordinal": 0,
+        "idempotency_key": idempotency_key,
+        "schema_version": 1,
+        "chunks": batch.chunks,
+        "facts": batch.facts,
+        "contributions": batch.contributions,
+        "embeddings": batch.embeddings,
+    }))
+    .expect("encode canonical");
+    batch.canonical_digest = sha256(&canonical);
+    batch
+}
+
 fn command_with_facts(
     tenant_id: Uuid,
     workspace_id: Uuid,
@@ -334,8 +373,8 @@ fn command_with_facts(
     facts: Vec<PreparedRecord>,
     contributions: Vec<PreparedRecord>,
 ) -> PreparedIngestionBatch {
-    // Facts-only batches avoid chunk-index collisions across generations; chunk
-    // identity is covered by the existing five-identical-commits contract.
+    // Facts-only batches for graph-revision contracts. Chunk-spine replace across
+    // generations is covered by generation_two_replaces_chunk_spine_at_same_index.
     let idempotency_key = format!("{document_id}:{generation}:0");
     let mut batch = PreparedIngestionBatch {
         scope: AccessScope::new(TenantId::new(tenant_id), WorkspaceId::new(workspace_id)),
@@ -503,6 +542,66 @@ async fn canonical_unique_facts_commit_once_and_replay_identically() {
     .await
     .expect("read fact counts");
     assert_eq!(counts, (1, 1, 1));
+}
+
+#[tokio::test]
+async fn generation_two_replaces_chunk_spine_at_same_index() {
+    // Regression: reprocess with new chunk UUID/content at index 0 used to fail
+    // with "prepared chunk index 0 conflicts with an existing row" because
+    // INSERT ON CONFLICT DO NOTHING kept the gen-1 row.
+    let Some((_config, pool, tenant_id, workspace_id)) = setup("spec149_chunk_replace").await
+    else {
+        return;
+    };
+    let document_id = Uuid::new_v4();
+    let committer = PgIngestionCommitter::new(pool.clone());
+
+    let payload_v1 = b"generation-1 chunk body".to_vec();
+    let chunk_v1 = PreparedRecord {
+        id: Uuid::new_v4(),
+        revision: 1,
+        digest: sha256(&payload_v1),
+        payload: payload_v1.clone(),
+    };
+    let first = command_with_chunks(
+        tenant_id,
+        workspace_id,
+        document_id,
+        1,
+        vec![chunk_v1.clone()],
+    );
+    committer
+        .commit_batch(&first)
+        .await
+        .expect("generation 1 chunk commit");
+
+    let payload_v2 = b"generation-2 rewritten chunk body".to_vec();
+    let chunk_v2_id = Uuid::new_v4();
+    let chunk_v2 = PreparedRecord {
+        id: chunk_v2_id,
+        revision: 2,
+        digest: sha256(&payload_v2),
+        payload: payload_v2.clone(),
+    };
+    let second = command_with_chunks(tenant_id, workspace_id, document_id, 2, vec![chunk_v2]);
+    committer
+        .commit_batch(&second)
+        .await
+        .expect("generation 2 must replace chunk spine without index conflict");
+
+    let rows: Vec<(Uuid, i32, String)> = sqlx::query_as(
+        "SELECT id, chunk_index, content FROM chunks \
+         WHERE document_id = $1 ORDER BY chunk_index",
+    )
+    .bind(document_id)
+    .fetch_all(&pool)
+    .await
+    .expect("read replaced chunks");
+    assert_eq!(rows.len(), 1, "spine replace must not leave gen-1 rows");
+    assert_eq!(rows[0].0, chunk_v2_id);
+    assert_eq!(rows[0].1, 0);
+    assert_eq!(rows[0].2, String::from_utf8(payload_v2).unwrap());
+    assert_ne!(rows[0].0, chunk_v1.id, "gen-1 chunk id must be gone");
 }
 
 #[tokio::test]

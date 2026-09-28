@@ -101,7 +101,13 @@ import { FeedbackZoneLiveRegion } from './feedback-zone-live-region';
 import { FeedbackZoneSkeleton } from './feedback-zone-skeleton';
 import { LargePdfAdmissionDialog } from './large-pdf-admission-dialog';
 import { ProgressPanelRow } from './progress-panel-row';
-import { ReprocessDialog, type ReprocessChoice } from './reprocess-dialog';
+import {
+  isPdfDocument,
+  ReprocessDialog,
+  type ReprocessChoice,
+} from './reprocess-dialog';
+import { ReprocessPagesDialog } from './reprocess-pages-dialog';
+import { resolveDetailLifecycle } from '@/lib/documents/detail-lifecycle';
 import { ApiErrorBoundary } from '@/components/shared/api-error-boundary';
 import { Button } from '@/components/ui/button';
 import { DropdownMenuCheckboxItem } from '@/components/ui/dropdown-menu';
@@ -126,6 +132,10 @@ export function DocumentManager() {
   // entity-only re-extraction (reuses cached markdown). The dialog collects the
   // intent before calling reprocessMutation with the chosen mode.
   const [reprocessTarget, setReprocessTarget] = useState<Document | null>(null);
+
+  // SPEC-151: Partial page reprocess from list row menu.
+  const [pagesReprocessTarget, setPagesReprocessTarget] =
+    useState<Document | null>(null);
 
   // Bulk reprocess choice dialog state.
   // WHY: The toolbar Reprocess button acts on every selected document at once.
@@ -683,6 +693,19 @@ export function DocumentManager() {
     ],
   );
 
+  /** SPEC-151: selection-bar Reprocess can hand off to pages dialog for one PDF. */
+  const bulkPagesTarget = useMemo(() => {
+    if (selectedCount !== 1) return null;
+    const id = [...selectedIds][0];
+    if (!id) return null;
+    const doc = documents.find((d) => d.id === id) ?? null;
+    if (!doc || !isPdfDocument(doc) || needsReuploadNotReprocess(doc)) {
+      return null;
+    }
+    if (!resolveDetailLifecycle(doc).canReprocessPages) return null;
+    return doc;
+  }, [selectedCount, selectedIds, documents]);
+
   if (isError) {
     return <DocumentErrorAlert error={error} onRetry={refetch} />;
   }
@@ -1029,6 +1052,7 @@ export function DocumentManager() {
           if (target && needsReuploadNotReprocess(target)) return;
           setReprocessTarget(target ?? ({ id } as Document));
         }}
+        onReprocessPages={(doc) => setPagesReprocessTarget(doc)}
         onCancel={(trackId) => cancelMutation.mutate(trackId)}
         onDelete={handleDeleteDocument}
         isRetrying={reprocessMutation.isPending}
@@ -1115,6 +1139,11 @@ export function DocumentManager() {
         document={reprocessTarget}
         onConfirm={(choice: ReprocessChoice) => {
           if (!reprocessTarget?.id) return;
+          if (choice.mode === 'pages') {
+            setPagesReprocessTarget(reprocessTarget);
+            setReprocessTarget(null);
+            return;
+          }
           // SPEC-050-REPROCESS: Pass document name so ProgressPanelRow shows
           // a meaningful filename instead of a truncated ID.
           const docName =
@@ -1132,14 +1161,51 @@ export function DocumentManager() {
         onCancel={() => setReprocessTarget(null)}
       />
 
+      {/* SPEC-151: Partial page reprocess from documents list row menu / bulk. */}
+      <ReprocessPagesDialog
+        open={pagesReprocessTarget !== null}
+        documentId={pagesReprocessTarget?.id ?? ''}
+        documentName={
+          pagesReprocessTarget?.file_name ||
+          pagesReprocessTarget?.title ||
+          undefined
+        }
+        pageCount={pagesReprocessTarget?.page_count ?? undefined}
+        onClose={() => setPagesReprocessTarget(null)}
+        onQueued={(trackId) => {
+          // Pin the same feedback-zone progress row as full-doc reprocess.
+          // Stay on the list so ActiveRuns / ProgressPanelRow can show the run.
+          if (pagesReprocessTarget?.id && trackId) {
+            const name =
+              pagesReprocessTarget.file_name ||
+              pagesReprocessTarget.title ||
+              pagesReprocessTarget.id.slice(0, 8);
+            addReprocessEntry(name, trackId, {
+              documentId: pagesReprocessTarget.id,
+              isPdf: true,
+              mode: 'entities',
+            });
+          }
+          setPagesReprocessTarget(null);
+        }}
+      />
+
       {/* Bulk reprocess choice dialog — one mode applied to all selected docs. */}
       <BulkReprocessDialog
         open={bulkReprocessOpen}
         count={selectedCount}
+        allowPages={bulkPagesTarget !== null}
         isBusy={isBulkReprocessing}
         onConfirm={(choice: BulkReprocessChoice) => {
+          if (choice.intent === 'pages') {
+            if (bulkPagesTarget) {
+              setPagesReprocessTarget(bulkPagesTarget);
+            }
+            setBulkReprocessOpen(false);
+            return;
+          }
           // Start first so sync provisional pin/panel paints before dialog close.
-          void handleBulkReprocess(choice.mode);
+          void handleBulkReprocess(choice.intent);
           setBulkReprocessOpen(false);
         }}
         onCancel={() => {

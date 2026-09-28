@@ -570,6 +570,7 @@ async fn enqueue_pdf_reprocess(
         multimodal_process_options,
         vision_reasoning_effort,
         vision_extract: Default::default(),
+        page_scope: None,
     };
 
     let task = Task::new(
@@ -661,6 +662,7 @@ async fn enqueue_text_reprocess(
             "merge_only": reprocess_mode.merge_only(),
             "batch_track_id": new_track_id,
         })),
+        reuse_excluded_pages: None,
     };
 
     let task = Task::new(

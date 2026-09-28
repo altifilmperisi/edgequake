@@ -230,6 +230,7 @@ impl Pipeline {
     /// cooperative cancellation support.
     ///
     /// `resume_by_chunk_id`: skip LLM for chunks already extracted (mid-doc resume).
+    /// `reuse_index`: SPEC-151 content-hash reuse across re-chunk (preferred over id map).
     /// `on_chunk_extracted`: durable per-chunk checkpoint hook after each success.
     #[allow(clippy::too_many_arguments)]
     pub async fn process_with_resilience_cancellable(
@@ -242,6 +243,34 @@ impl Pipeline {
         resume_by_chunk_id: Option<
             std::collections::HashMap<String, crate::extractor::ExtractionResult>,
         >,
+        on_chunk_extracted: Option<crate::pipeline::types::ChunkExtractedCallback>,
+    ) -> Result<ProcessingResult> {
+        self.process_with_resilience_cancellable_reuse(
+            document_id,
+            content,
+            progress_callback,
+            cancel_token,
+            embed_progress,
+            resume_by_chunk_id,
+            None,
+            on_chunk_extracted,
+        )
+        .await
+    }
+
+    /// Like [`Self::process_with_resilience_cancellable`] with SPEC-151 reuse index.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn process_with_resilience_cancellable_reuse(
+        &self,
+        document_id: &str,
+        content: &str,
+        progress_callback: Option<ChunkProgressCallback>,
+        cancel_token: Option<CancellationToken>,
+        embed_progress: Option<EmbedProgressCallback>,
+        resume_by_chunk_id: Option<
+            std::collections::HashMap<String, crate::extractor::ExtractionResult>,
+        >,
+        reuse_index: Option<crate::chunk_reuse::ChunkReuseIndex>,
         on_chunk_extracted: Option<crate::pipeline::types::ChunkExtractedCallback>,
     ) -> Result<ProcessingResult> {
         Self::run_under_ingest_root(document_id, content, || async {
@@ -260,6 +289,7 @@ impl Pipeline {
                             progress_callback,
                             cancel_token.clone(),
                             resume_by_chunk_id,
+                            reuse_index,
                             on_chunk_extracted,
                         )
                         .await;

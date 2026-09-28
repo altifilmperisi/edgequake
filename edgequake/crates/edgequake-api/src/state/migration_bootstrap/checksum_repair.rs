@@ -98,13 +98,24 @@ pub fn refuse_silent_repair_message(version: i64, reason: &str) -> String {
             .collect::<Vec<_>>()
             .join(", ")
     };
-    format!(
+    let all = manifest::load().all_fossils(version);
+    let prod = manifest::load().production_fossils(version);
+    let has_dev_only = all.len() > prod.len();
+    let mut msg = format!(
         "Migration {version} checksum drift detected ({reason}). \
          Refusing silent repair without authorization. \
          Known production fossils: {known_fmt}. \
          Controlled emergency: {ALLOW_CHECKSUM_REPAIR_ENV}={version} once, then unset. \
          Spec: specs/150-reliable-migration-system/01-first-principles.md (LAW-150-4)."
-    )
+    );
+    if has_dev_only {
+        msg.push_str(
+            " Note: a known *dev_only* fossil exists for this version — \
+             local `make_dev` (EDGEQUAKE_DEV_MODE=true) auto-accepts it; \
+             otherwise set the env override once.",
+        );
+    }
+    msg
 }
 
 #[cfg(test)]
@@ -140,6 +151,16 @@ mod tests {
         assert!(msg.contains("EDGEQUAKE_ALLOW_CHECKSUM_REPAIR"));
         assert!(msg.contains("125"));
         assert!(msg.contains("LAW-150-4"));
+    }
+
+    #[test]
+    fn refuse_message_mentions_dev_only_fossil_when_present() {
+        let msg = refuse_silent_repair_message(150, "sqlx VersionMismatch");
+        assert!(
+            msg.contains("dev_only"),
+            "M150 has a known dev_only fossil; refuse text should say so: {msg}"
+        );
+        assert!(msg.contains("EDGEQUAKE_DEV_MODE") || msg.contains("ALLOW_CHECKSUM_REPAIR"));
     }
 
     #[test]

@@ -37,9 +37,9 @@ docker compose up -d   # migrate runs first; API binds /live while waiting if ne
 - Task/oneshot: `edgequake migrate` before serve.
 - systemd: `Type=oneshot` migrate unit `Before=edgequake.service`.
 
-## make dev
+## make_dev
 
-`VISIBLE_MIGRATE_STEP` runs `edgequake migrate` before backend start. Known fossils are auto-accepted from `migrations/manifest.toml` (no env). Unknown hashes still need `EDGEQUAKE_ALLOW_CHECKSUM_REPAIR=<versions>` or a new migration.
+`VISIBLE_MIGRATE_STEP` runs `edgequake migrate` before backend start with `EDGEQUAKE_DEV_MODE=true` (when auth is disabled). Known **production** fossils auto-accept from `migrations/manifest.toml` (no env). Known **`dev_only`** fossils also auto-accept under that DEV_MODE (local collision hashes such as M150). Unknown hashes still need `EDGEQUAKE_ALLOW_CHECKSUM_REPAIR=<versions>` or a new migration.
 
 ## Reading status / probes
 
@@ -61,8 +61,9 @@ docker compose up -d   # migrate runs first; API binds /live while waiting if ne
 
 1. Confirm body was not edited after ship (LAW: new file, never patch).
 2. If hash matches a **non-`dev_only`** fossil in `manifest.toml`, re-run `edgequake migrate` (auto-accept).
-3. Else scoped override: `EDGEQUAKE_ALLOW_CHECKSUM_REPAIR=NNN` for one shot, then remove the env.
-4. `EDGEQUAKE_DEV_MODE` does **not** bypass unknown hashes.
+3. If hash matches a **`dev_only`** fossil (e.g. M150 local collision): `make_dev` with `EDGEQUAKE_DEV_MODE=true` auto-accepts; otherwise `EDGEQUAKE_ALLOW_CHECKSUM_REPAIR=NNN` once.
+4. Else scoped override: `EDGEQUAKE_ALLOW_CHECKSUM_REPAIR=NNN` for one shot, then remove the env.
+5. `EDGEQUAKE_DEV_MODE` does **not** bypass *unknown* hashes.
 
 ### Dirty version
 

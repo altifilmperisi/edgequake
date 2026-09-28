@@ -144,34 +144,13 @@ struct PageSection {
     range: std::ops::Range<usize>,
 }
 
+/// SPEC-151: delegate to `edgequake_pdf::section_spans` (LAW-151-8 SSOT).
 fn split_page_sections(markdown: &str) -> Vec<PageSection> {
-    const MARKER: &str = "<!-- edgequake-page:";
-    let mut markers: Vec<(usize, usize)> = Vec::new();
-    let mut search_from = 0;
-    while let Some(rel) = markdown[search_from..].find(MARKER) {
-        let abs = search_from + rel;
-        let num_start = abs + MARKER.len();
-        let num_end = markdown[num_start..]
-            .find("-->")
-            .map(|e| num_start + e)
-            .unwrap_or(num_start);
-        if let Ok(n) = markdown[num_start..num_end].trim().parse::<usize>() {
-            markers.push((abs, n));
-        }
-        search_from = num_end;
-    }
-    markers
-        .iter()
-        .enumerate()
-        .map(|(i, &(off, n))| {
-            let end = markers
-                .get(i + 1)
-                .map(|(o, _)| *o)
-                .unwrap_or(markdown.len());
-            PageSection {
-                page_num: n,
-                range: off..end,
-            }
+    edgequake_pdf::section_spans(markdown)
+        .into_iter()
+        .map(|s| PageSection {
+            page_num: s.page,
+            range: s.start..s.end,
         })
         .collect()
 }

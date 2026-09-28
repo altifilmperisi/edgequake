@@ -1062,6 +1062,10 @@ async fn async_main_postgres() -> Result<()> {
         processor = processor.with_page_layout_storage(Arc::clone(page_layout_storage));
         info!("📐 Page-layout storage attached to task processor");
     }
+    if let Some(ref page_state_storage) = state.storage.page_state_storage {
+        processor = processor.with_page_state_storage(Arc::clone(page_state_storage));
+        info!("🩺 Page-state storage attached to task processor (SPEC-151)");
+    }
 
     #[cfg(feature = "postgres")]
     if let (Some(pool), Some(caps)) = (state.pg_pool.clone(), state.postgres_capabilities.clone()) {

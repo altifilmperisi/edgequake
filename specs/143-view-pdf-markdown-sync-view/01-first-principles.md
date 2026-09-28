@@ -12,7 +12,7 @@
 | **LAW-143-6** | Degrade honestly | Missing markers → PDF nav works; MD sync no-ops; toggle disabled or inert |
 | **LAW-143-7** | Unfakable contracts | E2E asserts `data-page`, `data-eq-page`, and URL `?page=` — not screenshots alone |
 | **LAW-143-8** | Deeplink = `page_start` | Cross-page spans (`page_end > page_start`) navigate to `page_start` (SPEC-135) |
-| **LAW-143-9** | Sync is optional | Sync ON by default in side-by-side; OFF restores independent scroll |
+| **LAW-143-9** | Sync is one explicit direction | Segmented control: `none` \| `pdf-to-md` \| `md-to-pdf`. First visit defaults to PDF→MD; last choice remembered. Bidirectional sync is forbidden. |
 | **LAW-143-10** | Marker grammar frozen | Do not change `<!-- edgequake-page:N -->` (SPEC-083 X-13) |
 
 ## Anti-patterns

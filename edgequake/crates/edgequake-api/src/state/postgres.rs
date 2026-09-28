@@ -642,6 +642,9 @@ impl AppState {
         let page_layout_storage: Arc<dyn edgequake_storage::DocumentPageLayoutStorage> = Arc::new(
             edgequake_storage::PostgresPageLayoutStorage::new(pool.clone()),
         );
+        let page_state_storage: Arc<dyn edgequake_storage::PageStateStorage> = Arc::new(
+            edgequake_storage::PostgresPageStateStorage::new(pool.clone()),
+        );
 
         let storage = StorageRuntime {
             kv_storage: Arc::clone(&kv_storage) as Arc<dyn edgequake_storage::traits::KVStorage>,
@@ -653,6 +656,7 @@ impl AppState {
             original_storage: Some(original_storage),
             mm_asset_storage: Some(mm_asset_storage),
             page_layout_storage: Some(page_layout_storage),
+            page_state_storage: Some(page_state_storage),
             mode: StorageMode::PostgreSQL,
         };
         storage.validate_postgres_adapters()?;

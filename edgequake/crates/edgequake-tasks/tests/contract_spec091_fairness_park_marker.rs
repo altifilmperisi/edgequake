@@ -26,6 +26,7 @@ fn make_task() -> Task {
             file_source: "test".to_string(),
             workspace_id: workspace_id.to_string(),
             metadata: None,
+            reuse_excluded_pages: None,
         })
         .unwrap(),
     )

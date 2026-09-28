@@ -3,7 +3,7 @@
  * @description Side-by-side view of PDF and extracted Markdown.
  *
  * @implements SPEC-002 - Document Viewer with PDF+Markdown display
- * @implements SPEC-143 - Page sync via shared controller
+ * @implements SPEC-143 - Directional page sync via shared controller
  * @implements FEAT0731 - PDF and Markdown side-by-side view
  * @implements FEAT0732 - View mode toggle
  * @implements FEAT0733 - Panel synchronization controls
@@ -11,10 +11,12 @@
 'use client';
 
 import { Button } from '@/components/ui/button';
+import { PageSyncModeControl } from '@/components/documents/page-sync-mode-control';
 import { usePageSyncController } from '@/hooks/use-page-sync-controller';
+import { pdfCurrentPageForMode } from '@/lib/documents/page-sync-mode';
 import { cn } from '@/lib/utils';
 import { hasPageMarkers } from '@/lib/utils/page-markers';
-import { Columns, FileText, FileType, Link2, Link2Off } from 'lucide-react';
+import { Columns, FileText, FileType } from 'lucide-react';
 import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { MarkdownViewer } from './markdown-viewer';
@@ -41,8 +43,12 @@ export function PDFMarkdownSplitView({
 }: PDFMarkdownSplitViewProps) {
   const { t } = useTranslation();
   const [viewMode, setViewMode] = useState<ViewMode>(initialMode);
-  const pageSync = usePageSyncController({ initialPage: 1, initialSyncEnabled: true });
+  const pageSync = usePageSyncController({ initialPage: 1 });
   const syncAvailable = hasPageMarkers(markdown);
+  const pdfCurrentPage = pdfCurrentPageForMode(
+    syncAvailable ? pageSync.syncMode : 'none',
+    pageSync.activePage,
+  );
 
   const handleModeChange = useCallback((mode: ViewMode) => {
     setViewMode(mode);
@@ -93,29 +99,13 @@ export function PDFMarkdownSplitView({
           </Button>
 
           {viewMode === 'split' ? (
-            <Button
-              variant={pageSync.syncEnabled ? 'secondary' : 'ghost'}
-              size="sm"
-              className="h-8 ml-1"
-              data-testid="pdf-md-sync-toggle"
-              data-sync={pageSync.syncEnabled && syncAvailable ? 'on' : 'off'}
-              aria-pressed={pageSync.syncEnabled && syncAvailable}
-              disabled={!syncAvailable}
-              onClick={pageSync.toggleSync}
-              title={
-                !syncAvailable
-                  ? 'No page markers in this document'
-                  : pageSync.syncEnabled
-                    ? 'Synchronize PDF and Markdown pages'
-                    : 'Independent scrolling'
-              }
-            >
-              {pageSync.syncEnabled && syncAvailable ? (
-                <Link2 className="h-4 w-4" />
-              ) : (
-                <Link2Off className="h-4 w-4" />
-              )}
-            </Button>
+            <PageSyncModeControl
+              className="ml-1"
+              mode={pageSync.syncMode}
+              onModeChange={pageSync.setSyncMode}
+              available={syncAvailable}
+              compact={false}
+            />
           ) : null}
         </div>
       </div>
@@ -141,8 +131,10 @@ export function PDFMarkdownSplitView({
               showToolbar={true}
               height={viewMode === 'split' ? height / 2 : height}
               className="flex-1"
-              currentPage={pageSync.activePage}
+              currentPage={pdfCurrentPage}
               onPageChange={pageSync.setPageFromPdf}
+              onGestureStart={() => pageSync.beginGesture('pdf')}
+              onGestureEnd={pageSync.endGesture}
               documentId={documentId ?? undefined}
             />
           </div>
@@ -162,6 +154,13 @@ export function PDFMarkdownSplitView({
               title={t('documents.viewer.extractedMarkdown', 'Extracted Markdown')}
               className="flex-1"
               documentId={documentId}
+              activePage={pageSync.activePage}
+              syncEnabled={pageSync.syncEnabled && syncAvailable}
+              followMarkdown={pageSync.followMarkdown && syncAvailable}
+              onPageFromMd={pageSync.setPageFromMd}
+              syncDriver={pageSync.driver}
+              onMdGestureStart={() => pageSync.beginGesture('md')}
+              onMdGestureEnd={pageSync.endGesture}
             />
           </div>
         )}

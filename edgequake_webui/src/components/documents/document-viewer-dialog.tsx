@@ -24,6 +24,7 @@ import {
     DialogTitle,
 } from '@/components/ui/dialog';
 import { getPdfContent, getPdfDownloadUrl } from '@/lib/api/edgequake';
+import { pdfCurrentPageForMode } from '@/lib/documents/page-sync-mode';
 import { hasPageMarkers } from '@/lib/utils/page-markers';
 import { usePageSyncController } from '@/hooks/use-page-sync-controller';
 import type { Document } from '@/types';
@@ -68,7 +69,7 @@ export function DocumentViewerDialog({
   onOpenChange,
 }: DocumentViewerDialogProps) {
   const { t } = useTranslation();
-  const pageSync = usePageSyncController({ initialPage: 1, initialSyncEnabled: true });
+  const pageSync = usePageSyncController({ initialPage: 1 });
 
   // Fetch PDF content metadata (includes markdown)
   const { data: pdfContent, isLoading: isLoadingContent, error } = useQuery({
@@ -102,6 +103,11 @@ export function DocumentViewerDialog({
   }), [pdfId, pdfContent, displayTitle]);
   const isPdf = pdfContent?.content_type === 'application/pdf';
   const hasMarkdown = !!pdfContent?.markdown_content;
+  const syncAvailable = hasPageMarkers(pdfContent?.markdown_content);
+  const pdfCurrentPage = pdfCurrentPageForMode(
+    syncAvailable ? pageSync.syncMode : 'none',
+    pageSync.activePage,
+  );
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -183,17 +189,19 @@ export function DocumentViewerDialog({
               {/* If PDF with markdown, show side-by-side */}
               {isPdf && hasMarkdown && pdfUrl && (
                 <SideBySideViewer
-                  syncEnabled={pageSync.syncEnabled}
-                  onSyncToggle={pageSync.toggleSync}
-                  syncAvailable={hasPageMarkers(pdfContent.markdown_content)}
+                  syncMode={pageSync.syncMode}
+                  onSyncModeChange={pageSync.setSyncMode}
+                  syncAvailable={syncAvailable}
                   leftPanel={
                     <PDFViewer
                       file={pdfUrl}
                       showToolbar={true}
                       className="h-full"
                       documentId={pdfContent.document_id ?? pdfId ?? undefined}
-                      currentPage={pageSync.activePage}
+                      currentPage={pdfCurrentPage}
                       onPageChange={pageSync.setPageFromPdf}
+                      onGestureStart={() => pageSync.beginGesture('pdf')}
+                      onGestureEnd={pageSync.endGesture}
                     />
                   }
                   rightPanel={
@@ -202,6 +210,13 @@ export function DocumentViewerDialog({
                       showToolbar={false}
                       className="h-full"
                       documentId={pdfContent.document_id ?? pdfId ?? undefined}
+                      activePage={pageSync.activePage}
+                      syncEnabled={pageSync.syncEnabled && syncAvailable}
+                      followMarkdown={pageSync.followMarkdown && syncAvailable}
+                      onPageFromMd={pageSync.setPageFromMd}
+                      syncDriver={pageSync.driver}
+                      onMdGestureStart={() => pageSync.beginGesture('md')}
+                      onMdGestureEnd={pageSync.endGesture}
                     />
                   }
                   height={window.innerHeight - 150}

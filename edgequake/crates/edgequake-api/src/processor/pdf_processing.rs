@@ -118,6 +118,7 @@ fn build_text_insert_from_pdf_convert(
                 .unwrap_or(false),
             "document_language": document_language,
         })),
+        reuse_excluded_pages: data.page_scope.as_ref().map(|s| s.pages.clone()),
     }
 }
 
@@ -291,7 +292,7 @@ impl DocumentTaskProcessor {
     ///
     /// Idempotent: reuses an already-active Insert for the same `pdf_id`.
     #[cfg(feature = "postgres")]
-    async fn enqueue_pdf_ingest_insert(
+    pub(crate) async fn enqueue_pdf_ingest_insert(
         &self,
         convert_task: &Task,
         data: &edgequake_tasks::PdfProcessingData,
@@ -780,6 +781,24 @@ impl DocumentTaskProcessor {
         // Keep concrete Arc so we can report post-OCR converting status + finish phase.
         let progress_callback = Arc::new(callback);
 
+        // SPEC-151: page-scoped reprocess — splice selected pages, never wipe the rest.
+        if data.page_scope.is_some() {
+            let existing_md = pdf.markdown_content.clone().unwrap_or_default();
+            return self
+                .process_page_scope_reprocess(
+                    task,
+                    &data,
+                    &pdf_data,
+                    &existing_md,
+                    &early_doc_id,
+                    &filename,
+                    page_count_opt.map(|n| n as u32),
+                    file_size_bytes,
+                    &sha256_checksum,
+                )
+                .await;
+        }
+
         // 4. Extract content (vision or text mode)
         //
         // RESUME SHORTCUT: If this is a retry and the markdown was already stored
@@ -1212,6 +1231,32 @@ impl DocumentTaskProcessor {
                     no_resume: should_cleanup_existing_content,
                     progress_callback: Some(wrapped_progress),
                     status_hook: Some(status_hook),
+                    // SPEC-151: durable per-page OCR as pages complete.
+                    page_result_sink: {
+                        #[cfg(feature = "postgres")]
+                        let store = self.page_state_storage.as_ref().or_else(|| {
+                            self.app_state
+                                .as_ref()
+                                .and_then(|s| s.storage.page_state_storage.as_ref())
+                        });
+                        #[cfg(not(feature = "postgres"))]
+                        let store = self
+                            .app_state
+                            .as_ref()
+                            .and_then(|s| s.storage.page_state_storage.as_ref());
+                        match (store, uuid::Uuid::parse_str(&early_doc_id).ok()) {
+                            (Some(store), Some(doc)) => {
+                                Some(crate::processor::page_reprocess::make_parse_page_sink(
+                                    Arc::clone(store),
+                                    doc,
+                                    data.workspace_id,
+                                    vision_model.clone(),
+                                    Some(task.track_id.clone()),
+                                ))
+                            }
+                            _ => None,
+                        }
+                    },
                     pages: None,
                     reasoning_effort: data.vision_reasoning_effort.clone(),
                     api_timeout_secs: Some(crate::safety_limits::vision_page_timeout_secs(
@@ -1332,6 +1377,41 @@ impl DocumentTaskProcessor {
                             let error = edgequake_tasks::TaskError::Processing(format!(
                                 "PDF conversion failed: {e}"
                             ));
+                            // SPEC-151: salvage checkpoint pages before failing closed.
+                            if let (Ok(doc), Some(store)) = (
+                                uuid::Uuid::parse_str(&early_doc_id),
+                                {
+                                    #[cfg(feature = "postgres")]
+                                    {
+                                        self.page_state_storage.as_ref().or_else(|| {
+                                            self.app_state
+                                                .as_ref()
+                                                .and_then(|s| s.storage.page_state_storage.as_ref())
+                                        })
+                                    }
+                                    #[cfg(not(feature = "postgres"))]
+                                    {
+                                        self.app_state
+                                            .as_ref()
+                                            .and_then(|s| s.storage.page_state_storage.as_ref())
+                                    }
+                                },
+                            ) {
+                                let cp = std::path::PathBuf::from(
+                                    crate::services::durable_vision_checkpoint_dir(
+                                        &data.pdf_id.to_string(),
+                                    ),
+                                );
+                                crate::processor::page_reprocess::salvage_checkpoint_pages(
+                                    store.as_ref(),
+                                    doc,
+                                    data.workspace_id,
+                                    &cp,
+                                    vision_model.clone(),
+                                    Some(task.track_id.clone()),
+                                )
+                                .await;
+                            }
                             if !vision_fallback_allowed(
                                 backend,
                                 &error,
@@ -1453,6 +1533,49 @@ impl DocumentTaskProcessor {
         );
 
         let markdown = strip_nul_bytes(markdown);
+
+        // SPEC-151: record parse + figures page states after convert (covers EdgeParse too).
+        if let (Ok(doc), Some(store)) = (uuid::Uuid::parse_str(&early_doc_id), {
+            #[cfg(feature = "postgres")]
+            {
+                self.page_state_storage.as_ref().or_else(|| {
+                    self.app_state
+                        .as_ref()
+                        .and_then(|s| s.storage.page_state_storage.as_ref())
+                })
+            }
+            #[cfg(not(feature = "postgres"))]
+            {
+                self.app_state
+                    .as_ref()
+                    .and_then(|s| s.storage.page_state_storage.as_ref())
+            }
+        }) {
+            let method = match extraction_method {
+                ExtractionMethod::Vision => "vision",
+                ExtractionMethod::EdgeParse => "edgeparse",
+                ExtractionMethod::Text => "text",
+                ExtractionMethod::Hybrid => "hybrid",
+            };
+            crate::processor::page_reprocess::record_parse_from_markdown(
+                store.as_ref(),
+                doc,
+                data.workspace_id,
+                &markdown,
+                method,
+                vision_model.clone(),
+                Some(task.track_id.clone()),
+            )
+            .await;
+            crate::processor::page_reprocess::record_figures_from_markdown(
+                store.as_ref(),
+                doc,
+                data.workspace_id,
+                &markdown,
+                Some(task.track_id.clone()),
+            )
+            .await;
+        }
 
         // SPEC-134 WP-3: detect source language from the first non-empty Pass-A
         // page. One detection, propagated to Pass-B / verify / extraction.
@@ -2256,6 +2379,7 @@ mod tests {
             multimodal_process_options: None,
             vision_reasoning_effort: None,
             vision_extract: Default::default(),
+            page_scope: None,
         };
         let mut task = Task::new(
             tenant_id,

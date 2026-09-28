@@ -45,6 +45,7 @@ export { BulkDeleteConfirmDialog } from "./bulk-delete-confirm-dialog";
 // Viewer components (SPEC-002)
 export { MarkdownViewer } from "./markdown-viewer";
 export { PDFViewer } from "./pdf-viewer";
+export { PageSyncModeControl } from "./page-sync-mode-control";
 export { SideBySideViewer } from "./side-by-side-viewer";
 
 // Controls and filters
@@ -59,6 +60,12 @@ export { CostBadge } from "./cost-badge";
 export { CostCell } from "./cost-cell";
 export { ErrorMessagePopover } from "./error-message-popover";
 export { FailedChunksCard } from "./failed-chunks-card";
+
+// SPEC-151 partial page reprocess
+export { PageHealthStrip } from "./page-health-strip";
+export { PagePickerGrid } from "./page-picker-grid";
+export { PageSelectionBar } from "./page-selection-bar";
+export { ReprocessPagesDialog } from "./reprocess-pages-dialog";
 
 // Types
 export type { UploadingFile } from "./types";

@@ -142,6 +142,7 @@ mod tests {
             file_source: format!("doc-{n}.md"),
             workspace_id: workspace.to_string(),
             metadata: Some(serde_json::json!({ "document_id": format!("doc-{n}") })),
+            reuse_excluded_pages: None,
         };
         Task::new(
             tenant,

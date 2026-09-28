@@ -223,6 +223,81 @@ impl DocumentTaskProcessor {
             None
         };
 
+        // SPEC-151 / reprocess: graph+vector retract for page-scope rebuilds.
+        // Relational chunk spine replace is owned by IngestionCommitter
+        // (clear on batch_ordinal==0 inside the commit tx) so full/entities
+        // reprocess cannot hit "prepared chunk index N conflicts" either.
+        // Best-effort pre-clear here still reduces the window where stale
+        // relational rows linger after graph retract for page reprocess.
+        let is_page_reprocess = data
+            .reuse_excluded_pages
+            .as_ref()
+            .is_some_and(|pages| !pages.is_empty())
+            || data
+                .metadata
+                .as_ref()
+                .and_then(|m| m.get("page_reprocess"))
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+        let force_fresh_extraction = data
+            .metadata
+            .as_ref()
+            .and_then(|m| m.get("force_fresh_extraction"))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let must_replace_chunk_spine = is_page_reprocess || force_fresh_extraction;
+        if is_page_reprocess {
+            info!(
+                document_id = %document_id,
+                excluded_pages = ?data.reuse_excluded_pages,
+                "SPEC-151: retracting indexes before page-reprocess persist"
+            );
+            let retract_stats = crate::services::retract_document_indexes_checked(
+                &self.graph_storage,
+                &workspace_vector_storage,
+                None,
+                &document_id,
+            )
+            .await
+            .map_err(|e| {
+                edgequake_tasks::TaskError::Processing(format!(
+                    "SPEC-151: retract before page-reprocess persist failed: {e}"
+                ))
+            })?;
+            info!(
+                document_id = %document_id,
+                entities_removed = retract_stats.entities_removed,
+                relationships_removed = retract_stats.relationships_removed,
+                embeddings_deleted = retract_stats.embeddings_deleted,
+                "SPEC-151: retract complete before page-reprocess persist"
+            );
+        }
+        if must_replace_chunk_spine {
+            #[cfg(feature = "postgres")]
+            if let Some(repo) =
+                crate::services::resolve_relational_chunk_repo(self.optional_pg_pool())
+            {
+                if let Ok(doc_uuid) = uuid::Uuid::parse_str(&document_id) {
+                    info!(
+                        document_id = %document_id,
+                        page_reprocess = is_page_reprocess,
+                        force_fresh = force_fresh_extraction,
+                        "Clearing relational chunks before reprocess persist (committer also replaces spine)"
+                    );
+                    repo.delete_for_document(
+                        &mut edgequake_storage::traits::domain::UnitOfWork::default(),
+                        edgequake_storage::traits::domain::DocumentId::new(doc_uuid),
+                    )
+                    .await
+                    .map_err(|e| {
+                        edgequake_tasks::TaskError::Processing(format!(
+                            "clear relational chunks before reprocess persist failed: {e}"
+                        ))
+                    })?;
+                }
+            }
+        }
+
         // SPEC-032/OODA-198: Augment stats with provider lineage before storing
         // SPEC-046: resolve workspace embedding for community_report indexing (DIP).
         let text_embedder = match crate::safety_limits::create_safe_embedding_provider(

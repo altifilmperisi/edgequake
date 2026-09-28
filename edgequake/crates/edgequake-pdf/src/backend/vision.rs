@@ -493,6 +493,12 @@ impl PdfConverter for VisionPdfConverter {
             })
             .collect();
 
+        if let Some(ref sink) = vision.page_result_sink {
+            for p in &output.pages {
+                sink(p.page_num, &p.markdown);
+            }
+        }
+
         let physical_total = output.stats.total_pages.max(page_slices.len()).max(1);
         let selected_pages = selected_page_numbers_1indexed(&page_selection, physical_total);
         // Only normalize pages owned by this convert group — placeholders for

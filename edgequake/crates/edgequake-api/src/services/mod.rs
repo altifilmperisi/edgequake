@@ -79,6 +79,7 @@ pub mod orphan_staging_recovery;
 pub mod orphan_task_recovery;
 #[cfg(feature = "postgres")]
 pub mod outbox_drain_applier;
+pub mod page_health_derive;
 pub mod pdf_admission_registry;
 pub mod pdf_auto_routing;
 pub mod pdf_lineage;
@@ -285,7 +286,8 @@ pub use pdf_workspace_dedup::{
     workspace_has_visible_document_for_pdf,
 };
 pub use pending_doc_task_reconcile::{
-    ensure_task_for_pending_document, try_heal_cancelled_orphan, try_heal_completed_orphan,
+    ensure_task_for_pending_document, resolve_pdf_recovery_vision_model,
+    resolve_pdf_recovery_vision_provider, try_heal_cancelled_orphan, try_heal_completed_orphan,
     CancelHealOutcome, CompletedHealOutcome, EnsureTaskOutcome,
 };
 pub use pipeline_failure_classify::{classify_from_llm_error, classify_from_pipeline_error};

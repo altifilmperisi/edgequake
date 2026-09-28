@@ -4,7 +4,8 @@
  * WHY: The toolbar "Reprocess" button acts on every selected document at once.
  * Showing a per-document dialog does not scale, so we present a single choice
  * (full re-conversion vs. entity-only re-extraction) that applies one mode to
- * the whole batch. Mirrors `ReprocessDialog` styling for consistency.
+ * the whole batch. When exactly one PDF is selected, SPEC-151 also offers
+ * "Reprocess specific pages" which hands off to ReprocessPagesDialog.
  *
  * @implements FEAT-reprocess-choice - Bulk reprocess intent selection
  */
@@ -20,13 +21,16 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { FileSearch, Loader2, RefreshCw, Zap } from 'lucide-react';
+import type { ReprocessMode } from '@/lib/api/edgequake';
+import { FileSearch, Layers, Loader2, RefreshCw, Zap } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { ReprocessMode } from '@/lib/api/edgequake';
+
+/** Full-doc modes or SPEC-151 partial pages (single PDF only). */
+export type BulkReprocessIntent = ReprocessMode | 'pages';
 
 export interface BulkReprocessChoice {
-  mode: ReprocessMode;
+  intent: BulkReprocessIntent;
 }
 
 interface BulkReprocessDialogProps {
@@ -34,6 +38,11 @@ interface BulkReprocessDialogProps {
   open: boolean;
   /** Number of selected documents the choice will apply to. */
   count: number;
+  /**
+   * When true, show "Reprocess specific pages" (exactly one eligible PDF
+   * selected). Disabled/hidden for multi-select or non-PDF batches.
+   */
+  allowPages?: boolean;
   /** When true, Confirm is disabled and shows a spinner (admit in flight). */
   isBusy?: boolean;
   /** Called with the user's choice when they confirm. */
@@ -45,29 +54,40 @@ interface BulkReprocessDialogProps {
 export function BulkReprocessDialog({
   open,
   count,
+  allowPages = false,
   isBusy = false,
   onConfirm,
   onCancel,
 }: BulkReprocessDialogProps) {
   const { t } = useTranslation();
-  const [mode, setMode] = useState<ReprocessMode>('entities');
+  const [intent, setIntent] = useState<BulkReprocessIntent>('entities');
 
   // Reset to the safe default whenever the dialog (re)opens.
   useEffect(() => {
-    if (open) setMode('entities');
+    if (open) setIntent('entities');
   }, [open]);
+
+  // If pages becomes unavailable while open, fall back to entities.
+  useEffect(() => {
+    if (!allowPages && intent === 'pages') setIntent('entities');
+  }, [allowPages, intent]);
 
   const title = t('documents.reprocessDialog.bulkTitle', 'Reprocess {{count}} documents?', {
     count,
   });
 
   const handleConfirm = useCallback(() => {
-    onConfirm({ mode });
-  }, [mode, onConfirm]);
+    onConfirm({ intent });
+  }, [intent, onConfirm]);
+
+  const confirmLabel =
+    intent === 'pages'
+      ? t('documents.reprocessDialog.pagesContinue', 'Choose pages…')
+      : t('documents.reprocessDialog.confirm', 'Reprocess');
 
   return (
     <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onCancel()}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-lg" data-testid="bulk-reprocess-dialog">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <RefreshCw className="h-5 w-5 text-primary" />
@@ -82,10 +102,28 @@ export function BulkReprocessDialog({
         </DialogHeader>
 
         <RadioGroup
-          value={mode}
-          onValueChange={(v) => setMode(v as ReprocessMode)}
+          value={intent}
+          onValueChange={(v) => setIntent(v as BulkReprocessIntent)}
           className="gap-3"
         >
+          {allowPages ? (
+            <BulkReprocessOption
+              value="pages"
+              icon={<Layers className="h-5 w-5" />}
+              label={t(
+                'documents.pageHealth.menuAction',
+                'Reprocess specific pages',
+              )}
+              description={t(
+                'documents.reprocessDialog.pagesDescription',
+                'Pick pages and a starting stage (Parse / Figures / Entities). Other pages stay untouched.',
+              )}
+              badge={t(
+                'documents.reprocessDialog.pagesBadge',
+                'Partial · PDF only',
+              )}
+            />
+          ) : null}
           <BulkReprocessOption
             value="full"
             icon={<FileSearch className="h-5 w-5" />}
@@ -114,18 +152,31 @@ export function BulkReprocessDialog({
           />
         </RadioGroup>
 
+        {!allowPages && count === 1 ? (
+          <p className="text-[11px] text-muted-foreground">
+            {t(
+              'documents.reprocessDialog.pagesUnavailableHint',
+              'Partial page reprocess is available for a single PDF that is not currently processing.',
+            )}
+          </p>
+        ) : null}
+
         <DialogFooter className="gap-2">
           <Button variant="outline" onClick={onCancel} disabled={isBusy}>
             {t('documents.reprocessDialog.cancel', 'Cancel')}
           </Button>
-          <Button onClick={handleConfirm} disabled={isBusy}>
+          <Button
+            onClick={handleConfirm}
+            disabled={isBusy}
+            data-testid="bulk-reprocess-confirm"
+          >
             {isBusy ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin mr-2" />
                 {t('documents.reprocess.queuing', 'Queuing reprocess…')}
               </>
             ) : (
-              t('documents.reprocessDialog.confirm', 'Reprocess')
+              confirmLabel
             )}
           </Button>
         </DialogFooter>
@@ -135,7 +186,7 @@ export function BulkReprocessDialog({
 }
 
 interface BulkReprocessOptionProps {
-  value: ReprocessMode;
+  value: BulkReprocessIntent;
   icon: React.ReactNode;
   label: string;
   description: string;
@@ -152,6 +203,7 @@ function BulkReprocessOption({
   return (
     <label
       htmlFor={`bulk-reprocess-${value}`}
+      data-testid={`bulk-reprocess-option-${value}`}
       className="flex items-start gap-3 rounded-lg border p-3 transition-colors cursor-pointer select-none hover:bg-muted/40"
     >
       <RadioGroupItem

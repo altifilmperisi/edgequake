@@ -50,6 +50,7 @@ pub use crate::handlers::documents_types::*;
 
 // Sub-modules: each owns a single responsibility
 pub(crate) mod delete;
+mod pages_reprocess;
 mod query;
 mod recovery;
 pub(crate) mod storage_helpers;
@@ -57,6 +58,8 @@ pub(crate) mod upload;
 
 // Re-export all public items (includes utoipa __path_* structs for OpenAPI)
 pub use delete::*;
+// Keep utoipa `__path_*` structs visible to `openapi.rs` paths().
+pub use pages_reprocess::*;
 pub use query::*;
 pub use recovery::*;
 pub use storage_helpers::CleanupStats;

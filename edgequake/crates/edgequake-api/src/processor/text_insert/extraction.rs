@@ -73,6 +73,11 @@ impl DocumentTaskProcessor {
             .await;
         }
 
+        let hybrid_dirty_pages = data
+            .reuse_excluded_pages
+            .as_ref()
+            .is_some_and(|pages| !pages.is_empty());
+
         let checkpoint_result = super::pipeline_checkpoint::load_pipeline_checkpoint(
             &self.kv_storage,
             self.checkpoint_store(),
@@ -85,26 +90,32 @@ impl DocumentTaskProcessor {
         .await;
 
         // SPEC-047 P7e: durable snapshot after successful persist (survives checkpoint clear).
-        let snapshot_result = if checkpoint_result.is_none() && !force_fresh_extraction {
-            super::pipeline_checkpoint::load_extraction_snapshot(
-                &self.kv_storage,
-                self.checkpoint_store(),
-                &document_id,
-                &data.workspace_id,
-                &provider_lineage.extraction_provider,
-                &provider_lineage.embedding_provider,
-                &processed_text,
-            )
-            .await
-        } else {
-            None
-        };
+        // SPEC-151: never call RequireMatch snapshot load when hybrid dirty pages are set —
+        // splice changes the content hash and RequireMatch would DELETE the blob that
+        // ChunkReuseIndex still needs (EC-151-20). Hybrid seeding uses
+        // load_extraction_snapshot_for_hybrid_reuse further below.
+        let snapshot_result =
+            if checkpoint_result.is_none() && !force_fresh_extraction && !hybrid_dirty_pages {
+                super::pipeline_checkpoint::load_extraction_snapshot(
+                    &self.kv_storage,
+                    self.checkpoint_store(),
+                    &document_id,
+                    &data.workspace_id,
+                    &provider_lineage.extraction_provider,
+                    &provider_lineage.embedding_provider,
+                    &processed_text,
+                )
+                .await
+            } else {
+                None
+            };
 
         let reuse_plan = super::pipeline_checkpoint::plan_extraction_reuse(
             checkpoint_result.is_some(),
             snapshot_result.is_some(),
             force_fresh_extraction,
             merge_only,
+            hybrid_dirty_pages,
         );
 
         // SPEC-047 P0: announce extracting *before* LLM work (not after embed).
@@ -180,19 +191,126 @@ impl DocumentTaskProcessor {
                             .await;
                         });
                     }));
+                // SPEC-151: content-hash reuse for page reprocess (excluded pages = dirty).
+                // Use hybrid loader so splice hash mismatch does not wipe the snapshot (EC-151-20).
+                // Fail closed when there is nothing reusable — never LLM the whole document.
+                let reuse_index = if let Some(ref excluded) = data.reuse_excluded_pages {
+                    if excluded.is_empty() {
+                        None
+                    } else {
+                        let snap =
+                            super::pipeline_checkpoint::load_extraction_snapshot_for_hybrid_reuse(
+                                &self.kv_storage,
+                                self.checkpoint_store(),
+                                &document_id,
+                                &data.workspace_id,
+                                &provider_lineage.extraction_provider,
+                                &provider_lineage.embedding_provider,
+                                &processed_text,
+                            )
+                            .await;
+                        if let Err(error_msg) =
+                            crate::processor::page_reprocess::require_hybrid_snapshot_for_page_extract(
+                                excluded,
+                                snap.as_ref().map(|s| s.extractions.len()),
+                            )
+                        {
+                            error!(
+                                document_id = %document_id,
+                                excluded_pages = ?excluded,
+                                "SPEC-151: fail-closed — no reusable extractions for hybrid page reprocess"
+                            );
+                            self.update_document_status(
+                                &document_id,
+                                "failed",
+                                Some(&error_msg),
+                            )
+                            .await?;
+                            self.pipeline_state
+                                .document_failed(&document_id, &error_msg)
+                                .await;
+                            return Err(edgequake_tasks::TaskError::Process(error_msg));
+                        }
+                        let snap = snap.expect("gated by require_hybrid_snapshot_for_page_extract");
+                        info!(
+                            document_id = %document_id,
+                            prior_chunks = snap.chunks.len(),
+                            prior_extractions = snap.extractions.len(),
+                            excluded_pages = ?excluded,
+                            "SPEC-151: seeding ChunkReuseIndex from durable snapshot (hybrid)"
+                        );
+                        Some(edgequake_pipeline::ChunkReuseIndex::from_snapshot(
+                            &snap.chunks,
+                            &snap.extractions,
+                            excluded.iter().copied(),
+                        ))
+                    }
+                } else {
+                    None
+                };
                 let fresh_result = match pipeline
-                    .process_with_resilience_cancellable(
+                    .process_with_resilience_cancellable_reuse(
                         &document_id,
                         &processed_text,
                         Some(chunk_progress_callback.clone()),
                         Some(cancel_token.clone()),
                         Some(embed_progress_callback.clone()),
-                        resume_chunks,
+                        // Page-scope: never seed positional id resume (LAW-151-4).
+                        if reuse_index.is_some() {
+                            None
+                        } else {
+                            resume_chunks
+                        },
+                        reuse_index,
                         on_chunk,
                     )
                     .await
                 {
                     Ok(result) => {
+                        // SPEC-151: clean-page hash miss must abort before checkpoint/retract.
+                        let clean_miss = result.stats.chunk_errors.as_ref().is_some_and(|errs| {
+                            errs.iter().any(|e| {
+                                e.error_message
+                                    .contains(edgequake_pipeline::SPEC151_CLEAN_HASH_MISS)
+                            })
+                        });
+                        if clean_miss
+                            && data
+                                .reuse_excluded_pages
+                                .as_ref()
+                                .is_some_and(|p| !p.is_empty())
+                        {
+                            let error_msg = result
+                                .stats
+                                .chunk_errors
+                                .as_ref()
+                                .and_then(|errs| {
+                                    errs.iter()
+                                        .find(|e| {
+                                            e.error_message.contains(
+                                                edgequake_pipeline::SPEC151_CLEAN_HASH_MISS,
+                                            )
+                                        })
+                                        .map(|e| e.error_message.clone())
+                                })
+                                .unwrap_or_else(|| {
+                                    format!(
+                                        "{}: clean page content changed during page reprocess",
+                                        edgequake_pipeline::SPEC151_CLEAN_HASH_MISS
+                                    )
+                                });
+                            error!(
+                                document_id = %document_id,
+                                "SPEC-151: abort Insert before retract — clean hash miss"
+                            );
+                            self.update_document_status(&document_id, "failed", Some(&error_msg))
+                                .await?;
+                            self.pipeline_state
+                                .document_failed(&document_id, &error_msg)
+                                .await;
+                            return Err(edgequake_tasks::TaskError::Process(error_msg));
+                        }
+
                         // SPEC-003: Log partial success if some chunks failed
                         if result.stats.failed_chunks > 0 {
                             warn!(

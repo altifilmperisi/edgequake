@@ -8,11 +8,13 @@ import {
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { DocumentDownloadMenu } from './document-download-menu';
+import { resolveDetailLifecycle } from '@/lib/documents/detail-lifecycle';
 import { needsReuploadNotReprocess } from '@/lib/pipeline/pipeline-document-state';
 import type { Document } from '@/types';
 import { Copy, Eye, MoreVertical, RefreshCw, StopCircle, Trash2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
+import { isPdfDocument } from './reprocess-dialog';
 import { ResetDocumentStatusButton } from './reset-document-status-button';
 import { DeleteConfirmDialog } from './delete-confirm-dialog';
 import { useState } from 'react';
@@ -29,6 +31,8 @@ interface DocumentActionsMenuProps {
   onCancel: (trackId: string) => void;
   /** Callback to reprocess document */
   onReprocess: (id: string) => void;
+  /** SPEC-151: open partial page reprocess dialog (PDFs only). */
+  onReprocessPages?: (doc: Document) => void;
   /** Callback to delete document — called after user confirms via dialog */
   onDelete: (id: string) => void;
   /** Whether a cancel operation is in progress */
@@ -59,6 +63,7 @@ export function DocumentActionsMenu({
   onViewPdf,
   onCancel,
   onReprocess,
+  onReprocessPages,
   onDelete,
   isCancelling = false,
   isDeleting = false,
@@ -81,6 +86,12 @@ export function DocumentActionsMenu({
   const showViewPdf = doc.source_type === 'pdf' || doc.pdf_id;
   // WHY: Cancelled documents should also show the reset/reprocess option
   const showReset = doc.status === 'failed' || doc.status === 'partial_failure' || doc.status === 'cancelled';
+  const lifecycle = resolveDetailLifecycle(doc);
+  const showReprocessPages =
+    Boolean(onReprocessPages) &&
+    isPdfDocument(doc) &&
+    lifecycle.canReprocessPages &&
+    !needsReuploadNotReprocess(doc);
 
   return (
     <>
@@ -127,6 +138,20 @@ export function DocumentActionsMenu({
               {t('documents.actions.cancel', 'Cancel Extraction')}
             </DropdownMenuItem>
           )}
+
+          {/* SPEC-151: Partial page reprocess (PDF list mode). */}
+          {showReprocessPages ? (
+            <DropdownMenuItem
+              data-testid="list-reprocess-pages-action"
+              onClick={() => onReprocessPages?.(doc)}
+            >
+              <RefreshCw className="h-4 w-4 mr-2" />
+              {t(
+                'documents.pageHealth.menuAction',
+                'Reprocess specific pages',
+              )}
+            </DropdownMenuItem>
+          ) : null}
 
           {/* Reprocess — hide for orphan staging shells (dismiss + re-upload). */}
           {!needsReuploadNotReprocess(doc) && (

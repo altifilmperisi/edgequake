@@ -80,6 +80,7 @@ mod batch_deletion;
 pub mod cancel_gates;
 mod document_deletion;
 mod injection_processing;
+pub mod page_reprocess;
 mod pdf_processing;
 pub mod pipeline_checkpoint;
 mod status_updates;
@@ -161,6 +162,9 @@ pub struct DocumentTaskProcessor {
     /// Per-page layout overlay (SPEC-128).
     #[cfg(feature = "postgres")]
     page_layout_storage: Option<Arc<dyn edgequake_storage::DocumentPageLayoutStorage>>,
+    /// SPEC-151 per-page parse/figures/entities health.
+    #[cfg(feature = "postgres")]
+    page_state_storage: Option<Arc<dyn edgequake_storage::PageStateStorage>>,
     /// Pipeline state for progress tracking.
     pipeline_state: PipelineState,
     /// OODA-10: Progress broadcaster for WebSocket clients.
@@ -225,6 +229,8 @@ impl DocumentTaskProcessor {
             mm_asset_storage: None,
             #[cfg(feature = "postgres")]
             page_layout_storage: None,
+            #[cfg(feature = "postgres")]
+            page_state_storage: None,
             pipeline_state,
             progress_broadcaster: None, // OODA-10: Added for WebSocket clients
             workspace_service: None,
@@ -280,6 +286,8 @@ impl DocumentTaskProcessor {
             mm_asset_storage: None,
             #[cfg(feature = "postgres")]
             page_layout_storage: None,
+            #[cfg(feature = "postgres")]
+            page_state_storage: None,
             pipeline_state,
             progress_broadcaster: None, // OODA-10: Added for WebSocket clients
             workspace_service: Some(workspace_service),
@@ -332,6 +340,8 @@ impl DocumentTaskProcessor {
             mm_asset_storage: None,
             #[cfg(feature = "postgres")]
             page_layout_storage: None,
+            #[cfg(feature = "postgres")]
+            page_state_storage: None,
             pipeline_state,
             progress_broadcaster: None, // OODA-10: Added for WebSocket clients
             workspace_service: Some(workspace_service),
@@ -458,6 +468,16 @@ impl DocumentTaskProcessor {
         page_layout_storage: Arc<dyn edgequake_storage::DocumentPageLayoutStorage>,
     ) -> Self {
         self.page_layout_storage = Some(page_layout_storage);
+        self
+    }
+
+    /// Attach SPEC-151 page-state storage.
+    #[cfg(feature = "postgres")]
+    pub fn with_page_state_storage(
+        mut self,
+        page_state_storage: Arc<dyn edgequake_storage::PageStateStorage>,
+    ) -> Self {
+        self.page_state_storage = Some(page_state_storage);
         self
     }
 

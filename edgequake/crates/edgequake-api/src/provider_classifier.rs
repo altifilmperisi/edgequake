@@ -82,6 +82,7 @@ mod tests {
                 file_source: "t".to_string(),
                 workspace_id: workspace_id.to_string(),
                 metadata: None,
+                reuse_excluded_pages: None,
             })
             .unwrap(),
         )

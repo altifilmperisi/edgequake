@@ -68,6 +68,7 @@ async fn convert_barrier_survives_ingest_failure_simulation() {
             "source_type": "pdf",
             "pdf_id": pdf_id.to_string(),
         })),
+        reuse_excluded_pages: None,
     };
     let mut insert = Task::new(
         tenant_id,
@@ -173,6 +174,7 @@ async fn cancel_after_convert_cancels_pending_insert() {
             "pdf_id": pdf_id.to_string(),
             "source_type": "pdf",
         })),
+        reuse_excluded_pages: None,
     };
     let insert = Task::new(
         tenant_id,

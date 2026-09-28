@@ -126,6 +126,8 @@ export function clearLocalStorageCache(): void {
     "userId",
     "theme",
     "language",
+    // SPEC-143: user page-sync direction preference
+    "eq-page-sync-mode",
   ];
 
   // Remove all other keys

@@ -278,6 +278,70 @@ impl DocumentTaskProcessor {
             section_context_used,
         );
 
+        // SPEC-151: record per-page entity status from chunk spans + failures.
+        // Page reprocess: only upsert selected (dirty) pages — do not rewrite clean pages.
+        if let (Ok(doc), Ok(ws), Some(store)) = (
+            uuid::Uuid::parse_str(&document_id),
+            uuid::Uuid::parse_str(&workspace_id_meta),
+            self.app_state
+                .as_ref()
+                .and_then(|s| s.storage.page_state_storage.as_ref()),
+        ) {
+            use std::collections::{BTreeMap, HashSet};
+            let dirty_pages: Option<HashSet<u32>> = persisted
+                .prepared
+                .data
+                .reuse_excluded_pages
+                .as_ref()
+                .filter(|p| !p.is_empty())
+                .map(|p| p.iter().copied().collect());
+            let mut per_page: BTreeMap<u32, (i32, i32)> = BTreeMap::new();
+            for chunk in &result.chunks {
+                let start = chunk.page_start.unwrap_or(0);
+                let end = chunk.page_end.unwrap_or(start).max(start);
+                if start == 0 {
+                    continue;
+                }
+                for p in start..=end {
+                    if dirty_pages.as_ref().is_some_and(|set| !set.contains(&p)) {
+                        continue;
+                    }
+                    let e = per_page.entry(p).or_insert((0, 0));
+                    e.0 += 1;
+                }
+            }
+            if let Some(ref errs) = result.stats.chunk_errors {
+                for err in errs {
+                    if let Some(chunk) = result.chunks.get(err.chunk_index) {
+                        let start = chunk.page_start.unwrap_or(0);
+                        let end = chunk.page_end.unwrap_or(start).max(start);
+                        for p in start..=end {
+                            if p == 0 {
+                                continue;
+                            }
+                            if dirty_pages.as_ref().is_some_and(|set| !set.contains(&p)) {
+                                continue;
+                            }
+                            let e = per_page.entry(p).or_insert((0, 0));
+                            e.1 += 1;
+                        }
+                    }
+                }
+            }
+            let rows: Vec<(u32, i32, i32)> =
+                per_page.into_iter().map(|(p, (c, f))| (p, c, f)).collect();
+            if !rows.is_empty() {
+                crate::processor::page_reprocess::record_entities_from_chunks(
+                    store.as_ref(),
+                    doc,
+                    ws,
+                    &rows,
+                    Some(track_id.clone()),
+                )
+                .await;
+            }
+        }
+
         Ok(json!({
             "document_id": document_id,
             "chunk_count": result.stats.chunk_count,

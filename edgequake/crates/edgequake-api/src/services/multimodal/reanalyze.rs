@@ -233,6 +233,7 @@ pub async fn reanalyze_document_multimodal(
                 "workspace_id": workspace_id.to_string(),
                 "multimodal_process_options": process_options,
             })),
+            reuse_excluded_pages: None,
         };
 
         let task = Task::new(

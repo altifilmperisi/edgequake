@@ -136,6 +136,10 @@ impl PdfParserBackend {
 /// Arguments: `(stage_message, stage_progress_0_to_1)`.
 pub type VisionStatusHook = Arc<dyn Fn(&str, f64) + Send + Sync>;
 
+/// Fired after each page OCR result is available (SPEC-151 durable page sink).
+/// Args: `(page_num_1indexed, markdown)`.
+pub type VisionPageResultSink = Arc<dyn Fn(usize, &str) + Send + Sync>;
+
 /// Per-task vision conversion options preserved from the existing processor.
 #[derive(Clone, Default)]
 pub struct VisionConversionConfig {
@@ -153,6 +157,8 @@ pub struct VisionConversionConfig {
     pub progress_callback: Option<Arc<dyn edgequake_pdf2md::ConversionProgressCallback>>,
     /// Fired between OCR complete and markdown return (viewer PNG / chart crops).
     pub status_hook: Option<VisionStatusHook>,
+    /// SPEC-151: optional sink for raw per-page OCR markdown.
+    pub page_result_sink: Option<VisionPageResultSink>,
     /// Optional page selection forwarded to pdf2md (SPEC-094).
     pub pages: Option<edgequake_pdf2md::PageSelection>,
     /// SPEC-109: desired vision reasoning effort (clamped at provider wrap).
@@ -178,6 +184,10 @@ impl std::fmt::Debug for VisionConversionConfig {
             .field(
                 "status_hook",
                 &self.status_hook.as_ref().map(|_| "<status_hook>"),
+            )
+            .field(
+                "page_result_sink",
+                &self.page_result_sink.as_ref().map(|_| "<page_result_sink>"),
             )
             .field("pages", &self.pages)
             .field("reasoning_effort", &self.reasoning_effort)

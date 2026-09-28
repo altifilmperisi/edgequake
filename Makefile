@@ -144,7 +144,7 @@ release: ## Bump all crate versions and tag release using cargo-release (uses VE
         frontend-dev frontend-bg frontend-build frontend-test frontend-lint \
         openapi-snapshot codegen-openapi codegen-openapi-refresh codegen-openapi-live \
         codegen-vision-prompts \
-        db-start postgres-start db-start-pg16 db-start-pg17 db-start-pg18 db-stop db-wait db-logs db-shell postgres-image-build postgres-image-build-pg17 postgres-image-build-pg18 postgres-image-build-pg18-vectorscale postgres-image-build-unified check-extension-pins postgres-battle-test hnsw-dimension-battle-test spec042-battle-test-all spec044-battle-test-all dev-e2e-proof dev-e2e-proof-all docker-network-diagnose stop-docker-services \
+        db-start postgres-start db-start-pg16 db-start-pg17 db-start-pg18 db-stop db-wait db-logs db-shell postgres-image-build postgres-image-build-pg17 postgres-image-build-pg18 postgres-image-build-pg18-vectorscale postgres-image-build-unified check-extension-pins postgres-battle-test hnsw-dimension-battle-test spec042-battle-test-all spec044-battle-test-all dev-e2e-proof dev-e2e-proof-all docker-network-diagnose stop-docker-services check-no-orbstack-kill \
         docker-build docker-up docker-prebuilt docker-prebuilt-down docker-prebuilt-logs docker-ps-prebuilt docker-api-only docker-down docker-logs \
         langfuse-up langfuse-down langfuse-logs langfuse-status langfuse-smoke langfuse-reset spec124-langfuse-e2e \
         langfuse-3.1-up langfuse-3.1-down langfuse-3.1-reset spec124-langfuse-3.1-e2e \
@@ -740,6 +740,7 @@ check-deps: ## Check that required dependencies are installed
 	@command -v pnpm >/dev/null 2>&1 || command -v bun >/dev/null 2>&1 || { echo "$(RED)❌ pnpm/bun not found. Install pnpm or Bun$(RESET)"; exit 1; }
 	@command -v docker >/dev/null 2>&1 || { echo "$(YELLOW)⚠️  docker not found. Some features require Docker$(RESET)"; }
 	@echo "$(GREEN)✓ All required dependencies found$(RESET)"
+	@$(MAKE) check-no-orbstack-kill --no-print-directory
 
 check-ports: sync-dev-ports ## Validate configured ports without killing unrelated processes
 	@echo "$(BLUE)Checking selected ports from $(DEV_PORTS_ENV)...$(RESET)"
@@ -856,10 +857,8 @@ dev: kill-app check-deps check-ports ## Start full development stack without aut
 	$(LOAD_EFF_DB_URL); \
 	$(APPLY_LANGFUSE_ENV_EFFECTIVE); \
 	$(VISIBLE_MIGRATE_STEP); \
-	for BPID in $$(lsof -nP -iTCP:$$BACKEND_PORT -sTCP:LISTEN -t 2>/dev/null || true); do \
-		echo "$(YELLOW)→ Freeing port $$BACKEND_PORT (PID $$BPID) before backend start$(RESET)"; \
-		kill -9 "$$BPID" 2>/dev/null || true; \
-	done; \
+	echo "$(YELLOW)→ Freeing port $$BACKEND_PORT before backend start (OrbStack/Docker skipped)$(RESET)"; \
+	$(SAFE_KILL_LISTEN_PORTS) "$$BACKEND_PORT"; \
 	sleep 0.3; \
 	echo "$(YELLOW)→ Starting backend on port $$BACKEND_PORT (DATABASE_URL port: $$(printf '%s' $$_EFF_DB_URL | sed -E 's|.*:([0-9]+)/.*|\1|'))...$(RESET)"; \
 	$(APPLY_LANGFUSE_ENV_EFFECTIVE); \
@@ -1063,42 +1062,35 @@ dev-bg: check-deps check-ports ## Start full development stack in BACKGROUND wit
 dev-auth-bg: ## Start full development stack in BACKGROUND with authentication enabled
 	@$(MAKE) dev-bg --no-print-directory DEV_AUTH_ENABLED=true DEV_DISABLE_DEMO_LOGIN=true
 
-stop-docker-services: ## Stop Docker/OrbStack-backed EdgeQuake containers if they are running
+# First principles / cohabitation: stop-docker-services and kill-app NEVER quit,
+# kill, or restart OrbStack / Docker Desktop. Only EdgeQuake-owned containers
+# and local app PIDs are touched so other stacks on the same Mac keep running.
+stop-docker-services: ## Stop EdgeQuake containers only (never kills OrbStack/Docker Desktop)
 	@if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then \
-		echo "$(BLUE)→ Stopping Docker/OrbStack EdgeQuake containers...$(RESET)"; \
+		echo "$(BLUE)→ Stopping EdgeQuake containers (OrbStack/Docker Desktop left running)...$(RESET)"; \
 		cd $(DOCKER_DIR) && docker compose down --remove-orphans 2>/dev/null || true; \
 		cd $(DOCKER_DIR) && docker compose -f docker-compose.prebuilt.yml down --remove-orphans 2>/dev/null || true; \
 		docker compose -f $(QUICKSTART_COMPOSE) down --remove-orphans 2>/dev/null || true; \
 		docker stop edgequake-api edgequake-frontend edgequake-postgres 2>/dev/null || true; \
 	else \
-		echo "$(YELLOW)→ Docker daemon unavailable; skipping container stop$(RESET)"; \
+		echo "$(YELLOW)→ Docker daemon unavailable; skipping container stop (daemon left untouched)$(RESET)"; \
 	fi
 
-kill-app: ## Kill backend and frontend processes (leaves PostgreSQL running)
+kill-app: ## Kill backend and frontend processes (leaves PostgreSQL + OrbStack running)
 	@echo "$(YELLOW)→ Killing existing backend processes...$(RESET)"
 	@-if [ -f /tmp/edgequake-backend.pid ]; then kill -9 $$(cat /tmp/edgequake-backend.pid) 2>/dev/null || true; rm -f /tmp/edgequake-backend.pid; fi
 	@-pkill -9 -f "target/debug/edgequake" 2>/dev/null || true
 	@-pkill -9 -f "target/release/edgequake" 2>/dev/null || true
 	@-pkill -9 -f "cargo run --bin edgequake" 2>/dev/null || true
 	@-set -a && [ -f "$(DEV_PORTS_ENV)" ] && . "$(DEV_PORTS_ENV)" && set +a; \
-	for port in "$${BACKEND_PORT:-$(BACKEND_PORT)}" "$(DEFAULT_BACKEND_PORT)" "$(BACKEND_PORT)"; do \
-		[ -z "$$port" ] && continue; \
-		for BPID in $$(lsof -nP -iTCP:$$port -sTCP:LISTEN -t 2>/dev/null || true); do \
-			kill -9 "$$BPID" 2>/dev/null || true; \
-		done; \
-	done
+	$(SAFE_KILL_LISTEN_PORTS) "$${BACKEND_PORT:-$(BACKEND_PORT)}" "$(DEFAULT_BACKEND_PORT)" "$(BACKEND_PORT)"
 	@echo "$(YELLOW)→ Killing existing frontend processes...$(RESET)"
 	@-if [ -f /tmp/edgequake-frontend.pid ]; then kill -9 $$(cat /tmp/edgequake-frontend.pid) 2>/dev/null || true; rm -f /tmp/edgequake-frontend.pid; fi
 	@-pkill -f "node.*edgequake_webui" 2>/dev/null || true
 	@-set -a && [ -f "$(DEV_PORTS_ENV)" ] && . "$(DEV_PORTS_ENV)" && set +a; \
-	for port in "$${FRONTEND_PORT:-$(FRONTEND_PORT)}" "$(DEFAULT_FRONTEND_PORT)" "$(FRONTEND_PORT)"; do \
-		[ -z "$$port" ] && continue; \
-		for FPID in $$(lsof -nP -iTCP:$$port -sTCP:LISTEN -t 2>/dev/null || true); do \
-			kill -9 "$$FPID" 2>/dev/null || true; \
-		done; \
-	done
+	$(SAFE_KILL_LISTEN_PORTS) "$${FRONTEND_PORT:-$(FRONTEND_PORT)}" "$(DEFAULT_FRONTEND_PORT)" "$(FRONTEND_PORT)"
 	@rm -rf /tmp/edgequake-make-dev.lock
-	@echo "$(GREEN)✓ App processes cleared (PostgreSQL left running)$(RESET)"
+	@echo "$(GREEN)✓ App processes cleared (PostgreSQL + OrbStack left running)$(RESET)"
 
 stop: ## Stop all development services
 	@echo "$(YELLOW)Stopping services...$(RESET)"
@@ -1159,21 +1151,25 @@ export DATABASE_URL
 # Usage in any recipe:
 #   @$(LOAD_EFF_DB_URL); \
 #     DATABASE_URL="$$_EFF_DB_URL" cargo run ...
+# Never kill OrbStack/Docker Desktop/docker-proxy when freeing app ports.
+SAFE_KILL_LISTEN_PORTS = bash $(CURDIR)/scripts/dev_safe_kill_listen_port.sh
+
 LOAD_EFF_DB_URL = _EFF_DB_URL=$$(cat /tmp/edgequake-db-url 2>/dev/null); [ -z "$$_EFF_DB_URL" ] && _EFF_DB_URL="$(DATABASE_URL)"
 
 # SPEC-150: checksum fossils live in edgequake/migrations/manifest.toml (SSOT).
 # VISIBLE_MIGRATE_STEP no longer passes a hard-coded EDGEQUAKE_ALLOW_CHECKSUM_REPAIR
-# list — known fossils auto-accept. Emergency unknown-hash override remains available:
+# list — production fossils auto-accept; known *dev_only* fossils auto-accept when
+# EDGEQUAKE_DEV_MODE=true (make dev). Emergency unknown-hash override remains:
 #   EDGEQUAKE_ALLOW_CHECKSUM_REPAIR=<version> cargo run -- migrate
 
 # SPEC-091 Doc 17 (LD-15): explicit, visible schema apply before any server
 # start. The server binary never auto-migrates — boot refuses (exit 78) when
 # expandable schema is behind. Irreversible drops (125/126/131) stay human-gated:
 # `edgequake migrate` applies expandables first, then soft-exits with WARN when
-# only drops remain (so make_dev can start). Confirm with --confirm-drop when
+# only drops remain (so make dev can start). Confirm with --confirm-drop when
 # drop-readiness is GREEN. A hard failure here still aborts before the server.
 #
-# SPEC-150: known fossils auto-accept; leave EDGEQUAKE_ALLOW_CHECKSUM_REPAIR unset.
+# SPEC-150: known fossils auto-accept under the rules above.
 VISIBLE_MIGRATE_STEP = \
 	echo "$(YELLOW)→ edgequake migrate — applying database schema (explicit step, SPEC-091 LD-15)$(RESET)"; \
 	( cd $(BACKEND_DIR) && \
@@ -1182,7 +1178,8 @@ VISIBLE_MIGRATE_STEP = \
 		cargo run -- migrate ) || { \
 		echo "$(RED)✗ edgequake migrate failed — server not started.$(RESET)"; \
 		echo "  Preview impact first: (cd $(BACKEND_DIR) && DATABASE_URL=\"$$_EFF_DB_URL\" cargo run -- migrate dry-run)"; \
-		echo "  Unknown checksum drift: EDGEQUAKE_ALLOW_CHECKSUM_REPAIR=<version> cargo run -- migrate"; \
+		echo "  Checksum drift (unknown hash): EDGEQUAKE_ALLOW_CHECKSUM_REPAIR=<version> cargo run -- migrate"; \
+		echo "  Known *dev_only* fossil on a non-dev migrate: set EDGEQUAKE_DEV_MODE=true once, or use ALLOW_CHECKSUM_REPAIR"; \
 		echo "  Spec: specs/150-reliable-migration-system/11-ops-runbook.md"; \
 		echo "  If only an irreversible drop remains, soft-exit is expected — check WARN above."; \
 		echo "  When fleet/KV drop-readiness is GREEN: cargo run -- migrate --confirm-drop"; \
@@ -1298,10 +1295,8 @@ backend-bg: sync-dev-ports db-wait ## Run backend in background with PostgreSQL 
 	$(APPLY_LANGFUSE_ENV_EFFECTIVE); \
 	$(VISIBLE_MIGRATE_STEP); \
 	set -a && [ -f "$(DEV_PORTS_ENV)" ] && . "$(DEV_PORTS_ENV)" && set +a; \
-	for BPID in $$(lsof -nP -iTCP:$${BACKEND_PORT:-$(BACKEND_PORT)} -sTCP:LISTEN -t 2>/dev/null || true); do \
-		echo "$(YELLOW)→ Freeing port $${BACKEND_PORT:-$(BACKEND_PORT)} (PID $$BPID) before backend-bg start$(RESET)"; \
-		kill -9 "$$BPID" 2>/dev/null || true; \
-	done; \
+	echo "$(YELLOW)→ Freeing port $${BACKEND_PORT:-$(BACKEND_PORT)} before backend-bg start (OrbStack/Docker skipped)$(RESET)"; \
+	$(SAFE_KILL_LISTEN_PORTS) "$${BACKEND_PORT:-$(BACKEND_PORT)}"; \
 	sleep 0.3; \
 	_BIN="$(BACKEND_DIR)/target/debug/edgequake"; \
 	if [ -x "$$_BIN" ]; then _RUN="exec $$_BIN"; else _RUN="cd $(BACKEND_DIR) && exec cargo run"; fi; \
@@ -1537,15 +1532,24 @@ db-wait: db-start ## Wait for database to be ready with credential verification 
 	echo "$(YELLOW)  Tip: run 'make db-start' manually to see detailed diagnostics$(RESET)"; \
 	exit 1
 
-docker-network-diagnose: ## Diagnose common OrbStack/Docker network route conflicts
-	@ROUTES=$$(netstat -rn 2>/dev/null | egrep '(^10[[:space:]]|^172\.16/12|^192\.168\.0/16)' || true); \
-	if [ -n "$$ROUTES" ]; then \
-		echo "$(YELLOW)→ Detected broad private-network routes on this host:$(RESET)"; \
-		echo "$$ROUTES"; \
-		echo "$(YELLOW)  WHY this matters: OrbStack/Docker bridge networks also use private ranges.$(RESET)"; \
-		echo "$(YELLOW)  If those ranges are already claimed by VPN/Homebridge/router software, Docker may fail with 'failed to add network' or 'conflict with existing route'.$(RESET)"; \
+check-no-orbstack-kill: ## Gate: Make/scripts must never open/kill/restart OrbStack or Docker Desktop
+	@bash $(CURDIR)/scripts/check_no_orbstack_kill.sh
+
+docker-network-diagnose: ## Diagnose VPN-like private-route conflicts (cohabitation-safe; no OrbStack kill)
+	@# WHY: Home LAN routes via en* for 10/8, 172.16/12, 192.168/16 are common and
+	@# usually fine. Only flag broad private ranges claimed by VPN-like interfaces
+	@# (utun/ipsec/ppp/tun) — those are the cohabitation hazards with OrbStack bip.
+	@VPN_ROUTES=$$(netstat -rn 2>/dev/null | egrep '(^10[[:space:]]|^172\.16/12|^192\.168\.0/16)' | egrep 'utun|ipsec|ppp|tun[0-9]' || true); \
+	if [ -n "$$VPN_ROUTES" ]; then \
+		echo "$(YELLOW)→ VPN-like interface claims broad private ranges (may conflict with Docker/OrbStack bip):$(RESET)"; \
+		echo "$$VPN_ROUTES"; \
+		echo "$(YELLOW)  Cohabit tips (do NOT quit OrbStack from make):$(RESET)"; \
+		echo "$(YELLOW)    • Prefer reusing a reachable Postgres: make db-start probes 5432–5449 + /tmp/edgequake-db-url$(RESET)"; \
+		echo "$(YELLOW)    • Or point DATABASE_URL at an external/shared Postgres (skips Docker entirely)$(RESET)"; \
+		echo "$(YELLOW)    • OrbStack Settings → Docker: move bip / default-address-pools off the VPN range$(RESET)"; \
+		echo "$(YELLOW)      (docs: https://docs.orbstack.dev/docker/network — e.g. 198.19.192.0/19)$(RESET)"; \
 	else \
-		echo "$(GREEN)✓ No broad private-network route collision detected from the local route table$(RESET)"; \
+		echo "$(GREEN)✓ No VPN-like private-range collision detected (home LAN en* routes ignored)$(RESET)"; \
 	fi
 
 
@@ -1702,16 +1706,33 @@ db-start: ## Start PostgreSQL container
 		echo "$(YELLOW)→ Existing edgequake-postgres container is not reachable on localhost:$$_DB_PORT; recreating it$(RESET)"; \
 		docker rm -f edgequake-postgres >/dev/null 2>&1 || true; \
 	fi; \
+	_reuse_pg_without_docker() { \
+		_PROBE_URL=$$(bash $(CURDIR)/scripts/dev_probe_edgequake_pg.sh "$(DATABASE_URL)" 2>/tmp/edgequake-pg-probe.err) && [ -n "$$_PROBE_URL" ] || return 1; \
+		cat /tmp/edgequake-pg-probe.err 2>/dev/null || true; \
+		rm -f /tmp/edgequake-pg-probe.err; \
+		echo "$(GREEN)✓ Cohabiting: reusing reachable PostgreSQL without touching OrbStack/Docker$(RESET)"; \
+		printf '%s' "$$_PROBE_URL" > /tmp/edgequake-db-url; \
+		. $(DOCKER_DIR)/extension-pins.sh; \
+		printf '%s' "$$EQ_POSTGRES_PROFILE" > /tmp/edgequake-postgres-profile; \
+		return 0; \
+	}; \
 	if ! command -v docker >/dev/null 2>&1; then \
-		echo "$(RED)✗ Docker is not installed; cannot start the PostgreSQL container$(RESET)"; \
+		if _reuse_pg_without_docker; then exit 0; fi; \
+		echo "$(RED)✗ Docker is not installed and no reachable EdgeQuake PostgreSQL was found on 5432–5449$(RESET)"; \
+		echo "$(YELLOW)  Cohabit option: export DATABASE_URL=postgresql://user:pass@host:port/db then rerun make dev$(RESET)"; \
 		exit 1; \
 	fi; \
 	if ! docker info >/dev/null 2>&1; then \
-		echo "$(YELLOW)⚠️  Docker daemon is unavailable; EdgeQuake will not retry aggressively to avoid destabilizing OrbStack$(RESET)"; \
+		echo "$(YELLOW)⚠️  Docker daemon unavailable — reusing Postgres if reachable; Make will NOT open/wake OrbStack$(RESET)"; \
+		if _reuse_pg_without_docker; then exit 0; fi; \
+		bash $(CURDIR)/scripts/dev_ensure_docker_daemon.sh || true; \
 		$(MAKE) docker-network-diagnose --no-print-directory || true; \
-		echo "$(RED)✗ PostgreSQL is not reachable and Docker cannot currently start it$(RESET)"; \
-		echo "$(YELLOW)  Common root cause on OrbStack: a VPN / Homebridge / host route already claims the private subnet range that Docker wants for its bridge network.$(RESET)"; \
-		echo "$(YELLOW)  Recovery: stop the conflicting network tool, restart OrbStack, then rerun 'make dev' or 'make dev-bg'.$(RESET)"; \
+		echo "$(RED)✗ PostgreSQL not reachable and Docker cannot start a new container right now$(RESET)"; \
+		echo "$(YELLOW)  Cohabitation recovery (Make never opens/kills/restarts OrbStack):$(RESET)"; \
+		echo "$(YELLOW)    1. Open OrbStack.app yourself if Docker is down; wait until: docker info$(RESET)"; \
+		echo "$(YELLOW)    2. Or set DATABASE_URL to any reachable EdgeQuake Postgres (skips Docker)$(RESET)"; \
+		echo "$(YELLOW)    3. If compose fails with route conflicts: move OrbStack bip (make docker-network-diagnose)$(RESET)"; \
+		echo "$(YELLOW)    4. Rerun: make db-start   # or make dev$(RESET)"; \
 		exit 1; \
 	fi; \
 	TMP_LOG=$$(mktemp); \
@@ -1737,8 +1758,9 @@ db-start: ## Start PostgreSQL container
 		cat "$$TMP_LOG"; \
 		echo "$(RED)✗ Failed to start PostgreSQL container$(RESET)"; \
 		if grep -Eiq 'failed to add network|conflict with existing route|invalid IP Prefix' "$$TMP_LOG"; then \
-			echo "$(YELLOW)→ Detected a Docker/OrbStack bridge-network conflict rather than an EdgeQuake application error$(RESET)"; \
+			echo "$(YELLOW)→ Detected a Docker/OrbStack bridge-network conflict (not an EdgeQuake app bug)$(RESET)"; \
 			$(MAKE) docker-network-diagnose --no-print-directory || true; \
+			echo "$(YELLOW)  Do not kill OrbStack from make. Reuse Postgres (make db-start probes first) or retarget OrbStack bip.$(RESET)"; \
 		fi; \
 		rm -f "$$TMP_LOG"; \
 		exit 1; \
@@ -3336,8 +3358,7 @@ rebuild: ## Full rebuild: stop + clean + dev (ensures latest code is running)
 	@echo "$(YELLOW)→ Killing any stale processes...$(RESET)"
 	@-pkill -9 -f "target/debug/edgequake" 2>/dev/null || true
 	@-pkill -9 -f "target/release/edgequake" 2>/dev/null || true
-	@-lsof -ti:8080 | xargs kill -9 2>/dev/null || true
-	@-lsof -ti:3000 | xargs kill -9 2>/dev/null || true
+	@$(SAFE_KILL_LISTEN_PORTS) 8080 3000 $(BACKEND_PORT) $(FRONTEND_PORT)
 	@sleep 2
 	@echo "$(YELLOW)→ Cleaning build artifacts...$(RESET)"
 	@$(MAKE) clean --no-print-directory

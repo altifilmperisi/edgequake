@@ -48,8 +48,13 @@ export async function seedSpec038TenantContext(
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.evaluate(
     ({ tenantId, workspaceId, pdfParserBackend }) => {
+      // Keep SPEC-143 sync preference across remocks (product key, not tenant state).
+      const keptSyncMode = localStorage.getItem("eq-page-sync-mode");
       localStorage.clear();
       sessionStorage.clear();
+      if (keptSyncMode) {
+        localStorage.setItem("eq-page-sync-mode", keptSyncMode);
+      }
       const userId = crypto.randomUUID();
       localStorage.setItem("userId", userId);
       localStorage.setItem("tenantId", tenantId);

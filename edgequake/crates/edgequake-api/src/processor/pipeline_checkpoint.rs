@@ -143,17 +143,31 @@ pub enum ExtractionReusePlan {
     MergeOnlyMissing,
 }
 
-/// Decide extract reuse without I/O (SPEC-047 P7e SSOT).
+/// Decide extract reuse without I/O (SPEC-047 P7e / SPEC-151 SSOT).
 ///
 /// Priority: force_fresh → Fresh (unless merge_only → Missing);
+/// hybrid_dirty_pages → Fresh (ChunkReuseIndex seeds from snapshot);
 /// crash checkpoint → Durable snapshot → Fresh / Missing.
+///
+/// `hybrid_dirty_pages` is set when Insert carries `reuse_excluded_pages`
+/// (page reprocess). Whole-document Reuse would skip LLM for dirty pages
+/// (LAW-151-4 defect); Fresh + [`ChunkReuseIndex`] keeps clean pages reused.
 pub fn plan_extraction_reuse(
     has_checkpoint: bool,
     has_snapshot: bool,
     force_fresh: bool,
     merge_only: bool,
+    hybrid_dirty_pages: bool,
 ) -> ExtractionReusePlan {
     if force_fresh {
+        return if merge_only {
+            ExtractionReusePlan::MergeOnlyMissing
+        } else {
+            ExtractionReusePlan::Fresh
+        };
+    }
+    // SPEC-151: never short-circuit to whole-doc Reuse when dirty pages exist.
+    if hybrid_dirty_pages {
         return if merge_only {
             ExtractionReusePlan::MergeOnlyMissing
         } else {
@@ -289,6 +303,7 @@ pub async fn load_pipeline_checkpoint(
         source_text,
         CHECKPOINT_MAX_AGE_SECS,
         "pipeline checkpoint",
+        ContentHashPolicy::RequireMatch,
     )
     .await
 }
@@ -389,6 +404,16 @@ pub async fn save_extraction_snapshot(
     Ok(())
 }
 
+/// Content-hash policy for reusable extraction blobs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ContentHashPolicy {
+    /// Delete blob and return None on mismatch (crash-resume / soft reprocess).
+    RequireMatch,
+    /// Keep blob and return prior extractions when source text changed
+    /// (SPEC-151 hybrid: splice changes markdown; clean-page reuse still valid).
+    AllowMismatchKeepBlob,
+}
+
 /// Load durable extraction snapshot (SPEC-047 P7e). Same validation as checkpoint.
 pub async fn load_extraction_snapshot(
     kv: &Arc<dyn KVStorage>,
@@ -411,6 +436,38 @@ pub async fn load_extraction_snapshot(
         source_text,
         SNAPSHOT_MAX_AGE_SECS,
         "extraction snapshot",
+        ContentHashPolicy::RequireMatch,
+    )
+    .await
+}
+
+/// SPEC-151: load prior extractions to seed [`ChunkReuseIndex`] after a splice.
+///
+/// Content-hash mismatch is expected when dirty pages were re-OCR'd. Unlike
+/// [`load_extraction_snapshot`], this never deletes the durable blob on mismatch.
+#[allow(clippy::too_many_arguments)]
+pub async fn load_extraction_snapshot_for_hybrid_reuse(
+    kv: &Arc<dyn KVStorage>,
+    store: Option<&dyn CheckpointArtifactStore>,
+    document_id: &str,
+    workspace_id: &str,
+    extraction_provider: &str,
+    embedding_provider: &str,
+    source_text: &str,
+) -> Option<ProcessingResult> {
+    load_validated_checkpoint_blob(
+        kv,
+        store,
+        &extraction_snapshot_key(document_id),
+        crate::services::relational_sidecar_store::CHECKPOINT_KIND_SNAPSHOT,
+        document_id,
+        workspace_id,
+        extraction_provider,
+        embedding_provider,
+        source_text,
+        SNAPSHOT_MAX_AGE_SECS,
+        "extraction snapshot (hybrid)",
+        ContentHashPolicy::AllowMismatchKeepBlob,
     )
     .await
 }
@@ -452,6 +509,7 @@ async fn load_validated_checkpoint_blob(
     source_text: &str,
     max_age_secs: u64,
     label: &str,
+    hash_policy: ContentHashPolicy,
 ) -> Option<ProcessingResult> {
     // SPEC-091 Wave B4: flag-gated typed read first; KV fallback on any gap.
     let value = if crate::services::relational_sidecar_store::checkpoints_prefer_relational() {
@@ -555,19 +613,31 @@ async fn load_validated_checkpoint_blob(
 
     let current_hash = PipelineCheckpoint::compute_content_hash(source_text);
     if checkpoint.content_hash != current_hash {
-        info!(
-            document_id = %document_id,
-            %label,
-            "Content hash mismatch on reusable extraction blob — ignoring"
-        );
-        let _ = kv.delete(&[key.to_string()]).await;
-        crate::services::relational_sidecar_store::typed_checkpoint_delete(
-            store,
-            document_id,
-            sidecar_kind,
-        )
-        .await;
-        return None;
+        match hash_policy {
+            ContentHashPolicy::AllowMismatchKeepBlob => {
+                info!(
+                    document_id = %document_id,
+                    %label,
+                    "Content hash mismatch — keeping blob for hybrid chunk reuse (SPEC-151)"
+                );
+                // Fall through: return prior extractions; ChunkReuseIndex excludes dirty pages.
+            }
+            ContentHashPolicy::RequireMatch => {
+                info!(
+                    document_id = %document_id,
+                    %label,
+                    "Content hash mismatch on reusable extraction blob — ignoring"
+                );
+                let _ = kv.delete(&[key.to_string()]).await;
+                crate::services::relational_sidecar_store::typed_checkpoint_delete(
+                    store,
+                    document_id,
+                    sidecar_kind,
+                )
+                .await;
+                return None;
+            }
+        }
     }
 
     let now = std::time::SystemTime::now()
@@ -1161,27 +1231,36 @@ mod tests {
         use super::{plan_extraction_reuse, ExtractionReuseKind, ExtractionReusePlan};
 
         assert_eq!(
-            plan_extraction_reuse(true, true, false, false),
+            plan_extraction_reuse(true, true, false, false, false),
             ExtractionReusePlan::Reuse(ExtractionReuseKind::CrashCheckpoint)
         );
         assert_eq!(
-            plan_extraction_reuse(false, true, false, false),
+            plan_extraction_reuse(false, true, false, false, false),
             ExtractionReusePlan::Reuse(ExtractionReuseKind::DurableSnapshot)
         );
         assert_eq!(
-            plan_extraction_reuse(false, false, false, false),
+            plan_extraction_reuse(false, false, false, false, false),
             ExtractionReusePlan::Fresh
         );
         assert_eq!(
-            plan_extraction_reuse(false, false, false, true),
+            plan_extraction_reuse(false, false, false, true, false),
             ExtractionReusePlan::MergeOnlyMissing
         );
         assert_eq!(
-            plan_extraction_reuse(false, false, true, true),
+            plan_extraction_reuse(false, false, true, true, false),
             ExtractionReusePlan::MergeOnlyMissing
         );
         assert_eq!(
-            plan_extraction_reuse(true, false, true, false),
+            plan_extraction_reuse(true, false, true, false, false),
+            ExtractionReusePlan::Fresh
+        );
+        // SPEC-151: dirty pages force hybrid Fresh even when snapshot exists.
+        assert_eq!(
+            plan_extraction_reuse(false, true, false, false, true),
+            ExtractionReusePlan::Fresh
+        );
+        assert_eq!(
+            plan_extraction_reuse(true, true, false, false, true),
             ExtractionReusePlan::Fresh
         );
     }
@@ -1234,6 +1313,162 @@ mod tests {
                 .await
                 .is_none()
         );
+    }
+
+    #[tokio::test]
+    async fn spec151_hybrid_snapshot_survives_content_hash_mismatch() {
+        use edgequake_pipeline::{ProcessingResult, ProcessingStats};
+        use edgequake_storage::MemoryKVStorage;
+
+        let kv: Arc<dyn KVStorage> = Arc::new(MemoryKVStorage::new("hybrid"));
+        let result = ProcessingResult {
+            document_id: "doc-hybrid".to_string(),
+            chunks: vec![],
+            extractions: vec![],
+            stats: ProcessingStats {
+                entity_count: 7,
+                relationship_count: 2,
+                ..Default::default()
+            },
+            lineage: None,
+        };
+        let original = "original markdown before splice";
+        save_extraction_snapshot(
+            &kv,
+            None,
+            "doc-hybrid",
+            &result,
+            "ws",
+            "openai",
+            "ollama",
+            original,
+        )
+        .await
+        .unwrap();
+
+        let spliced = "spliced markdown after page re-OCR";
+        // Strict loader deletes on mismatch.
+        assert!(load_extraction_snapshot(
+            &kv,
+            None,
+            "doc-hybrid",
+            "ws",
+            "openai",
+            "ollama",
+            spliced
+        )
+        .await
+        .is_none());
+        // Re-save after strict load wiped it, then prove hybrid keeps the blob.
+        save_extraction_snapshot(
+            &kv,
+            None,
+            "doc-hybrid",
+            &result,
+            "ws",
+            "openai",
+            "ollama",
+            original,
+        )
+        .await
+        .unwrap();
+
+        let hybrid = load_extraction_snapshot_for_hybrid_reuse(
+            &kv,
+            None,
+            "doc-hybrid",
+            "ws",
+            "openai",
+            "ollama",
+            spliced,
+        )
+        .await
+        .expect("hybrid load must return prior extractions on hash mismatch");
+        assert_eq!(hybrid.stats.entity_count, 7);
+
+        // Blob must still be present for a second hybrid load.
+        let again = load_extraction_snapshot_for_hybrid_reuse(
+            &kv,
+            None,
+            "doc-hybrid",
+            "ws",
+            "openai",
+            "ollama",
+            spliced,
+        )
+        .await;
+        assert!(
+            again.is_some(),
+            "hybrid policy must not delete the snapshot"
+        );
+    }
+
+    /// Regression: RequireMatch load must not run before hybrid seed when text changed.
+    /// Simulates the Insert path bug where an early strict load wiped the blob.
+    #[tokio::test]
+    async fn spec151_strict_load_must_not_precede_hybrid_seed_after_splice() {
+        use edgequake_pipeline::{ProcessingResult, ProcessingStats};
+        use edgequake_storage::MemoryKVStorage;
+
+        let kv: Arc<dyn KVStorage> = Arc::new(MemoryKVStorage::new("order"));
+        let result = ProcessingResult {
+            document_id: "doc-order".to_string(),
+            chunks: vec![],
+            extractions: vec![],
+            stats: ProcessingStats {
+                entity_count: 3,
+                ..Default::default()
+            },
+            lineage: None,
+        };
+        let original = "before splice";
+        save_extraction_snapshot(
+            &kv,
+            None,
+            "doc-order",
+            &result,
+            "ws",
+            "openai",
+            "ollama",
+            original,
+        )
+        .await
+        .unwrap();
+
+        let after_splice = "after splice dirty page rewritten";
+        // Mimic the fixed Insert path: skip strict load when hybrid, then hybrid seed.
+        let hybrid_dirty_pages = true;
+        let snapshot_for_plan = if !hybrid_dirty_pages {
+            load_extraction_snapshot(
+                &kv,
+                None,
+                "doc-order",
+                "ws",
+                "openai",
+                "ollama",
+                after_splice,
+            )
+            .await
+        } else {
+            None
+        };
+        assert!(snapshot_for_plan.is_none());
+        assert_eq!(
+            plan_extraction_reuse(false, false, false, false, hybrid_dirty_pages),
+            ExtractionReusePlan::Fresh
+        );
+        let seeded = load_extraction_snapshot_for_hybrid_reuse(
+            &kv,
+            None,
+            "doc-order",
+            "ws",
+            "openai",
+            "ollama",
+            after_splice,
+        )
+        .await
+        .expect("hybrid seed must see the blob that strict load would have deleted");
+        assert_eq!(seeded.stats.entity_count, 3);
     }
 
     #[tokio::test]

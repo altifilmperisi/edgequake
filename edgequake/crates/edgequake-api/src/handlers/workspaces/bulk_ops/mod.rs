@@ -103,6 +103,7 @@ pub(super) fn build_pdf_task(
         multimodal_process_options: None,
         vision_reasoning_effort,
         vision_extract: Default::default(),
+        page_scope: None,
     }
 }
 
@@ -297,6 +298,7 @@ pub(super) async fn build_reprocess_task(
         file_source: doc.title.clone(),
         workspace_id: workspace_id.to_string(),
         metadata: Some(serde_json::Value::Object(metadata_map)),
+        reuse_excluded_pages: None,
     };
 
     Some((TaskType::Insert, serde_json::to_value(&text_task).unwrap()))

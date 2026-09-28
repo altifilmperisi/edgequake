@@ -498,6 +498,14 @@ fn api_v1_routes() -> Router<AppState> {
             get(handlers::list_document_pages),
         )
         .route(
+            "/documents/{document_id}/pages/health",
+            get(handlers::get_pages_health),
+        )
+        .route(
+            "/documents/{document_id}/pages/reprocess",
+            post(handlers::reprocess_pages),
+        )
+        .route(
             "/documents/{document_id}/assets/include-from-pdf",
             post(handlers::include_document_assets_from_pdf),
         )

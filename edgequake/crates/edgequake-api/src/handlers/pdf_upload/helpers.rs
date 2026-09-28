@@ -178,6 +178,7 @@ pub(super) async fn create_pdf_processing_task(
         vision_extract: options
             .resolved_vision_extract(workspace)
             .unwrap_or_default(),
+        page_scope: None,
     };
 
     let track_id = format!("pdf-{}", Uuid::new_v4());

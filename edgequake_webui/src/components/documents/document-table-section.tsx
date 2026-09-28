@@ -97,6 +97,8 @@ export interface DocumentTableSectionProps {
   onViewPdf: (doc: Document) => void;
   onRetry: (id: string) => void;
   onReprocess: (id: string) => void;
+  /** SPEC-151: open partial page reprocess dialog from list row menu */
+  onReprocessPages?: (doc: Document) => void;
   onCancel: (trackId: string) => void;
   onDelete: (id: string) => void;
   isRetrying: boolean;
@@ -144,6 +146,7 @@ export const DocumentTableSection = memo(function DocumentTableSection({
   onViewPdf,
   onRetry,
   onReprocess,
+  onReprocessPages,
   onCancel,
   onDelete,
   isRetrying,
@@ -349,6 +352,7 @@ export const DocumentTableSection = memo(function DocumentTableSection({
                         onViewPdf={onViewPdf}
                         onRetry={onRetry}
                         onReprocess={onReprocess}
+                        onReprocessPages={onReprocessPages}
                         onCancel={onCancel}
                         onDelete={onDelete}
                         isRetrying={isRetrying}

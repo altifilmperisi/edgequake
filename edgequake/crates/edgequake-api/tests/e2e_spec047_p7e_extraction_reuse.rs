@@ -49,6 +49,7 @@ async fn e2e_p7e_soft_reprocess_reuses_snapshot_after_success_clear() {
             .is_some(),
         false,
         false,
+        false,
     );
     assert_eq!(
         plan,
@@ -76,6 +77,7 @@ async fn e2e_p7e_merge_only_requires_snapshot() {
             .is_some(),
         false,
         true,
+        false,
     );
     assert_eq!(plan_missing, ExtractionReusePlan::MergeOnlyMissing);
 
@@ -99,6 +101,7 @@ async fn e2e_p7e_merge_only_requires_snapshot() {
             .is_some(),
         false,
         true,
+        false,
     );
     assert_eq!(
         plan_ok,

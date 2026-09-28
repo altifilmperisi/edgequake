@@ -57,6 +57,7 @@
 
 pub mod adaptive_chunking;
 pub mod anthropic_images;
+pub mod chunk_reuse;
 pub mod chunk_storage;
 pub mod chunker;
 pub mod contextual_chunk;
@@ -93,6 +94,9 @@ pub use adaptive_chunking::{
 pub use anthropic_images::{
     anthropic_image_source_json, materialize_image_for_anthropic, materialize_images_for_anthropic,
     AnthropicImageError,
+};
+pub use chunk_reuse::{
+    decide_chunk_extract, ChunkExtractAction, ChunkReuseIndex, SPEC151_CLEAN_HASH_MISS,
 };
 pub use chunk_storage::build_chunk_kv_records;
 pub use chunker::{

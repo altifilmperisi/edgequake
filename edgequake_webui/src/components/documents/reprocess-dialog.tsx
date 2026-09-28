@@ -28,7 +28,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { FileSearch, RefreshCw, Zap } from 'lucide-react';
+import { resolveDetailLifecycle } from '@/lib/documents/detail-lifecycle';
+import { FileSearch, Layers, RefreshCw, Zap } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { Document } from '@/types';
@@ -38,8 +39,11 @@ import type { ReprocessMode } from '@/lib/api/edgequake';
 // Public types
 // ---------------------------------------------------------------------------
 
+/** Full-doc API modes plus SPEC-151 partial pages handoff. */
+export type ReprocessDialogIntent = ReprocessMode | 'pages';
+
 export interface ReprocessChoice {
-  mode: ReprocessMode;
+  mode: ReprocessDialogIntent;
 }
 
 interface ReprocessDialogProps {
@@ -115,10 +119,14 @@ export function ReprocessDialog({
   const { t } = useTranslation();
   const pdf = isPdfDocument(target);
   const inflight = isInflight(target);
+  const canPages =
+    pdf &&
+    Boolean(target) &&
+    resolveDetailLifecycle(target!).canReprocessPages;
 
   // Default: entity-only is the cheap, safe default — except Interrupted
   // (server restart) docs, which need Full to avoid soft Entities no-ops.
-  const [mode, setMode] = useState<ReprocessMode>('entities');
+  const [mode, setMode] = useState<ReprocessDialogIntent>('entities');
 
   useEffect(() => {
     if (!open) return;
@@ -132,6 +140,10 @@ export function ReprocessDialog({
     target?.failure_code,
   ]);
 
+  useEffect(() => {
+    if (!canPages && mode === 'pages') setMode('entities');
+  }, [canPages, mode]);
+
   const title = useMemo(() => {
     const name = target?.file_name || target?.title || target?.id?.slice(0, 8) || '';
     return t('documents.reprocessDialog.title', 'Reprocess "{{name}}"', { name });
@@ -141,11 +153,16 @@ export function ReprocessDialog({
     onConfirm({ mode });
   }, [mode, onConfirm]);
 
+  const confirmLabel =
+    mode === 'pages'
+      ? t('documents.reprocessDialog.pagesContinue', 'Choose pages…')
+      : t('documents.reprocessDialog.confirm', 'Reprocess');
+
   // Block confirm while the document is already processing — re-queuing would
   // race the in-flight task and corrupt the pipeline checkpoint.
   return (
     <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onCancel()}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-lg" data-testid="reprocess-dialog">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <RefreshCw className="h-5 w-5 text-primary" />
@@ -170,9 +187,28 @@ export function ReprocessDialog({
 
         <RadioGroup
           value={mode}
-          onValueChange={(v) => setMode(v as ReprocessMode)}
+          onValueChange={(v) => setMode(v as ReprocessDialogIntent)}
           className="gap-3"
         >
+          {canPages ? (
+            <ReprocessOption
+              value="pages"
+              icon={<Layers className="h-5 w-5" />}
+              label={t(
+                'documents.pageHealth.menuAction',
+                'Reprocess specific pages',
+              )}
+              description={t(
+                'documents.reprocessDialog.pagesDescription',
+                'Pick pages and a starting stage (Parse / Figures / Entities). Other pages stay untouched.',
+              )}
+              badge={t(
+                'documents.reprocessDialog.pagesBadge',
+                'Partial · PDF only',
+              )}
+              disabled={inflight}
+            />
+          ) : null}
           <ReprocessOption
             value="full"
             icon={<FileSearch className="h-5 w-5" />}
@@ -221,8 +257,12 @@ export function ReprocessDialog({
           <Button variant="outline" onClick={onCancel}>
             {t('documents.reprocessDialog.cancel', 'Cancel')}
           </Button>
-          <Button onClick={handleConfirm} disabled={inflight}>
-            {t('documents.reprocessDialog.confirm', 'Reprocess')}
+          <Button
+            onClick={handleConfirm}
+            disabled={inflight}
+            data-testid="reprocess-dialog-confirm"
+          >
+            {confirmLabel}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -235,7 +275,7 @@ export function ReprocessDialog({
 // ---------------------------------------------------------------------------
 
 interface ReprocessOptionProps {
-  value: ReprocessMode;
+  value: ReprocessDialogIntent;
   icon: React.ReactNode;
   label: string;
   description: string;
@@ -254,6 +294,7 @@ function ReprocessOption({
   return (
     <label
       htmlFor={`reprocess-${value}`}
+      data-testid={`reprocess-option-${value}`}
       className={[
         'flex items-start gap-3 rounded-lg border p-3 transition-colors',
         'cursor-pointer select-none',

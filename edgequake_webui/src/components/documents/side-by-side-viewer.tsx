@@ -3,7 +3,7 @@
  * @description Split-panel layout for viewing PDF and Markdown side-by-side.
  *
  * @implements SPEC-002 - Document Viewer with side-by-side display
- * @implements SPEC-143 - Real FEAT0733 page sync toggle
+ * @implements SPEC-143 - Explicit directional page sync control
  * @implements FEAT0731 - Split-panel layout with resizable divider
  * @implements FEAT0732 - View mode toggle (PDF only, Markdown only, side-by-side)
  * @implements FEAT0733 - Panel synchronization controls
@@ -17,11 +17,11 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { PageSyncModeControl } from '@/components/documents/page-sync-mode-control';
+import type { PageSyncMode } from '@/lib/documents/page-sync-mode';
 import { cn } from '@/lib/utils';
 import {
   Columns2,
-  Link2,
-  Link2Off,
   PanelLeftClose,
   PanelRightClose,
 } from 'lucide-react';
@@ -38,10 +38,10 @@ interface SideBySideViewerProps {
   leftTitle?: string;
   rightTitle?: string;
   onModeChange?: (mode: ViewMode) => void;
-  /** SPEC-143: page sync enabled. */
-  syncEnabled?: boolean;
-  /** SPEC-143: toggle page sync. */
-  onSyncToggle?: () => void;
+  /** SPEC-143: explicit sync direction. */
+  syncMode?: PageSyncMode;
+  /** SPEC-143: set sync direction. */
+  onSyncModeChange?: (mode: PageSyncMode) => void;
   /** SPEC-143: disable sync when document has no page markers. */
   syncAvailable?: boolean;
 }
@@ -53,8 +53,8 @@ export function SideBySideViewer({
   height,
   initialMode = 'side-by-side',
   onModeChange,
-  syncEnabled = true,
-  onSyncToggle,
+  syncMode = 'pdf-to-md',
+  onSyncModeChange,
   syncAvailable = true,
 }: SideBySideViewerProps) {
   const [mode, setMode] = useState<ViewMode>(initialMode);
@@ -113,43 +113,21 @@ export function SideBySideViewer({
     };
   }, [handleMouseMove, handleMouseUp, isDragging]);
 
-  const showSync = mode === 'side-by-side' && onSyncToggle != null;
-  const syncDisabled = !syncAvailable;
+  const showSync = mode === 'side-by-side' && onSyncModeChange != null;
 
   return (
     <div data-testid="side-by-side-viewer" className={cn('flex flex-col min-h-0', className)}>
       <div className="flex items-center justify-end gap-1 px-2 py-1 border-b bg-muted/20">
         <TooltipProvider>
           {showSync ? (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span className="inline-flex mr-1">
-                  <Button
-                    variant={syncEnabled ? 'secondary' : 'ghost'}
-                    size="icon"
-                    className="h-6 w-6"
-                    data-testid="pdf-md-sync-toggle"
-                    data-sync={syncEnabled && !syncDisabled ? 'on' : 'off'}
-                    aria-pressed={syncEnabled && !syncDisabled}
-                    disabled={syncDisabled}
-                    onClick={() => onSyncToggle?.()}
-                  >
-                    {syncEnabled && !syncDisabled ? (
-                      <Link2 className="h-3.5 w-3.5" />
-                    ) : (
-                      <Link2Off className="h-3.5 w-3.5" />
-                    )}
-                  </Button>
-                </span>
-              </TooltipTrigger>
-              <TooltipContent>
-                {syncDisabled
-                  ? 'No page markers in this document'
-                  : syncEnabled
-                    ? 'Synchronize PDF and Markdown pages'
-                    : 'Independent scrolling'}
-              </TooltipContent>
-            </Tooltip>
+            <span className="mr-1 inline-flex">
+              <PageSyncModeControl
+                mode={syncMode}
+                onModeChange={onSyncModeChange!}
+                available={syncAvailable}
+                compact
+              />
+            </span>
           ) : null}
           <div className="flex items-center gap-0.5 bg-background rounded p-0.5">
             <Tooltip>
@@ -234,7 +212,12 @@ export function SideBySideViewer({
               mode === 'markdown-only' ? 'w-full' : 'flex-1',
             )}
           >
-            <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">{rightPanel}</div>
+            <div
+              className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden"
+              data-testid="md-scroll-container"
+            >
+              {rightPanel}
+            </div>
           </div>
         )}
       </div>

@@ -15,12 +15,15 @@ pub mod page_count;
 pub mod page_layout;
 pub mod page_marker;
 pub mod page_modality;
+pub mod page_sections;
 pub mod page_selection;
 pub mod page_signals;
 pub mod page_walk;
 pub mod pdfium_ready;
 pub mod reasoning_effort_inject;
 pub mod region_assets;
+pub mod reprocess_stage;
+pub mod vision_assets;
 pub mod vision_extract;
 pub mod vision_markdown;
 pub mod vision_prompts;
@@ -28,7 +31,7 @@ pub mod vision_prompts;
 pub use backend::{
     create_pdf_converter, resolve_pdf_parser_choice, PageDrawingAssetsConfig, PdfConversionConfig,
     PdfConverter, PdfParserBackend, PdfParserResolutionSource, ResolvedPdfParser,
-    VisionConversionConfig, VisionStatusHook,
+    VisionConversionConfig, VisionPageResultSink, VisionStatusHook,
 };
 pub use chart_crop::{
     chart_residual_alongside_fig_pages, chart_residual_candidate_pages, crop_png_to_ink_bbox,
@@ -83,7 +86,11 @@ pub use page_modality::{
     classify_document_majority, classify_page_heuristic, PageClassResult, PageClassification,
     PageModality,
 };
-pub use page_selection::parse_page_selection;
+pub use page_sections::{
+    apply_reprocess_section, ensure_marker, is_placeholder, prefer_section, replace_sections,
+    section_spans, sections_by_page, split_sections, PageSectionSpan, PageSectionText,
+};
+pub use page_selection::{parse_page_list, parse_page_selection};
 pub use page_signals::{
     analyze_modality_blocking, classify_document_from_bytes, classify_document_from_signals,
     classify_pages_from_bytes, compute_page_signals, compute_page_signals_blocking,
@@ -94,6 +101,11 @@ pub use pdfium_ready::{prime_pdfium, PdfPrimeError};
 pub use region_assets::{
     should_write_region_figure, tables_by_page, write_caption_region_assets, WrittenTableAsset,
 };
+pub use reprocess_stage::{
+    effective_stages, ensure_parse_when_figures_need_raw, normalize_pages, PageScope, PagesSpec,
+    ReprocessStage,
+};
+pub use vision_assets::{build_page_asset_bundle, PageAssetBuildConfig, PageAssetBundle};
 pub use vision_extract::{
     VisionAssetWritePlan, VisionExtractConfig, VisionExtractOverlay, DOC_META_VISION_EXTRACT,
     META_CHART_SYSTEM_PROMPT, META_EXTRACT_CHARTS, META_EXTRACT_FIGURES, META_EXTRACT_IMAGES,

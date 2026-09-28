@@ -214,6 +214,7 @@ impl Pipeline {
             progress_callback,
             cancel_token,
             resume_by_chunk_id,
+            reuse_index,
             on_chunk_extracted
         ),
         fields(
@@ -226,6 +227,7 @@ impl Pipeline {
             gen_ai.completion = tracing::field::Empty,
         )
     )]
+    #[allow(clippy::too_many_arguments)]
     pub(super) async fn resilient_extract_parallel(
         &self,
         chunks: &[crate::chunker::TextChunk],
@@ -235,11 +237,13 @@ impl Pipeline {
         resume_by_chunk_id: Option<
             std::collections::HashMap<String, crate::extractor::ExtractionResult>,
         >,
+        reuse_index: Option<crate::chunk_reuse::ChunkReuseIndex>,
         on_chunk_extracted: Option<super::ChunkExtractedCallback>,
     ) -> crate::error::ResilientExtractionResult {
         edgequake_observability::record_observation_type_span();
         use crate::error::{ChunkExtractionOutcome, ChunkFailure, ResilientExtractionResult};
         let resume_by_chunk_id = std::sync::Arc::new(resume_by_chunk_id.unwrap_or_default());
+        let reuse_index = std::sync::Arc::new(reuse_index);
         let on_chunk_extracted = on_chunk_extracted.clone();
 
         let semaphore = Arc::new(tokio::sync::Semaphore::new(
@@ -293,6 +297,7 @@ impl Pipeline {
                 let model_pricing = model_pricing.clone();
                 let cancel_token = cancel_token.clone();
                 let resume_by_chunk_id = resume_by_chunk_id.clone();
+                let reuse_index = reuse_index.clone();
                 let on_chunk_extracted = on_chunk_extracted.clone();
 
                 async move {
@@ -312,36 +317,68 @@ impl Pipeline {
                         }
                     }
 
-                    // Mid-doc resume: skip LLM when this chunk was already extracted.
-                    if let Some(prior) = resume_by_chunk_id.get(&chunk.id).cloned() {
-                        let completed =
-                            completed_chunks.fetch_add(1, Ordering::Relaxed) + 1;
-                        if let Some(ref callback) = progress_callback {
-                            callback(ChunkProgressUpdate {
+                    // SPEC-151: page-scope gate — LLM only for dirty (overlapping) pages.
+                    // When a reuse index is present, decide_chunk_extract ignores positional id resume.
+                    let action = crate::chunk_reuse::decide_chunk_extract(
+                        reuse_index.as_ref().as_ref(),
+                        Some(&*resume_by_chunk_id),
+                        &chunk,
+                    );
+                    match action {
+                        crate::chunk_reuse::ChunkExtractAction::Reuse(prior) => {
+                            let completed =
+                                completed_chunks.fetch_add(1, Ordering::Relaxed) + 1;
+                            if let Some(ref callback) = progress_callback {
+                                callback(ChunkProgressUpdate {
+                                    chunk_index,
+                                    total_chunks,
+                                    chunk_preview: "[resumed]".to_string(),
+                                    processing_time_ms: 0,
+                                    input_tokens: prior.input_tokens,
+                                    output_tokens: prior.output_tokens,
+                                    chunk_cost_usd: 0.0,
+                                    cumulative_input_tokens: cumulative_input_tokens
+                                        .load(Ordering::Relaxed),
+                                    cumulative_output_tokens: cumulative_output_tokens
+                                        .load(Ordering::Relaxed),
+                                    cumulative_cost_usd: 0.0,
+                                    avg_time_per_chunk_ms: 0.0,
+                                    eta_seconds: 0,
+                                    phase: super::ChunkProgressPhase::Completed,
+                                    attempt: 0,
+                                    completed_chunks: completed as usize,
+                                    gate_wait_ms: 0,
+                                });
+                            }
+                            return ChunkExtractionOutcome::Success {
                                 chunk_index,
-                                total_chunks,
-                                chunk_preview: "[resumed]".to_string(),
-                                processing_time_ms: 0,
-                                input_tokens: prior.input_tokens,
-                                output_tokens: prior.output_tokens,
-                                chunk_cost_usd: 0.0,
-                                cumulative_input_tokens: cumulative_input_tokens
-                                    .load(Ordering::Relaxed),
-                                cumulative_output_tokens: cumulative_output_tokens
-                                    .load(Ordering::Relaxed),
-                                cumulative_cost_usd: 0.0,
-                                avg_time_per_chunk_ms: 0.0,
-                                eta_seconds: 0,
-                                phase: super::ChunkProgressPhase::Completed,
-                                attempt: 0,
-                                completed_chunks: completed as usize,
-                                gate_wait_ms: 0,
+                                result: prior,
+                            };
+                        }
+                        crate::chunk_reuse::ChunkExtractAction::FailClosed => {
+                            tracing::error!(
+                                chunk_id = %chunk.id,
+                                page_start = ?chunk.page_start,
+                                page_end = ?chunk.page_end,
+                                "SPEC-151: clean-page content-hash miss — refuse extract (no LLM)"
+                            );
+                            return ChunkExtractionOutcome::Failed(ChunkFailure {
+                                chunk_index,
+                                chunk_id: chunk.id.clone(),
+                                error: format!(
+                                    "{}: clean page content changed; refuse empty extraction \
+                                     to avoid entity loss on retract. Run a full document \
+                                     reprocess, or re-select pages after chunk boundaries stabilize.",
+                                    crate::chunk_reuse::SPEC151_CLEAN_HASH_MISS
+                                ),
+                                retry_attempts: 0,
+                                was_timeout: false,
+                                processing_time_ms: chunk_start.elapsed().as_millis() as u64,
                             });
                         }
-                        return ChunkExtractionOutcome::Success {
-                            chunk_index,
-                            result: prior,
-                        };
+                        crate::chunk_reuse::ChunkExtractAction::ExtractFresh => {
+                            // Fall through to LLM retry loop.
+                        }
                     }
 
                     // Acquire permit (released on drop)

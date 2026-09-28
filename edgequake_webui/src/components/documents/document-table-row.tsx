@@ -158,6 +158,8 @@ export interface DocumentTableRowProps {
   onRetry: (docId: string) => void;
   /** Called when Reprocess action is triggered (opens the choice dialog) */
   onReprocess: (docId: string) => void;
+  /** SPEC-151: open partial page reprocess dialog */
+  onReprocessPages?: (doc: Document) => void;
   /** Called when Cancel action is triggered */
   onCancel: (trackId: string) => void;
   /** Called when Delete action is triggered */
@@ -195,6 +197,7 @@ export const DocumentTableRow = memo(function DocumentTableRow({
   onViewPdf,
   onRetry,
   onReprocess,
+  onReprocessPages,
   onCancel,
   onDelete,
   isRetrying,
@@ -355,6 +358,7 @@ export const DocumentTableRow = memo(function DocumentTableRow({
             onViewPdf={onViewPdf}
             onCancel={onCancel}
             onReprocess={onReprocess}
+            onReprocessPages={onReprocessPages}
             onDelete={onDelete}
             isCancelling={isCancelling}
             isDeleting={isDeleting}
