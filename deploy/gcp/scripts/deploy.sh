@@ -94,6 +94,11 @@ log "LD-15 migrate apply"
 log "compose up"
 "${COMPOSE[@]}" up -d
 
+# File binds keep the inode from container start; install-release replaces
+# compose/ so Caddy must be recreated to load the new snippets.caddy.
+log "recreate Caddy (bind-mount config refresh)"
+"${COMPOSE[@]}" up -d --force-recreate --no-deps caddy
+
 log "wait for api healthcheck"
 for i in $(seq 1 60); do
   if docker inspect --format='{{.State.Health.Status}}' edgequake-api 2>/dev/null | grep -q healthy; then
