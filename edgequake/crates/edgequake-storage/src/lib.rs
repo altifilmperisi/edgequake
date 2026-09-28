@@ -170,8 +170,9 @@ pub mod compensation_drain;
 pub mod cutover_flag_guard;
 pub mod migration_engine;
 pub use community::{
-    community_max_nodes_from_env, load_graph_bounded, louvain_hierarchy_enabled, BoundedGraphLoad,
-    Community, CommunityAlgorithm, CommunityConfig, CommunityDetectionResult,
+    community_max_nodes_from_env, load_graph_bounded, load_graph_bounded_scoped,
+    louvain_hierarchy_enabled, BoundedGraphLoad, Community, CommunityAlgorithm, CommunityConfig,
+    CommunityDetectionResult,
 };
 pub use community_persist::{
     backfill_communities_if_needed, community_auto_max_nodes, community_features_enabled,

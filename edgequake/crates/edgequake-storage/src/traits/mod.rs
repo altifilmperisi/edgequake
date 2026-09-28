@@ -56,7 +56,7 @@ pub use graph_scan_ops::{
     edge_matches_scope_dims, edge_matches_tenant_workspace, edge_relationship_id,
     is_topology_entity_ref, node_matches_list_filter, node_matches_tenant_workspace,
     scope_dim_matches_legacy_null, sources_match_prefixes, EdgeListFilter, GraphScanOps,
-    NodeListFilter, PagedGraphResult,
+    KeysetPage, NodeListFilter, PagedGraphResult,
 };
 pub use graph_traversal::{
     traverse_graph_bounded, BoundedGraphTraversal, GraphExpansionAuthorizer, GraphTraversalBudget,

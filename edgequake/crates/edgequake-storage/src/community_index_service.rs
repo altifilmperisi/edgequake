@@ -5,6 +5,9 @@
 //!
 //! SPEC-046 EQ-046-11: optional community_report vector indexing when an
 //! embedder + vector store are supplied (DIP — storage never imports LLM).
+//!
+//! GH-404: workspace-scoped load, process-local single-flight + dirty bit,
+//! fail-closed size gate, and cross-replica advisory lock.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -84,8 +87,14 @@ pub async fn schedule_community_index_refresh_with_extras(
         .await;
 }
 
+struct InFlightState {
+    dirty: bool,
+}
+
 struct CommunityRefreshScheduler {
     timers: Mutex<HashMap<String, JoinHandle<()>>>,
+    /// Process-local single-flight: key → running refresh (GH-404).
+    inflight: Mutex<HashMap<String, InFlightState>>,
 }
 
 impl CommunityRefreshScheduler {
@@ -102,6 +111,16 @@ impl CommunityRefreshScheduler {
         let key = workspace_id
             .clone()
             .unwrap_or_else(|| "default".to_string());
+
+        // GH-404: coalesce into the in-flight run instead of stacking another Louvain.
+        {
+            let mut inflight = self.inflight.lock().await;
+            if let Some(state) = inflight.get_mut(&key) {
+                state.dirty = true;
+                return;
+            }
+        }
+
         let debounce = debounce_duration();
 
         let mut timers = self.timers.lock().await;
@@ -111,10 +130,70 @@ impl CommunityRefreshScheduler {
 
         let handle = tokio::spawn(async move {
             tokio::time::sleep(debounce).await;
-            run_community_refresh(graph, workspace_id, extras).await;
+            community_scheduler()
+                .run_guarded(graph, workspace_id, extras)
+                .await;
         });
 
         timers.insert(key, handle);
+    }
+
+    async fn run_guarded(
+        &self,
+        graph: Arc<dyn GraphStorage>,
+        workspace_id: Option<String>,
+        extras: CommunityRefreshExtras,
+    ) {
+        let key = workspace_id
+            .clone()
+            .unwrap_or_else(|| "default".to_string());
+
+        {
+            let mut inflight = self.inflight.lock().await;
+            if let Some(state) = inflight.get_mut(&key) {
+                state.dirty = true;
+                return;
+            }
+            inflight.insert(key.clone(), InFlightState { dirty: false });
+        }
+
+        {
+            let mut timers = self.timers.lock().await;
+            timers.remove(&key);
+        }
+
+        drain_dirty_inflight(&self.inflight, &key, || {
+            let graph = graph.clone();
+            let workspace_id = workspace_id.clone();
+            let extras = extras.clone();
+            async move {
+                run_community_refresh(graph, workspace_id, extras).await;
+            }
+        })
+        .await;
+    }
+}
+
+/// Process-local dirty drain (GH-404): run `work` once, then again while dirty.
+async fn drain_dirty_inflight<F, Fut>(
+    inflight: &Mutex<HashMap<String, InFlightState>>,
+    key: &str,
+    mut work: F,
+) where
+    F: FnMut() -> Fut,
+    Fut: std::future::Future<Output = ()>,
+{
+    loop {
+        work().await;
+        let mut map = inflight.lock().await;
+        if let Some(state) = map.get_mut(key) {
+            if state.dirty {
+                state.dirty = false;
+                continue;
+            }
+            map.remove(key);
+        }
+        break;
     }
 }
 
@@ -122,6 +201,7 @@ fn community_scheduler() -> &'static CommunityRefreshScheduler {
     static SCHEDULER: OnceLock<CommunityRefreshScheduler> = OnceLock::new();
     SCHEDULER.get_or_init(|| CommunityRefreshScheduler {
         timers: Mutex::new(HashMap::new()),
+        inflight: Mutex::new(HashMap::new()),
     })
 }
 
@@ -133,30 +213,104 @@ async fn run_community_refresh(
     if !community_features_enabled() {
         return;
     }
-    // SPEC-047 P4: size gate (DRY with backfill) — ingest path previously unguarded.
-    let node_count = graph.node_count_fast().await.unwrap_or(0);
-    let threshold = crate::community_persist::community_auto_max_nodes();
-    if node_count > threshold {
-        tracing::warn!(
-            node_count,
-            threshold,
-            "Skipping community index refresh — graph too large"
-        );
-        return;
-    }
-    match detect_and_persist_communities(graph, &CommunityConfig::default()).await {
-        Ok(result) => {
+
+    let lock_key = workspace_id
+        .clone()
+        .unwrap_or_else(|| "default".to_string());
+
+    match graph.try_community_refresh_advisory_lock(&lock_key).await {
+        Ok(true) => {}
+        Ok(false) => {
             tracing::debug!(
-                communities = result.communities.len(),
-                labeled_nodes = result.node_to_community.len(),
-                "Community index refreshed after ingest"
+                workspace = %lock_key,
+                "Skipping community refresh — advisory lock held by another replica (GH-404)"
             );
-            maybe_index_community_reports(&result, workspace_id.as_deref(), &extras).await;
+            return;
         }
-        Err(e) => tracing::warn!(
+        Err(e) => {
+            tracing::warn!(
+                error = %e,
+                "Community refresh advisory lock failed — skipping (fail-closed)"
+            );
+            return;
+        }
+    }
+
+    let outcome = async {
+        // GH-404: fail-closed size gate — count errors skip the heavy path.
+        let threshold = crate::community_persist::community_auto_max_nodes();
+        let count_result =
+            community_refresh_node_count(graph.as_ref(), workspace_id.as_deref()).await;
+        if community_refresh_should_skip(count_result.as_ref().copied(), threshold) {
+            match &count_result {
+                Ok(node_count) => {
+                    tracing::warn!(
+                        node_count,
+                        threshold,
+                        workspace_id = workspace_id.as_deref(),
+                        "Skipping community index refresh — graph too large"
+                    );
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        error = %e,
+                        workspace_id = workspace_id.as_deref(),
+                        "Skipping community index refresh — node count failed (fail-closed GH-404)"
+                    );
+                }
+            }
+            return Ok::<(), crate::error::StorageError>(());
+        }
+
+        let config = CommunityConfig {
+            workspace_id: workspace_id.clone(),
+            tenant_id: extras.tenant_id.clone(),
+            ..CommunityConfig::default()
+        };
+
+        let result = detect_and_persist_communities(graph.clone(), &config).await?;
+        tracing::debug!(
+            communities = result.communities.len(),
+            labeled_nodes = result.node_to_community.len(),
+            workspace_id = workspace_id.as_deref(),
+            "Community index refreshed after ingest"
+        );
+        maybe_index_community_reports(&result, workspace_id.as_deref(), &extras).await;
+        Ok(())
+    }
+    .await;
+
+    if let Err(e) = graph
+        .release_community_refresh_advisory_lock(&lock_key)
+        .await
+    {
+        tracing::warn!(error = %e, "Community refresh advisory unlock failed");
+    }
+
+    if let Err(e) = outcome {
+        tracing::warn!(
             error = %e,
             "Community index refresh failed (non-fatal)"
-        ),
+        );
+    }
+}
+
+/// Resolve node count for the refresh size gate (workspace-scoped when possible).
+async fn community_refresh_node_count(
+    graph: &dyn GraphStorage,
+    workspace_id: Option<&str>,
+) -> crate::error::Result<usize> {
+    match workspace_id.and_then(|w| uuid::Uuid::parse_str(w).ok()) {
+        Some(ws) => graph.node_count_by_workspace(&ws).await,
+        None => graph.node_count_fast().await,
+    }
+}
+
+/// True when a count result should skip detection (error or over threshold).
+pub(crate) fn community_refresh_should_skip(count: Result<usize, &crate::error::StorageError>, threshold: usize) -> bool {
+    match count {
+        Ok(n) => n > threshold,
+        Err(_) => true,
     }
 }
 
@@ -220,10 +374,85 @@ pub async fn refresh_community_index_now_with_extras(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::error::StorageError;
 
     #[test]
     fn debounce_default_is_five_minutes() {
         std::env::remove_var("EDGEQUAKE_COMMUNITY_REFRESH_DEBOUNCE_SECS");
         assert_eq!(community_refresh_debounce_secs(), 300);
+    }
+
+    #[test]
+    fn fail_closed_size_gate_skips_on_count_error() {
+        let err = StorageError::Database("count failed".into());
+        assert!(community_refresh_should_skip(Err(&err), 50_000));
+        assert!(community_refresh_should_skip(Ok(50_001), 50_000));
+        assert!(!community_refresh_should_skip(Ok(49_999), 50_000));
+    }
+
+    #[tokio::test]
+    async fn schedule_while_inflight_marks_dirty_not_second_timer() {
+        let sched = community_scheduler();
+        let key = "ws-single-flight-test";
+        {
+            let mut inflight = sched.inflight.lock().await;
+            inflight.insert(key.to_string(), InFlightState { dirty: false });
+        }
+        let graph: Arc<dyn GraphStorage> =
+            Arc::new(crate::adapters::memory::MemoryGraphStorage::new("sf"));
+        sched
+            .schedule(Some(key.to_string()), graph, CommunityRefreshExtras::default())
+            .await;
+        {
+            let inflight = sched.inflight.lock().await;
+            let state = inflight.get(key).expect("still inflight");
+            assert!(state.dirty, "re-schedule during inflight must set dirty");
+        }
+        {
+            let timers = sched.timers.lock().await;
+            assert!(
+                !timers.contains_key(key),
+                "must not start a second debounce timer while inflight"
+            );
+        }
+        // cleanup
+        sched.inflight.lock().await.remove(key);
+    }
+
+    #[tokio::test]
+    async fn dirty_drain_runs_work_a_second_time() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let inflight = Mutex::new(HashMap::new());
+        let key = "dirty-rerun";
+        inflight
+            .lock()
+            .await
+            .insert(key.to_string(), InFlightState { dirty: false });
+
+        let runs = AtomicUsize::new(0);
+        drain_dirty_inflight(&inflight, key, || {
+            let runs = &runs;
+            let inflight = &inflight;
+            async move {
+                let n = runs.fetch_add(1, Ordering::SeqCst);
+                if n == 0 {
+                    if let Some(state) = inflight.lock().await.get_mut(key) {
+                        state.dirty = true;
+                    }
+                }
+            }
+        })
+        .await;
+
+        assert_eq!(
+            runs.load(Ordering::SeqCst),
+            2,
+            "dirty bit mid-flight must trigger exactly one extra run"
+        );
+        assert!(
+            !inflight.lock().await.contains_key(key),
+            "inflight entry must be cleared after drain"
+        );
     }
 }

@@ -191,4 +191,21 @@ pub trait GraphStorage:
 
     /// Flush pending changes.
     async fn finalize(&self) -> Result<()>;
+
+    /// Cross-replica single-flight for community refresh (GH-404).
+    ///
+    /// Returns `true` when this process holds the advisory lock for `key`
+    /// (caller must [`release_community_refresh_advisory_lock`]). Returns
+    /// `false` when another replica holds it — skip the refresh.
+    ///
+    /// Default: always acquire (memory / tests). Postgres overrides with
+    /// `pg_try_advisory_lock` held on a pooled session until release.
+    async fn try_community_refresh_advisory_lock(&self, _key: &str) -> Result<bool> {
+        Ok(true)
+    }
+
+    /// Release a lock acquired by [`try_community_refresh_advisory_lock`].
+    async fn release_community_refresh_advisory_lock(&self, _key: &str) -> Result<()> {
+        Ok(())
+    }
 }

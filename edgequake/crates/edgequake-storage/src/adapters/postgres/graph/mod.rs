@@ -48,6 +48,7 @@
 //! storage.initialize().await?;
 //! ```
 
+use std::collections::HashMap;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
@@ -99,6 +100,10 @@ pub struct PostgresAGEGraphStorage {
     /// Single-flight lock for `ensure_indexes` / SPEC-062 eq_* DDL (069).
     /// Prevents concurrent deletion/ingest workers from racing ALTER/TRIGGER DDL.
     ensure_indexes_lock: Arc<Mutex<()>>,
+    /// GH-404: held sessions for `pg_try_advisory_lock` community refresh keys.
+    /// Connection stays checked out until unlock (session-scoped advisory locks).
+    community_refresh_locks:
+        Mutex<HashMap<String, sqlx::pool::PoolConnection<sqlx::Postgres>>>,
 }
 
 impl PostgresAGEGraphStorage {
@@ -122,7 +127,72 @@ impl PostgresAGEGraphStorage {
             indexes_verified: AtomicBool::new(false),
             eq_columns_state: std::sync::atomic::AtomicU8::new(0),
             ensure_indexes_lock: Arc::new(Mutex::new(())),
+            community_refresh_locks: Mutex::new(HashMap::new()),
         }
+    }
+
+    /// Stable advisory-lock key string for community refresh (GH-404).
+    fn community_refresh_lock_payload(&self, workspace_key: &str) -> String {
+        format!("eq:community:{}:{}", self.graph_name, workspace_key)
+    }
+
+    /// Acquire session-scoped advisory lock; holds the pool connection until release.
+    pub(crate) async fn pg_try_community_refresh_advisory_lock(
+        &self,
+        workspace_key: &str,
+    ) -> Result<bool> {
+        let payload = self.community_refresh_lock_payload(workspace_key);
+        {
+            let held = self.community_refresh_locks.lock().await;
+            if held.contains_key(&payload) {
+                return Ok(false);
+            }
+        }
+        let pool = self.pool.get().await?;
+        let mut conn = pool.acquire().await.map_err(|e| {
+            StorageError::Connection(format!("community refresh lock acquire failed: {e}"))
+        })?;
+        let got: bool = sqlx::query_scalar(
+            "SELECT pg_try_advisory_lock(hashtext('edgequake.community'), hashtext($1))",
+        )
+        .bind(&payload)
+        .fetch_one(&mut *conn)
+        .await
+        .map_err(|e| StorageError::Database(format!("pg_try_advisory_lock failed: {e}")))?;
+        if !got {
+            return Ok(false);
+        }
+        let mut held = self.community_refresh_locks.lock().await;
+        if held.contains_key(&payload) {
+            let _ = sqlx::query(
+                "SELECT pg_advisory_unlock(hashtext('edgequake.community'), hashtext($1))",
+            )
+            .bind(&payload)
+            .execute(&mut *conn)
+            .await;
+            return Ok(false);
+        }
+        held.insert(payload, conn);
+        Ok(true)
+    }
+
+    /// Unlock and return the held connection to the pool.
+    pub(crate) async fn pg_release_community_refresh_advisory_lock(
+        &self,
+        workspace_key: &str,
+    ) -> Result<()> {
+        let payload = self.community_refresh_lock_payload(workspace_key);
+        let mut held = self.community_refresh_locks.lock().await;
+        let Some(mut conn) = held.remove(&payload) else {
+            return Ok(());
+        };
+        let _ = sqlx::query(
+            "SELECT pg_advisory_unlock(hashtext('edgequake.community'), hashtext($1))",
+        )
+        .bind(&payload)
+        .execute(&mut *conn)
+        .await;
+        Ok(())
     }
 
     /// SPEC-083: probe (cached) whether denormalized `eq_*` columns exist.
@@ -171,6 +241,122 @@ impl PostgresAGEGraphStorage {
             );
         }
         Ok(present)
+    }
+
+    /// GH-404 / e2e: production community edge keyset SQL for EXPLAIN.
+    ///
+    /// Mirrors [`Self::pg_scan_edges_after`] without executing it so tests can
+    /// assert the planner never sees OFFSET / parent-vertex text-cast joins.
+    pub fn community_edge_keyset_sql_for_explain(
+        &self,
+        workspace_id: Option<&str>,
+        limit: usize,
+    ) -> String {
+        let src = helpers::coalesce_endpoint("e", "source");
+        let tgt = helpers::coalesce_endpoint("e", "target");
+        let filter = crate::traits::EdgeListFilter {
+            tenant_id: None,
+            workspace_id: workspace_id.map(str::to_string),
+            relationship_type: None,
+        };
+        let where_clause = Self::build_community_edge_where(&filter, &src, &tgt);
+        Self::community_edge_scan_sql(
+            &self.graph_name,
+            &where_clause,
+            &src,
+            &tgt,
+            None,
+            limit.max(1),
+        )
+    }
+
+    /// GH-404 / e2e: production community node keyset SQL for EXPLAIN.
+    pub fn community_node_keyset_sql_for_explain(
+        &self,
+        workspace_id: Option<&str>,
+        limit: usize,
+    ) -> String {
+        let node_id = helpers::coalesce_endpoint("v", "node");
+        let filter = crate::traits::NodeListFilter {
+            tenant_id: None,
+            workspace_id: workspace_id.map(str::to_string),
+            ..Default::default()
+        };
+        let where_clause = Self::build_community_node_where(&filter, &node_id);
+        Self::community_node_scan_sql(
+            &self.graph_name,
+            &where_clause,
+            &node_id,
+            None,
+            limit.max(1),
+        )
+    }
+
+    /// GH-404 residual / e2e: list_nodes page SQL (child `"Node"`, OFFSET allowed).
+    pub fn list_nodes_filtered_sql_for_explain(
+        &self,
+        workspace_id: Option<&str>,
+        offset: usize,
+        limit: usize,
+    ) -> String {
+        let filter = crate::traits::NodeListFilter {
+            tenant_id: None,
+            workspace_id: workspace_id.map(str::to_string),
+            ..Default::default()
+        };
+        let where_clause = Self::build_vertex_property_where("v", &filter);
+        Self::list_nodes_filtered_page_sql(&self.graph_name, &where_clause, offset, limit.max(1))
+    }
+
+    /// GH-404 residual / e2e: popular-nodes degree SQL (EDGE + eq_*, no parent text-cast).
+    pub fn popular_nodes_sql_for_explain(
+        &self,
+        workspace_id: Option<&str>,
+        limit: usize,
+    ) -> String {
+        let filter = crate::traits::NodeListFilter {
+            tenant_id: None,
+            workspace_id: workspace_id.map(str::to_string),
+            ..Default::default()
+        };
+        let vertex_where = Self::vertex_where_clause("v", &filter);
+        let node_id = helpers::coalesce_endpoint("v", "node");
+        let src = helpers::coalesce_endpoint("e", "source");
+        Self::popular_nodes_with_degree_sql(
+            &self.graph_name,
+            &vertex_where,
+            &node_id,
+            &src,
+            0,
+            limit.max(1),
+        )
+    }
+
+    /// GH-404 residual / e2e: search-nodes degree SQL (EDGE + eq_*).
+    pub fn search_nodes_sql_for_explain(
+        &self,
+        workspace_id: Option<&str>,
+        query: &str,
+        limit: usize,
+    ) -> String {
+        let filter = crate::traits::NodeListFilter {
+            tenant_id: None,
+            workspace_id: workspace_id.map(str::to_string),
+            search: Some(query.to_string()),
+            ..Default::default()
+        };
+        let vertex_where = Self::vertex_where_clause("v", &filter);
+        let node_id = helpers::coalesce_endpoint("v", "node");
+        let src = helpers::coalesce_endpoint("e", "source");
+        let tgt = helpers::coalesce_endpoint("e", "target");
+        Self::search_nodes_with_degree_sql(
+            &self.graph_name,
+            &vertex_where,
+            &node_id,
+            &src,
+            &tgt,
+            limit.max(1),
+        )
     }
 
     /// Invalidate cached eq_* column presence (after DDL reconcile).

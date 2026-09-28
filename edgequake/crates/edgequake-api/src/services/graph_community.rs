@@ -11,11 +11,20 @@ use std::sync::Arc;
 use crate::error::{ApiError, ApiResult};
 
 /// Detect communities after pre-flight graph size admission check.
+///
+/// GH-404 residual: `config.workspace_id` is **required**. Unscoped Louvain on a
+/// shared AGE graph is rejected so callers cannot recreate the monopolizer.
 pub async fn detect_communities_guarded(
     graph_storage: &Arc<dyn GraphStorage>,
     config: &CommunityConfig,
     guard: &ResourceGuard,
 ) -> ApiResult<CommunityDetectionResult> {
+    if config.workspace_id.is_none() {
+        return Err(ApiError::BadRequest(
+            "community detection requires workspace_id (GH-404 scoped Louvain)".to_string(),
+        ));
+    }
+
     let node_count = graph_storage
         .node_count_fast()
         .await
@@ -58,10 +67,29 @@ mod tests {
             ..Default::default()
         });
 
-        let result = detect_communities_guarded(&graph, &CommunityConfig::default(), &guard).await;
+        let config = CommunityConfig {
+            workspace_id: Some("w".to_string()),
+            tenant_id: Some("t".to_string()),
+            ..CommunityConfig::default()
+        };
+        let result = detect_communities_guarded(&graph, &config, &guard).await;
 
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();
         assert!(err.contains("too large") || err.contains("unavailable"));
+    }
+
+    #[tokio::test]
+    async fn rejects_community_detection_without_workspace_id() {
+        let graph: Arc<dyn GraphStorage> = Arc::new(MemoryGraphStorage::new("community-no-ws"));
+        let guard = ResourceGuard::new(ResourceBudgetConfig::default());
+        let result =
+            detect_communities_guarded(&graph, &CommunityConfig::default(), &guard).await;
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(
+            err.to_lowercase().contains("workspace"),
+            "must require workspace_id: {err}"
+        );
     }
 }

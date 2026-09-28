@@ -132,6 +132,56 @@ impl MemoryGraphStorage {
         }
     }
 
+    /// GH-404: scoped `{workspace}::NAME` ids match without requiring property workspace_id.
+    fn node_matches_scoped_workspace(node: &GraphNode, workspace_id: Option<&str>) -> bool {
+        let Some(ws) = workspace_id else {
+            return true;
+        };
+        let prefix = format!("{ws}::");
+        node.id.starts_with(&prefix)
+    }
+
+    fn node_matches_community_filter(node: &GraphNode, filter: &NodeListFilter) -> bool {
+        let mut base = filter.clone();
+        let ws = base.workspace_id.take();
+        if !node_matches_list_filter(node, &base) {
+            return false;
+        }
+        match ws.as_deref() {
+            None => true,
+            Some(wid) => {
+                // Strict: scoped id prefix OR explicit property (no legacy-null wildcard).
+                Self::node_matches_scoped_workspace(node, Some(wid))
+                    || node
+                        .properties
+                        .get("workspace_id")
+                        .and_then(|v| v.as_str())
+                        == Some(wid)
+            }
+        }
+    }
+
+    fn edge_matches_community_filter(edge: &GraphEdge, filter: &EdgeListFilter) -> bool {
+        let mut base = filter.clone();
+        let ws = base.workspace_id.take();
+        if !edge_matches_list_filter(edge, &base) {
+            return false;
+        }
+        match ws.as_deref() {
+            None => true,
+            Some(wid) => {
+                let prefix = format!("{wid}::");
+                let scoped = edge.source.starts_with(&prefix) && edge.target.starts_with(&prefix);
+                let prop = edge
+                    .properties
+                    .get("workspace_id")
+                    .and_then(|v| v.as_str())
+                    == Some(wid);
+                scoped || prop
+            }
+        }
+    }
+
     fn endpoints_match(s: &str, t: &str, source: &str, target: &str) -> bool {
         (s == source && t == target) || (s == target && t == source)
     }
@@ -1288,6 +1338,93 @@ impl GraphScanOps for MemoryGraphStorage {
             offset,
             limit,
         })
+    }
+
+    async fn scan_nodes_after(
+        &self,
+        filter: &NodeListFilter,
+        after: Option<&str>,
+        limit: usize,
+    ) -> Result<crate::traits::KeysetPage<GraphNode>> {
+        use crate::traits::KeysetPage;
+
+        let nodes = self.nodes.read().map_err(super::lock::map_lock_err)?;
+        let mut matching_ids: Vec<String> = nodes
+            .iter()
+            .filter_map(|(id, props)| {
+                let node = GraphNode {
+                    id: id.clone(),
+                    properties: props.clone(),
+                };
+                Self::node_matches_community_filter(&node, filter).then_some(id.clone())
+            })
+            .collect();
+        matching_ids.sort();
+        let start = match after {
+            Some(c) => matching_ids
+                .iter()
+                .position(|id| id.as_str() > c)
+                .unwrap_or(matching_ids.len()),
+            None => 0,
+        };
+        let page_ids: Vec<String> = matching_ids.into_iter().skip(start).take(limit).collect();
+        let next_after = if page_ids.len() >= limit {
+            page_ids.last().cloned()
+        } else {
+            None
+        };
+        let items: Vec<GraphNode> = page_ids
+            .iter()
+            .filter_map(|id| {
+                nodes.get(id).map(|props| GraphNode {
+                    id: id.clone(),
+                    properties: props.clone(),
+                })
+            })
+            .collect();
+        Ok(KeysetPage { items, next_after })
+    }
+
+    async fn scan_edges_after(
+        &self,
+        filter: &EdgeListFilter,
+        after: Option<&str>,
+        limit: usize,
+    ) -> Result<crate::traits::KeysetPage<GraphEdge>> {
+        use crate::traits::KeysetPage;
+
+        let edges = self.edges.read().map_err(super::lock::map_lock_err)?;
+        let mut matching: Vec<(String, GraphEdge)> = edges
+            .iter()
+            .map(|((source, target, rel_type), props)| {
+                let edge = Self::graph_edge_from_stored(
+                    source.clone(),
+                    target.clone(),
+                    rel_type,
+                    props.clone(),
+                );
+                let cursor = format!("{}_{}_{}", source, target, rel_type);
+                (cursor, edge)
+            })
+            .filter(|(_, edge)| Self::edge_matches_community_filter(edge, filter))
+            .collect();
+        matching.sort_by(|a, b| a.0.cmp(&b.0));
+        let start = match after {
+            Some(c) => matching
+                .iter()
+                .position(|(cur, _)| cur.as_str() > c)
+                .unwrap_or(matching.len()),
+            None => 0,
+        };
+        let page: Vec<(String, GraphEdge)> =
+            matching.into_iter().skip(start).take(limit).collect();
+        let next_after = if page.len() >= limit {
+            page.last().map(|(c, _)| c.clone())
+        } else {
+            None
+        };
+        let items = page.into_iter().map(|(_, e)| e).collect();
+        Ok(KeysetPage { items, next_after })
     }
 
     async fn find_nodes_by_source_prefixes(

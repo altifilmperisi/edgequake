@@ -94,6 +94,20 @@ pub(in crate::adapters::postgres) fn vector_query_statement_timeout_ms() -> u32 
     ms.saturating_sub(GRAPH_QUERY_PG_HEADROOM_MS).max(1)
 }
 
+/// Community snapshot scan statement budget (GH-404).
+///
+/// Default 30s per page so a bad plan is cancelled in Postgres instead of
+/// becoming a multi-hour zombie pool holder. Override with
+/// `EDGEQUAKE_COMMUNITY_STATEMENT_TIMEOUT_MS`.
+pub(in crate::adapters::postgres) fn community_statement_timeout_ms() -> u32 {
+    let ms = std::env::var("EDGEQUAKE_COMMUNITY_STATEMENT_TIMEOUT_MS")
+        .ok()
+        .and_then(|v| v.parse::<u32>().ok())
+        .unwrap_or(30_000)
+        .clamp(1_000, 300_000);
+    ms.saturating_sub(GRAPH_QUERY_PG_HEADROOM_MS).max(1)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -128,6 +142,17 @@ mod tests {
         assert!(vector_query_statement_timeout_ms() < 2_000);
         if let Some(v) = prev {
             std::env::set_var("EDGEQUAKE_VECTOR_QUERY_TIMEOUT_MS", v);
+        }
+    }
+
+    #[test]
+    fn community_statement_timeout_default_is_under_30s() {
+        let prev = std::env::var("EDGEQUAKE_COMMUNITY_STATEMENT_TIMEOUT_MS").ok();
+        std::env::remove_var("EDGEQUAKE_COMMUNITY_STATEMENT_TIMEOUT_MS");
+        assert_eq!(community_statement_timeout_ms(), 29_750);
+        assert!(community_statement_timeout_ms() < 30_000);
+        if let Some(v) = prev {
+            std::env::set_var("EDGEQUAKE_COMMUNITY_STATEMENT_TIMEOUT_MS", v);
         }
     }
 }

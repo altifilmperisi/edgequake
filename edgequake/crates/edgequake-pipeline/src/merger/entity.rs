@@ -762,7 +762,15 @@ impl<G: GraphStorage + ?Sized, V: VectorStorage + ?Sized> super::KnowledgeGraphM
 
         let page = self
             .graph_storage
-            .list_nodes_filtered(&NodeListFilter::default(), 0, 500)
+            .list_nodes_filtered(
+                &NodeListFilter {
+                    tenant_id: self.tenant_id.clone(),
+                    workspace_id: self.workspace_id.clone(),
+                    ..Default::default()
+                },
+                0,
+                500,
+            )
             .await?;
         if page.items.is_empty() {
             return Ok(());

@@ -35,49 +35,18 @@ impl PostgresAGEGraphStorage {
 
     /// FAST OPTIMIZED: Get node degree using native SQL.
     ///
-    /// Uses direct SQL query instead of slow Cypher OPTIONAL MATCH pattern.
-    /// This is 10x+ faster as it leverages PostgreSQL's native aggregation and our node_id index.
-    /// Counts BOTH incoming and outgoing edges (total degree).
-    ///
-    /// Performance: <50ms for single node (vs 500ms+ with Cypher approach)
+    /// GH-404 residual: delegates to the batch EDGE+eq_* path — never
+    /// parent AGE vertex/edge tables or graphid text-cast joins.
     pub(in crate::adapters::postgres::graph) async fn pg_node_degree(
         &self,
         node_id: &str,
     ) -> Result<usize> {
-        let pool = self.pool.get().await?;
-        let mut conn = pool.acquire().await.map_err(|e| {
-            StorageError::Connection(format!("Failed to acquire connection: {}", e))
-        })?;
-
-        let escaped_id = Self::escape_sql_string(node_id);
-
-        // WHY: Use ::text cast for graphid comparison - Apache AGE's graphid type
-        // lacks a native equality operator, but text comparison works correctly.
-        let sql = format!(
-            "WITH node_vid AS ( \
-                SELECT id::text as id_text FROM {}.\"_ag_label_vertex\" \
-                WHERE ag_catalog.agtype_to_json(properties)->>'node_id' = '{}' \
-             ), \
-             out_edges AS ( \
-                SELECT COUNT(*) as cnt FROM {}.\"_ag_label_edge\" e \
-                JOIN node_vid n ON e.start_id::text = n.id_text \
-             ), \
-             in_edges AS ( \
-                SELECT COUNT(*) as cnt FROM {}.\"_ag_label_edge\" e \
-                JOIN node_vid n ON e.end_id::text = n.id_text \
-             ) \
-             SELECT COALESCE(o.cnt, 0) + COALESCE(i.cnt, 0) as degree \
-             FROM out_edges o, in_edges i",
-            self.graph_name, escaped_id, self.graph_name, self.graph_name
-        );
-
-        let row = sqlx::query(&sql)
-            .fetch_one(&mut *conn)
-            .await
-            .map_err(|e| StorageError::Database(format!("Node degree query failed: {}", e)))?;
-
-        let degree: i64 = row.get("degree");
-        Ok(degree as usize)
+        let rows = self.pg_node_degrees_batch(&[node_id.to_string()]).await?;
+        Ok(rows
+            .into_iter()
+            .find(|(id, _)| id == node_id)
+            .map(|(_, d)| d)
+            .unwrap_or(0))
     }
 
     /// FAST OPTIMIZED: Get degrees for multiple nodes in a single query.

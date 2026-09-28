@@ -301,6 +301,25 @@ impl<T> PagedGraphResult<T> {
     }
 }
 
+/// Keyset (seek) page for community snapshot scans (GH-404).
+///
+/// `next_after` is an opaque cursor (`id::text` on AGE / node id in memory).
+/// Absent when the scan is exhausted. No `COUNT(*)` — stop when a page is short.
+#[derive(Debug, Clone)]
+pub struct KeysetPage<T> {
+    pub items: Vec<T>,
+    pub next_after: Option<String>,
+}
+
+impl<T> KeysetPage<T> {
+    pub fn empty() -> Self {
+        Self {
+            items: Vec::new(),
+            next_after: None,
+        }
+    }
+}
+
 /// Bounded graph reads — never require loading the full graph into the caller.
 #[async_trait]
 pub trait GraphScanOps: Send + Sync {
@@ -319,6 +338,28 @@ pub trait GraphScanOps: Send + Sync {
         offset: usize,
         limit: usize,
     ) -> Result<PagedGraphResult<GraphEdge>>;
+
+    /// Keyset scan of nodes after `after` cursor (community snapshot / GH-404).
+    ///
+    /// Stable order by storage id. No `COUNT(*)`. When `after` is `None`, starts
+    /// from the beginning.
+    async fn scan_nodes_after(
+        &self,
+        filter: &NodeListFilter,
+        after: Option<&str>,
+        limit: usize,
+    ) -> Result<KeysetPage<GraphNode>>;
+
+    /// Keyset scan of edges after `after` cursor (community snapshot / GH-404).
+    ///
+    /// Resolves endpoints via stored `eq_*` / properties — never AGE parent
+    /// vertex text-cast joins. No `COUNT(*)` / `OFFSET`.
+    async fn scan_edges_after(
+        &self,
+        filter: &EdgeListFilter,
+        after: Option<&str>,
+        limit: usize,
+    ) -> Result<KeysetPage<GraphEdge>>;
 
     /// Find nodes whose source_ids reference any of the given prefixes.
     async fn find_nodes_by_source_prefixes(

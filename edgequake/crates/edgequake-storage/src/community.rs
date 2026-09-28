@@ -129,6 +129,10 @@ pub struct CommunityConfig {
     pub enable_hierarchy: bool,
     /// Max hierarchy levels when hierarchy is enabled (default 3).
     pub max_hierarchy_levels: usize,
+    /// Workspace scope for snapshot load (GH-404). `None` = full graph (backfill).
+    pub workspace_id: Option<String>,
+    /// Optional tenant scope for snapshot load.
+    pub tenant_id: Option<String>,
 }
 
 impl Default for CommunityConfig {
@@ -141,6 +145,8 @@ impl Default for CommunityConfig {
             max_nodes: community_max_nodes_from_env(),
             enable_hierarchy: louvain_hierarchy_enabled(),
             max_hierarchy_levels: 3,
+            workspace_id: None,
+            tenant_id: None,
         }
     }
 }
@@ -170,28 +176,49 @@ pub struct BoundedGraphLoad {
     pub total_nodes_estimate: usize,
 }
 
-/// Load nodes/edges with pagination + hard cap (O(sample), never unbounded Cypher).
+/// Load nodes/edges with keyset pagination + hard cap (GH-404 / SPEC-046 OPS-P0.2).
 ///
-/// SOLID: single responsibility — graph materialization for community algos.
+/// Uses [`GraphScanOps::scan_nodes_after`] / [`scan_edges_after`] — never OFFSET
+/// list APIs. When `workspace_id` / `tenant_id` are set, the snapshot is scoped.
 /// Prefer this over `get_all_nodes` / `get_all_edges` on ingest refresh paths.
 pub async fn load_graph_bounded(
     graph: &Arc<dyn GraphStorage>,
     max_nodes: usize,
 ) -> Result<BoundedGraphLoad> {
+    load_graph_bounded_scoped(graph, max_nodes, None, None).await
+}
+
+/// Workspace/tenant-scoped bounded load for community refresh (GH-404).
+pub async fn load_graph_bounded_scoped(
+    graph: &Arc<dyn GraphStorage>,
+    max_nodes: usize,
+    workspace_id: Option<&str>,
+    tenant_id: Option<&str>,
+) -> Result<BoundedGraphLoad> {
     use crate::traits::{EdgeListFilter, NodeListFilter};
 
     let max_nodes = max_nodes.max(1);
     let page = 2_000usize.min(max_nodes);
-    let filter = NodeListFilter::default();
-    let edge_filter = EdgeListFilter::default();
+    let filter = NodeListFilter {
+        tenant_id: tenant_id.map(str::to_string),
+        workspace_id: workspace_id.map(str::to_string),
+        ..Default::default()
+    };
+    let edge_filter = EdgeListFilter {
+        tenant_id: tenant_id.map(str::to_string),
+        workspace_id: workspace_id.map(str::to_string),
+        relationship_type: None,
+    };
 
     let mut nodes = Vec::new();
-    let mut offset = 0usize;
-    let mut total_estimate = 0usize;
+    let mut after: Option<String> = None;
+    let mut last_page_full = false;
     loop {
-        let page_result = graph.list_nodes_filtered(&filter, offset, page).await?;
-        total_estimate = page_result.total.max(total_estimate);
+        let page_result = graph
+            .scan_nodes_after(&filter, after.as_deref(), page)
+            .await?;
         if page_result.items.is_empty() {
+            last_page_full = false;
             break;
         }
         let remaining = max_nodes.saturating_sub(nodes.len());
@@ -199,29 +226,32 @@ pub async fn load_graph_bounded(
             break;
         }
         let take = remaining.min(page_result.items.len());
+        last_page_full = page_result.items.len() >= page;
         nodes.extend(page_result.items.into_iter().take(take));
-        offset += take;
-        if nodes.len() >= max_nodes || offset >= total_estimate {
+        after = page_result.next_after;
+        if nodes.len() >= max_nodes || after.is_none() {
             break;
         }
     }
 
-    let sampled = total_estimate > nodes.len();
+    let sampled = nodes.len() >= max_nodes && (last_page_full || after.is_some());
+    let total_estimate = if sampled {
+        nodes.len().saturating_add(1)
+    } else {
+        nodes.len()
+    };
 
-    // Edges: page until we cover endpoints in the node set (or hit 4× node cap).
     let node_ids: HashSet<String> = nodes.iter().map(|n| n.id.clone()).collect();
     let mut edges = Vec::new();
     let edge_cap = max_nodes.saturating_mul(4).max(page);
-    let mut e_offset = 0usize;
-    loop {
-        let page_result = graph
-            .list_edges_filtered(&edge_filter, e_offset, page)
+
+    if sampled {
+        // Indexed incident fetch for the sample — do not walk the full edge table.
+        let id_vec: Vec<String> = node_ids.iter().cloned().collect();
+        let incident = graph
+            .get_incident_edges_batch(&id_vec, tenant_id, workspace_id)
             .await?;
-        if page_result.items.is_empty() {
-            break;
-        }
-        let batch_len = page_result.items.len();
-        for edge in page_result.items {
+        for edge in incident {
             if node_ids.contains(&edge.source) && node_ids.contains(&edge.target) {
                 edges.push(edge);
                 if edges.len() >= edge_cap {
@@ -229,9 +259,27 @@ pub async fn load_graph_bounded(
                 }
             }
         }
-        e_offset += batch_len;
-        if edges.len() >= edge_cap || e_offset >= page_result.total {
-            break;
+    } else {
+        let mut e_after: Option<String> = None;
+        loop {
+            let page_result = graph
+                .scan_edges_after(&edge_filter, e_after.as_deref(), page)
+                .await?;
+            if page_result.items.is_empty() {
+                break;
+            }
+            for edge in page_result.items {
+                if node_ids.contains(&edge.source) && node_ids.contains(&edge.target) {
+                    edges.push(edge);
+                    if edges.len() >= edge_cap {
+                        break;
+                    }
+                }
+            }
+            e_after = page_result.next_after;
+            if edges.len() >= edge_cap || e_after.is_none() {
+                break;
+            }
         }
     }
 
@@ -241,7 +289,8 @@ pub async fn load_graph_bounded(
             total_nodes_estimate = total_estimate,
             max_nodes,
             loaded_edges = edges.len(),
-            "community detection using sampled subgraph (SPEC-046 OPS-P0.2)"
+            workspace_id,
+            "community detection using sampled subgraph (SPEC-046 OPS-P0.2 / GH-404)"
         );
     }
 
@@ -275,11 +324,24 @@ pub async fn detect_communities_unchecked(
 /// Phase 2 (optional, `EDGEQUAKE_LOUVAIN_HIERARCHY=1`): aggregate communities
 /// into super-nodes and repeat, producing a hierarchy of levels (NetworkX /
 /// Blondel et al. style).
+async fn load_for_config(
+    graph: &Arc<dyn GraphStorage>,
+    config: &CommunityConfig,
+) -> Result<BoundedGraphLoad> {
+    load_graph_bounded_scoped(
+        graph,
+        config.max_nodes,
+        config.workspace_id.as_deref(),
+        config.tenant_id.as_deref(),
+    )
+    .await
+}
+
 async fn louvain_communities(
     graph: &Arc<dyn GraphStorage>,
     config: &CommunityConfig,
 ) -> Result<CommunityDetectionResult> {
-    let loaded = load_graph_bounded(graph, config.max_nodes).await?;
+    let loaded = load_for_config(graph, config).await?;
     let nodes = loaded.nodes;
     let edges = loaded.edges;
 
@@ -597,7 +659,7 @@ async fn label_propagation(
     graph: &Arc<dyn GraphStorage>,
     config: &CommunityConfig,
 ) -> Result<CommunityDetectionResult> {
-    let loaded = load_graph_bounded(graph, config.max_nodes).await?;
+    let loaded = load_for_config(graph, config).await?;
     let nodes = loaded.nodes;
     let edges = loaded.edges;
 
@@ -696,7 +758,7 @@ async fn connected_components(
     graph: &Arc<dyn GraphStorage>,
     config: &CommunityConfig,
 ) -> Result<CommunityDetectionResult> {
-    let loaded = load_graph_bounded(graph, config.max_nodes).await?;
+    let loaded = load_for_config(graph, config).await?;
     let nodes = loaded.nodes;
     let edges = loaded.edges;
 
@@ -936,6 +998,56 @@ mod tests {
         for e in &loaded.edges {
             assert!(ids.contains(&e.source) && ids.contains(&e.target));
         }
+    }
+
+    #[tokio::test]
+    async fn load_graph_bounded_scoped_filters_workspace() {
+        let graph = test_graph();
+        graph.initialize().await.unwrap();
+        let ws_a = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+        let ws_b = "ffffffff-1111-2222-3333-444444444444";
+
+        for (ws, name) in [(ws_a, "ALPHA"), (ws_a, "BETA"), (ws_b, "GAMMA")] {
+            let id = format!("{ws}::{name}");
+            let mut props = HashMap::new();
+            props.insert("workspace_id".into(), serde_json::json!(ws));
+            props.insert("name".into(), serde_json::json!(name));
+            graph.upsert_node(&id, props).await.unwrap();
+        }
+        let mut edge_a = HashMap::new();
+        edge_a.insert("workspace_id".into(), serde_json::json!(ws_a));
+        edge_a.insert("weight".into(), serde_json::json!(1.0));
+        graph
+            .upsert_edge(
+                &format!("{ws_a}::ALPHA"),
+                &format!("{ws_a}::BETA"),
+                edge_a,
+            )
+            .await
+            .unwrap();
+        let mut edge_b = HashMap::new();
+        edge_b.insert("workspace_id".into(), serde_json::json!(ws_b));
+        edge_b.insert("weight".into(), serde_json::json!(1.0));
+        // Self-loop-style pair within B using GAMMA only — add a second B node.
+        let id_b2 = format!("{ws_b}::DELTA");
+        let mut props_b2 = HashMap::new();
+        props_b2.insert("workspace_id".into(), serde_json::json!(ws_b));
+        graph.upsert_node(&id_b2, props_b2).await.unwrap();
+        graph
+            .upsert_edge(&format!("{ws_b}::GAMMA"), &id_b2, edge_b)
+            .await
+            .unwrap();
+
+        let loaded = load_graph_bounded_scoped(&graph, 50, Some(ws_a), None)
+            .await
+            .unwrap();
+        assert_eq!(loaded.nodes.len(), 2);
+        for n in &loaded.nodes {
+            assert!(n.id.starts_with(&format!("{ws_a}::")));
+        }
+        assert_eq!(loaded.edges.len(), 1);
+        assert!(loaded.edges[0].source.starts_with(&format!("{ws_a}::")));
+        assert!(loaded.edges[0].target.starts_with(&format!("{ws_a}::")));
     }
 
     #[tokio::test]

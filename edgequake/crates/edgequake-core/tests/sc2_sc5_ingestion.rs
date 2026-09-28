@@ -351,6 +351,24 @@ impl GraphScanOps for FailingGraphStorage {
         Ok(PagedGraphResult::empty(0, 0))
     }
 
+    async fn scan_nodes_after(
+        &self,
+        _filter: &NodeListFilter,
+        _after: Option<&str>,
+        _limit: usize,
+    ) -> Result<edgequake_storage::traits::KeysetPage<GraphNode>, StorageError> {
+        Ok(edgequake_storage::traits::KeysetPage::empty())
+    }
+
+    async fn scan_edges_after(
+        &self,
+        _filter: &EdgeListFilter,
+        _after: Option<&str>,
+        _limit: usize,
+    ) -> Result<edgequake_storage::traits::KeysetPage<GraphEdge>, StorageError> {
+        Ok(edgequake_storage::traits::KeysetPage::empty())
+    }
+
     async fn find_nodes_by_source_prefixes(
         &self,
         _filter: &NodeListFilter,

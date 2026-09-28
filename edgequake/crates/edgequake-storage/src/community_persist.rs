@@ -100,7 +100,41 @@ pub async fn needs_community_backfill(graph: &Arc<dyn GraphStorage>) -> Result<b
         .any(|(node, _)| !node.properties.contains_key("community_id")))
 }
 
+/// Collect distinct UUID workspace ids from nodes that still need community labels.
+///
+/// GH-404 residual: backfill must never run unscoped Louvain on the full AGE graph.
+/// Only UUID-parseable `workspace_id` properties are returned; missing → skip.
+pub async fn workspaces_needing_community_backfill(
+    graph: &Arc<dyn GraphStorage>,
+) -> Result<Vec<String>> {
+    // Broader sample than needs_* so multi-workspace fleets are covered.
+    let sample = graph
+        .get_popular_nodes_with_degree(64, None, None, None, None)
+        .await?;
+    let mut seen = std::collections::BTreeSet::new();
+    for (node, _) in &sample {
+        if node.properties.contains_key("community_id") {
+            continue;
+        }
+        let Some(ws) = node
+            .properties
+            .get("workspace_id")
+            .and_then(|v| v.as_str())
+        else {
+            continue;
+        };
+        if uuid::Uuid::parse_str(ws).is_ok() {
+            seen.insert(ws.to_string());
+        }
+    }
+    Ok(seen.into_iter().collect())
+}
+
 /// One-shot backfill for existing graphs (startup / migration 044).
+///
+/// GH-404 residual: runs **per workspace** with scoped `CommunityConfig`.
+/// If no UUID workspace ids are discoverable, skips (fail-closed) rather than
+/// loading the entire AGE graph.
 pub async fn backfill_communities_if_needed(
     graph: Arc<dyn GraphStorage>,
 ) -> Result<Option<CommunityDetectionResult>> {
@@ -111,46 +145,74 @@ pub async fn backfill_communities_if_needed(
         return Ok(None);
     }
 
-    let node_count = graph.node_count_fast().await.unwrap_or(0);
-    let threshold = community_auto_max_nodes();
-    if node_count > threshold {
+    let workspaces = workspaces_needing_community_backfill(&graph).await?;
+    if workspaces.is_empty() {
         tracing::warn!(
-            node_count,
-            threshold,
-            "Skipping automatic community backfill — graph too large (set EDGEQUAKE_COMMUNITY_BACKFILL_MAX_NODES)"
+            "Skipping automatic community backfill — no UUID workspace_id on unlabeled nodes (fail-closed GH-404)"
         );
         return Ok(None);
     }
 
-    tracing::info!(
-        node_count,
-        "Running automatic community backfill (migration 044)"
-    );
-    let result = detect_and_persist_communities(graph, &CommunityConfig::default()).await?;
-    tracing::info!(
-        communities = result.communities.len(),
-        labeled_nodes = result.node_to_community.len(),
-        "Community backfill complete"
-    );
-    Ok(Some(result))
+    let threshold = community_auto_max_nodes();
+    let mut last: Option<CommunityDetectionResult> = None;
+
+    for ws in &workspaces {
+        let ws_uuid = match uuid::Uuid::parse_str(ws) {
+            Ok(u) => u,
+            Err(_) => continue,
+        };
+        let node_count = match graph.node_count_by_workspace(&ws_uuid).await {
+            Ok(n) => n,
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    workspace_id = %ws,
+                    "Skipping workspace community backfill — node count failed (fail-closed)"
+                );
+                continue;
+            }
+        };
+        if node_count > threshold {
+            tracing::warn!(
+                node_count,
+                threshold,
+                workspace_id = %ws,
+                "Skipping workspace community backfill — graph too large (set EDGEQUAKE_COMMUNITY_BACKFILL_MAX_NODES)"
+            );
+            continue;
+        }
+        if node_count == 0 {
+            continue;
+        }
+
+        tracing::info!(
+            node_count,
+            workspace_id = %ws,
+            "Running automatic community backfill (migration 044, scoped)"
+        );
+        let config = CommunityConfig {
+            workspace_id: Some(ws.clone()),
+            ..CommunityConfig::default()
+        };
+        let result = detect_and_persist_communities(graph.clone(), &config).await?;
+        tracing::info!(
+            communities = result.communities.len(),
+            labeled_nodes = result.node_to_community.len(),
+            workspace_id = %ws,
+            "Community backfill complete for workspace"
+        );
+        last = Some(result);
+    }
+
+    Ok(last)
 }
 
 /// Refresh community labels after ingest merge (non-fatal on failure).
+///
+/// GH-404: routes through the guarded path (size gate, advisory lock, scoped
+/// config when callers use [`refresh_community_index_now_with_extras`]).
 pub async fn refresh_community_index(graph: Arc<dyn GraphStorage>) {
-    if !community_features_enabled() {
-        return;
-    }
-    match detect_and_persist_communities(graph, &CommunityConfig::default()).await {
-        Ok(result) => tracing::debug!(
-            communities = result.communities.len(),
-            labeled_nodes = result.node_to_community.len(),
-            "Community index refreshed after ingest"
-        ),
-        Err(e) => tracing::warn!(
-            error = %e,
-            "Community index refresh failed (non-fatal)"
-        ),
-    }
+    crate::community_index_service::refresh_community_index_now(graph).await;
 }
 
 /// Background startup backfill for legacy graphs (migration 044 / postgres bootstrap).
@@ -175,6 +237,7 @@ pub fn spawn_community_backfill_if_needed(graph: Arc<dyn GraphStorage>) {
 mod tests {
     use super::*;
     use crate::adapters::memory::MemoryGraphStorage;
+    use serde_json::json;
     use std::collections::HashMap;
 
     #[tokio::test]
@@ -196,6 +259,69 @@ mod tests {
         assert_eq!(
             node.properties.get("community_id").and_then(|v| v.as_u64()),
             Some(0)
+        );
+    }
+
+    #[tokio::test]
+    async fn backfill_skips_when_no_uuid_workspace() {
+        let graph: Arc<dyn GraphStorage> = Arc::new(MemoryGraphStorage::new("comm-backfill-skip"));
+        graph.initialize().await.unwrap();
+        let mut props = HashMap::new();
+        props.insert("workspace_id".into(), json!("not-a-uuid"));
+        graph.upsert_node("A", props.clone()).await.unwrap();
+        graph.upsert_node("B", props).await.unwrap();
+        graph.upsert_edge("A", "B", HashMap::new()).await.unwrap();
+
+        let result = backfill_communities_if_needed(graph.clone()).await.unwrap();
+        assert!(result.is_none(), "must skip unscoped Louvain");
+        let a = graph.get_node("A").await.unwrap().unwrap();
+        assert!(
+            !a.properties.contains_key("community_id"),
+            "must not label without UUID workspace"
+        );
+    }
+
+    #[tokio::test]
+    async fn backfill_scopes_to_uuid_workspace() {
+        let graph: Arc<dyn GraphStorage> = Arc::new(MemoryGraphStorage::new("comm-backfill-ws"));
+        graph.initialize().await.unwrap();
+        let ws = uuid::Uuid::new_v4().to_string();
+        for name in ["A", "B", "C"] {
+            let mut props = HashMap::new();
+            props.insert("workspace_id".into(), json!(ws));
+            props.insert("node_id".into(), json!(format!("{ws}::{name}")));
+            graph
+                .upsert_node(&format!("{ws}::{name}"), props)
+                .await
+                .unwrap();
+        }
+        graph
+            .upsert_edge(
+                &format!("{ws}::A"),
+                &format!("{ws}::B"),
+                HashMap::new(),
+            )
+            .await
+            .unwrap();
+        graph
+            .upsert_edge(
+                &format!("{ws}::B"),
+                &format!("{ws}::C"),
+                HashMap::new(),
+            )
+            .await
+            .unwrap();
+
+        let result = backfill_communities_if_needed(graph.clone()).await.unwrap();
+        assert!(result.is_some(), "scoped backfill should run");
+        let a = graph
+            .get_node(&format!("{ws}::A"))
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(
+            a.properties.contains_key("community_id"),
+            "workspace nodes must be labeled"
         );
     }
 }

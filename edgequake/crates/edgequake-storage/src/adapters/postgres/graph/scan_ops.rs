@@ -35,6 +35,39 @@ impl PostgresAGEGraphStorage {
         Self::build_edge_property_where("e", filter, EdgeTenantFilterMode::LegacyNullAsWildcard)
     }
 
+    /// GH-404 residual: list SQL on `"Node"` child (not `_ag_label_vertex`).
+    ///
+    /// OFFSET remains for the page/total list API contract; community refresh
+    /// must use keyset scans instead.
+    pub(super) fn list_nodes_filtered_page_sql(
+        graph: &str,
+        where_clause: &str,
+        offset: usize,
+        limit: usize,
+    ) -> String {
+        format!(
+            "SELECT ag_catalog.agtype_to_json(v.properties) AS props
+             FROM {graph}.\"Node\" v
+             WHERE {where_clause}
+             ORDER BY ag_catalog.agtype_to_json(v.properties)->>'node_id'
+             OFFSET {offset} LIMIT {limit}",
+            graph = graph,
+            where_clause = where_clause,
+            offset = offset,
+            limit = limit
+        )
+    }
+
+    pub(super) fn list_nodes_filtered_count_sql(graph: &str, where_clause: &str) -> String {
+        format!(
+            "SELECT COUNT(*)::BIGINT AS total
+             FROM {graph}.\"Node\" v
+             WHERE {where_clause}",
+            graph = graph,
+            where_clause = where_clause
+        )
+    }
+
     pub(super) async fn pg_list_nodes_filtered(
         &self,
         filter: &NodeListFilter,
@@ -48,29 +81,18 @@ impl PostgresAGEGraphStorage {
 
         let where_clause = Self::build_node_where_clause(filter);
 
-        let count_sql = format!(
-            "SELECT COUNT(*)::BIGINT AS total
-             FROM {graph}.\"_ag_label_vertex\" v
-             WHERE {where_clause}",
-            graph = self.graph_name,
-            where_clause = where_clause
-        );
+        let count_sql = Self::list_nodes_filtered_count_sql(&self.graph_name, &where_clause);
 
         let total: i64 = sqlx::query_scalar(&count_sql)
             .fetch_one(&mut *conn)
             .await
             .map_err(|e| StorageError::Database(format!("Node count query failed: {}", e)))?;
 
-        let page_sql = format!(
-            "SELECT ag_catalog.agtype_to_json(v.properties) AS props
-             FROM {graph}.\"_ag_label_vertex\" v
-             WHERE {where_clause}
-             ORDER BY ag_catalog.agtype_to_json(v.properties)->>'node_id'
-             OFFSET {offset} LIMIT {limit}",
-            graph = self.graph_name,
-            where_clause = where_clause,
-            offset = offset,
-            limit = limit
+        let page_sql = Self::list_nodes_filtered_page_sql(
+            &self.graph_name,
+            &where_clause,
+            offset,
+            limit,
         );
 
         let rows = sqlx::query(&page_sql)
@@ -111,10 +133,23 @@ impl PostgresAGEGraphStorage {
         })?;
 
         let where_clause = Self::build_edge_where_clause(filter);
+        // GH-404: resolve endpoints via eq_* / properties — never AGE parent
+        // vertex text-cast JOINs (those produced billion-row nested-loop plans).
+        let eq_present = self.eq_columns_present(&mut conn).await?;
+        let src = if eq_present {
+            super::helpers::coalesce_endpoint("e", "source")
+        } else {
+            super::helpers::prop_only_endpoint("e", "source")
+        };
+        let tgt = if eq_present {
+            super::helpers::coalesce_endpoint("e", "target")
+        } else {
+            super::helpers::prop_only_endpoint("e", "target")
+        };
 
         let count_sql = format!(
             "SELECT COUNT(*)::BIGINT AS total
-             FROM {graph}.\"_ag_label_edge\" e
+             FROM {graph}.\"EDGE\" e
              WHERE {where_clause}",
             graph = self.graph_name,
             where_clause = where_clause
@@ -125,21 +160,13 @@ impl PostgresAGEGraphStorage {
             .await
             .map_err(|e| StorageError::Database(format!("Edge count query failed: {}", e)))?;
 
-        let page_sql = format!(
-            "SELECT
-                ag_catalog.agtype_to_json(e.properties) AS props,
-                ag_catalog.agtype_to_json(sv.properties)->>'node_id' AS source_id,
-                ag_catalog.agtype_to_json(tv.properties)->>'node_id' AS target_id
-             FROM {graph}.\"_ag_label_edge\" e
-             JOIN {graph}.\"_ag_label_vertex\" sv ON e.start_id::text = sv.id::text
-             JOIN {graph}.\"_ag_label_vertex\" tv ON e.end_id::text = tv.id::text
-             WHERE {where_clause}
-             ORDER BY source_id, target_id
-             OFFSET {offset} LIMIT {limit}",
-            graph = self.graph_name,
-            where_clause = where_clause,
-            offset = offset,
-            limit = limit
+        let page_sql = Self::list_edges_page_sql(
+            &self.graph_name,
+            &where_clause,
+            &src,
+            &tgt,
+            offset,
+            limit,
         );
 
         let rows = sqlx::query(&page_sql)
@@ -151,8 +178,10 @@ impl PostgresAGEGraphStorage {
             .iter()
             .filter_map(|row| {
                 let props: serde_json::Value = row.get("props");
-                let source: String = row.get("source_id");
-                let target: String = row.get("target_id");
+                let source: Option<String> = row.get("source_id");
+                let target: Option<String> = row.get("target_id");
+                let source = source.filter(|s| !s.is_empty())?;
+                let target = target.filter(|s| !s.is_empty())?;
                 let properties = props.as_object()?.clone().into_iter().collect();
                 Some(GraphEdge {
                     source,
@@ -168,6 +197,334 @@ impl PostgresAGEGraphStorage {
             offset,
             limit,
         })
+    }
+
+    /// Relationships API list SQL (OFFSET + total). Contract-tested for GH-404.
+    pub(super) fn list_edges_page_sql(
+        graph: &str,
+        where_clause: &str,
+        src_expr: &str,
+        tgt_expr: &str,
+        offset: usize,
+        limit: usize,
+    ) -> String {
+        format!(
+            "SELECT
+                ag_catalog.agtype_to_json(e.properties) AS props,
+                {src} AS source_id,
+                {tgt} AS target_id
+             FROM {graph}.\"EDGE\" e
+             WHERE {where_clause}
+             ORDER BY source_id, target_id
+             OFFSET {offset} LIMIT {limit}",
+            graph = graph,
+            where_clause = where_clause,
+            src = src_expr,
+            tgt = tgt_expr,
+            offset = offset,
+            limit = limit
+        )
+    }
+
+    /// Community keyset edge scan SQL (no COUNT / OFFSET / vertex joins) — GH-404.
+    pub(super) fn community_edge_scan_sql(
+        graph: &str,
+        where_clause: &str,
+        src_expr: &str,
+        tgt_expr: &str,
+        after: Option<&str>,
+        limit: usize,
+    ) -> String {
+        let cursor_pred = match after {
+            Some(c) => format!(
+                "AND e.id::text > '{}'",
+                Self::escape_sql_string(c)
+            ),
+            None => String::new(),
+        };
+        format!(
+            "SELECT
+                ag_catalog.agtype_to_json(e.properties) AS props,
+                {src} AS source_id,
+                {tgt} AS target_id,
+                e.id::text AS cursor_id
+             FROM {graph}.\"EDGE\" e
+             WHERE ({where_clause})
+             {cursor_pred}
+             ORDER BY e.id::text
+             LIMIT {limit}",
+            graph = graph,
+            where_clause = where_clause,
+            src = src_expr,
+            tgt = tgt_expr,
+            cursor_pred = cursor_pred,
+            limit = limit
+        )
+    }
+
+    /// Community keyset node scan SQL — GH-404.
+    pub(super) fn community_node_scan_sql(
+        graph: &str,
+        where_clause: &str,
+        node_id_expr: &str,
+        after: Option<&str>,
+        limit: usize,
+    ) -> String {
+        let cursor_pred = match after {
+            Some(c) => format!(
+                "AND v.id::text > '{}'",
+                Self::escape_sql_string(c)
+            ),
+            None => String::new(),
+        };
+        format!(
+            "SELECT
+                ag_catalog.agtype_to_json(v.properties) AS props,
+                {node_id} AS node_id,
+                v.id::text AS cursor_id
+             FROM {graph}.\"Node\" v
+             WHERE ({where_clause})
+             {cursor_pred}
+             ORDER BY v.id::text
+             LIMIT {limit}",
+            graph = graph,
+            where_clause = where_clause,
+            node_id = node_id_expr,
+            cursor_pred = cursor_pred,
+            limit = limit
+        )
+    }
+
+    /// Workspace-aware edge predicate for community snapshots (scoped ids + legacy).
+    pub(super) fn build_community_edge_where(
+        filter: &EdgeListFilter,
+        src_expr: &str,
+        tgt_expr: &str,
+    ) -> String {
+        let mut conditions = Vec::new();
+        if let Some(tid) = filter.tenant_id.as_deref() {
+            let escaped = Self::escape_sql_string(tid);
+            conditions.push(format!(
+                "ag_catalog.agtype_to_json(e.properties)->>'tenant_id' = '{escaped}'"
+            ));
+        }
+        if let Some(wid) = filter.workspace_id.as_deref() {
+            let escaped = Self::escape_sql_string(wid);
+            let prefix = format!("{escaped}::");
+            // Prefer eq_* prefix range (btree) OR legacy property workspace_id.
+            conditions.push(format!(
+                "((({src} >= '{prefix}' AND {src} < ('{prefix}' || chr(255))) \
+                   AND ({tgt} >= '{prefix}' AND {tgt} < ('{prefix}' || chr(255)))) \
+                  OR ag_catalog.agtype_to_json(e.properties)->>'workspace_id' = '{escaped}')",
+                src = src_expr,
+                tgt = tgt_expr,
+                prefix = prefix,
+                escaped = escaped
+            ));
+        }
+        if let Some(rel) = filter.relationship_type.as_deref() {
+            conditions.push(format!(
+                "UPPER(ag_catalog.agtype_to_json(e.properties)->>'relation_type') = UPPER('{}')",
+                Self::escape_sql_string(rel)
+            ));
+        }
+        if conditions.is_empty() {
+            "TRUE".to_string()
+        } else {
+            conditions.join(" AND ")
+        }
+    }
+
+    /// Workspace-aware node predicate for community snapshots.
+    pub(super) fn build_community_node_where(
+        filter: &NodeListFilter,
+        node_id_expr: &str,
+    ) -> String {
+        let mut conditions = Vec::new();
+        if let Some(tid) = filter.tenant_id.as_deref() {
+            let escaped = Self::escape_sql_string(tid);
+            conditions.push(format!(
+                "ag_catalog.agtype_to_json(v.properties)->>'tenant_id' = '{escaped}'"
+            ));
+        }
+        if let Some(wid) = filter.workspace_id.as_deref() {
+            let escaped = Self::escape_sql_string(wid);
+            let prefix = format!("{escaped}::");
+            conditions.push(format!(
+                "(({node_id} >= '{prefix}' AND {node_id} < ('{prefix}' || chr(255))) \
+                  OR ag_catalog.agtype_to_json(v.properties)->>'workspace_id' = '{escaped}')",
+                node_id = node_id_expr,
+                prefix = prefix,
+                escaped = escaped
+            ));
+        }
+        if let Some(etype) = filter.entity_type.as_deref() {
+            conditions.push(format!(
+                "UPPER(ag_catalog.agtype_to_json(v.properties)->>'entity_type') = UPPER('{}')",
+                Self::escape_sql_string(etype)
+            ));
+        }
+        if conditions.is_empty() {
+            "TRUE".to_string()
+        } else {
+            conditions.join(" AND ")
+        }
+    }
+
+    pub(super) async fn pg_scan_nodes_after(
+        &self,
+        filter: &NodeListFilter,
+        after: Option<&str>,
+        limit: usize,
+    ) -> Result<crate::traits::KeysetPage<GraphNode>> {
+        use crate::traits::KeysetPage;
+
+        let limit = limit.max(1);
+        let pool = self.pool.get().await?;
+        let mut conn = pool.acquire().await.map_err(|e| {
+            StorageError::Connection(format!("Failed to acquire connection: {}", e))
+        })?;
+
+        let eq_present = self.eq_columns_present(&mut conn).await?;
+        let node_id_expr = if eq_present {
+            super::helpers::coalesce_endpoint("v", "node")
+        } else {
+            super::helpers::prop_only_endpoint("v", "node")
+        };
+        let where_clause = Self::build_community_node_where(filter, &node_id_expr);
+        let page_sql = Self::community_node_scan_sql(
+            &self.graph_name,
+            &where_clause,
+            &node_id_expr,
+            after,
+            limit,
+        );
+
+        let timeout_ms = super::helpers::community_statement_timeout_ms();
+        let mut timed = super::helpers::LocalTimeoutTx::begin(&mut conn, timeout_ms).await?;
+        let rows = match sqlx::query(&page_sql).fetch_all(&mut **timed.as_mut()).await {
+            Ok(r) => {
+                timed.commit().await?;
+                r
+            }
+            Err(e) => {
+                let _ = timed.rollback().await;
+                return Err(StorageError::Database(format!(
+                    "Community node keyset scan failed: {e}"
+                )));
+            }
+        };
+
+        let mut items = Vec::with_capacity(rows.len());
+        let mut last_cursor = None;
+        for row in &rows {
+            let props: serde_json::Value = row.get("props");
+            let cursor: String = row.get("cursor_id");
+            let node_id: Option<String> = row.get("node_id");
+            let Some(node_id) = node_id.filter(|s| !s.is_empty()) else {
+                last_cursor = Some(cursor);
+                continue;
+            };
+            let properties = props
+                .as_object()
+                .map(|o| o.clone().into_iter().collect())
+                .unwrap_or_default();
+            items.push(GraphNode {
+                id: node_id,
+                properties,
+            });
+            last_cursor = Some(cursor);
+        }
+
+        let next_after = if rows.len() >= limit {
+            last_cursor
+        } else {
+            None
+        };
+        Ok(KeysetPage { items, next_after })
+    }
+
+    pub(super) async fn pg_scan_edges_after(
+        &self,
+        filter: &EdgeListFilter,
+        after: Option<&str>,
+        limit: usize,
+    ) -> Result<crate::traits::KeysetPage<GraphEdge>> {
+        use crate::traits::KeysetPage;
+
+        let limit = limit.max(1);
+        let pool = self.pool.get().await?;
+        let mut conn = pool.acquire().await.map_err(|e| {
+            StorageError::Connection(format!("Failed to acquire connection: {}", e))
+        })?;
+
+        let eq_present = self.eq_columns_present(&mut conn).await?;
+        let src = if eq_present {
+            super::helpers::coalesce_endpoint("e", "source")
+        } else {
+            super::helpers::prop_only_endpoint("e", "source")
+        };
+        let tgt = if eq_present {
+            super::helpers::coalesce_endpoint("e", "target")
+        } else {
+            super::helpers::prop_only_endpoint("e", "target")
+        };
+        let where_clause = Self::build_community_edge_where(filter, &src, &tgt);
+        let page_sql = Self::community_edge_scan_sql(
+            &self.graph_name,
+            &where_clause,
+            &src,
+            &tgt,
+            after,
+            limit,
+        );
+
+        let timeout_ms = super::helpers::community_statement_timeout_ms();
+        let mut timed = super::helpers::LocalTimeoutTx::begin(&mut conn, timeout_ms).await?;
+        let rows = match sqlx::query(&page_sql).fetch_all(&mut **timed.as_mut()).await {
+            Ok(r) => {
+                timed.commit().await?;
+                r
+            }
+            Err(e) => {
+                let _ = timed.rollback().await;
+                return Err(StorageError::Database(format!(
+                    "Community edge keyset scan failed: {e}"
+                )));
+            }
+        };
+
+        let mut items = Vec::with_capacity(rows.len());
+        let mut last_cursor = None;
+        for row in &rows {
+            let props: serde_json::Value = row.get("props");
+            let source: Option<String> = row.get("source_id");
+            let target: Option<String> = row.get("target_id");
+            let cursor: String = row.get("cursor_id");
+            last_cursor = Some(cursor);
+            let Some(source) = source.filter(|s| !s.is_empty()) else {
+                continue;
+            };
+            let Some(target) = target.filter(|s| !s.is_empty()) else {
+                continue;
+            };
+            let properties = props
+                .as_object()
+                .map(|o| o.clone().into_iter().collect())
+                .unwrap_or_default();
+            items.push(GraphEdge {
+                source,
+                target,
+                properties,
+            });
+        }
+
+        let next_after = if rows.len() >= limit {
+            last_cursor
+        } else {
+            None
+        };
+        Ok(KeysetPage { items, next_after })
     }
 
     fn build_source_prefix_clause_legacy(props_expr: &str, source_prefixes: &[String]) -> String {
@@ -613,25 +970,35 @@ impl PostgresAGEGraphStorage {
         let esc_id = Self::escape_sql_string(relationship_id);
         let props_expr = "ag_catalog.agtype_to_json(e.properties)";
 
+        // GH-404: resolve endpoints via eq_* / properties — never AGE parent
+        // vertex text-cast JOINs (same anti-pattern as the community OFFSET path).
+        let eq_present = self.eq_columns_present(&mut conn).await?;
+        let src = if eq_present {
+            super::helpers::coalesce_endpoint("e", "source")
+        } else {
+            super::helpers::prop_only_endpoint("e", "source")
+        };
+        let tgt = if eq_present {
+            super::helpers::coalesce_endpoint("e", "target")
+        } else {
+            super::helpers::prop_only_endpoint("e", "target")
+        };
+
         let sql = format!(
             "SELECT
                 {props} AS props,
-                ag_catalog.agtype_to_json(sv.properties)->>'node_id' AS source_id,
-                ag_catalog.agtype_to_json(tv.properties)->>'node_id' AS target_id
-             FROM {graph}.\"_ag_label_edge\" e
-             JOIN {graph}.\"_ag_label_vertex\" sv ON e.start_id::text = sv.id::text
-             JOIN {graph}.\"_ag_label_vertex\" tv ON e.end_id::text = tv.id::text
+                {src} AS source_id,
+                {tgt} AS target_id
+             FROM {graph}.\"EDGE\" e
              WHERE {tenant_where}
                AND (
                  {props}->>'id' = '{esc_id}'
-                 OR CONCAT(
-                   ag_catalog.agtype_to_json(sv.properties)->>'node_id',
-                   '_',
-                   ag_catalog.agtype_to_json(tv.properties)->>'node_id'
-                 ) = '{esc_id}'
+                 OR CONCAT({src}, '_', {tgt}) = '{esc_id}'
                )
              LIMIT 1",
             props = props_expr,
+            src = src,
+            tgt = tgt,
             graph = self.graph_name,
             tenant_where = tenant_where,
             esc_id = esc_id
@@ -642,21 +1009,23 @@ impl PostgresAGEGraphStorage {
             .await
             .map_err(|e| StorageError::Database(format!("Relationship id lookup failed: {}", e)))?;
 
-        Ok(row.map(|row| {
+        Ok(row.and_then(|row| {
             let props: serde_json::Value = row.get("props");
-            let source: String = row.get("source_id");
-            let target: String = row.get("target_id");
+            let source: Option<String> = row.get("source_id");
+            let target: Option<String> = row.get("target_id");
+            let source = source.filter(|s| !s.is_empty())?;
+            let target = target.filter(|s| !s.is_empty())?;
             let properties = props
                 .as_object()
                 .cloned()
                 .unwrap_or_default()
                 .into_iter()
                 .collect();
-            GraphEdge {
+            Some(GraphEdge {
                 source,
                 target,
                 properties,
-            }
+            })
         }))
     }
 }

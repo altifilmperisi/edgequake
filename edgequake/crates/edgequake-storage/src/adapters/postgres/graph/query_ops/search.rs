@@ -1,4 +1,7 @@
 //! Label/node search helpers (SPEC-054 ISP).
+//!
+//! GH-404 residual: degree/popular paths use `"Node"` + `"EDGE"` with eq_*
+//! text endpoints — never `_ag_label_*` parent tables or `start_id::text` joins.
 
 use std::collections::HashMap;
 
@@ -27,6 +30,123 @@ impl PostgresAGEGraphStorage {
         )
     }
 
+    /// Popular-nodes SQL: child `"Node"` + out-degree via `"EDGE"` eq_* endpoints.
+    pub(in crate::adapters::postgres::graph) fn popular_nodes_with_degree_sql(
+        graph: &str,
+        vertex_where: &str,
+        node_id_expr: &str,
+        src_expr: &str,
+        min_degree: usize,
+        limit: usize,
+    ) -> String {
+        format!(
+            "WITH filtered_nodes AS MATERIALIZED ( \
+                SELECT {node_id} AS node_id, v.properties \
+                FROM {graph}.\"Node\" v \
+                {vertex_where} \
+            ), \
+            edge_counts AS ( \
+                SELECT {src} AS node_id, COUNT(*) AS out_degree \
+                FROM {graph}.\"EDGE\" e \
+                INNER JOIN filtered_nodes fn ON {src} = fn.node_id \
+                GROUP BY 1 \
+            ) \
+            SELECT \
+                ag_catalog.agtype_to_json(fn.properties) AS node_props, \
+                COALESCE(ec.out_degree, 0) AS degree \
+            FROM filtered_nodes fn \
+            LEFT JOIN edge_counts ec ON fn.node_id = ec.node_id \
+            WHERE COALESCE(ec.out_degree, 0) >= {min_degree} \
+            ORDER BY degree DESC \
+            LIMIT {limit}",
+            graph = graph,
+            vertex_where = vertex_where,
+            node_id = node_id_expr,
+            src = src_expr,
+            min_degree = min_degree,
+            limit = limit
+        )
+    }
+
+    /// Search-nodes SQL: child `"Node"` + total degree via `"EDGE"` eq_* endpoints.
+    pub(in crate::adapters::postgres::graph) fn search_nodes_with_degree_sql(
+        graph: &str,
+        vertex_where: &str,
+        node_id_expr: &str,
+        src_expr: &str,
+        tgt_expr: &str,
+        limit: usize,
+    ) -> String {
+        format!(
+            "WITH filtered_nodes AS MATERIALIZED ( \
+                SELECT {node_id} AS node_id, ag_catalog.agtype_to_json(v.properties) AS props \
+                FROM {graph}.\"Node\" v \
+                {vertex_where} \
+            ), \
+            out_degrees AS ( \
+                SELECT {src} AS node_id, COUNT(*) AS out_degree \
+                FROM {graph}.\"EDGE\" e \
+                INNER JOIN filtered_nodes fn ON {src} = fn.node_id \
+                GROUP BY 1 \
+            ), \
+            in_degrees AS ( \
+                SELECT {tgt} AS node_id, COUNT(*) AS in_degree \
+                FROM {graph}.\"EDGE\" e \
+                INNER JOIN filtered_nodes fn ON {tgt} = fn.node_id \
+                GROUP BY 1 \
+            ) \
+            SELECT \
+                fn.props, \
+                COALESCE(o.out_degree, 0) + COALESCE(i.in_degree, 0) AS degree \
+            FROM filtered_nodes fn \
+            LEFT JOIN out_degrees o ON fn.node_id = o.node_id \
+            LEFT JOIN in_degrees i ON fn.node_id = i.node_id \
+            ORDER BY degree DESC \
+            LIMIT {limit}",
+            graph = graph,
+            vertex_where = vertex_where,
+            node_id = node_id_expr,
+            src = src_expr,
+            tgt = tgt_expr,
+            limit = limit
+        )
+    }
+
+    /// Popular-labels SQL: same child-table degree pattern, project bare label.
+    pub(in crate::adapters::postgres::graph) fn popular_labels_sql(
+        graph: &str,
+        vertex_where: &str,
+        node_id_expr: &str,
+        src_expr: &str,
+        label_expr: &str,
+        limit: usize,
+    ) -> String {
+        format!(
+            "WITH filtered_nodes AS MATERIALIZED ( \
+                SELECT {node_id} AS node_id, v.properties \
+                FROM {graph}.\"Node\" v \
+                {vertex_where} \
+            ), \
+            edge_counts AS ( \
+                SELECT {src} AS node_id, COUNT(*) AS out_degree \
+                FROM {graph}.\"EDGE\" e \
+                INNER JOIN filtered_nodes fn ON {src} = fn.node_id \
+                GROUP BY 1 \
+            ) \
+            SELECT {label} AS label \
+            FROM filtered_nodes fn \
+            LEFT JOIN edge_counts ec ON fn.node_id = ec.node_id \
+            ORDER BY COALESCE(ec.out_degree, 0) DESC \
+            LIMIT {limit}",
+            graph = graph,
+            vertex_where = vertex_where,
+            node_id = node_id_expr,
+            src = src_expr,
+            label = label_expr,
+            limit = limit
+        )
+    }
+
     pub(in crate::adapters::postgres::graph) async fn pg_get_popular_labels(
         &self,
         limit: usize,
@@ -44,30 +164,26 @@ impl PostgresAGEGraphStorage {
             ..Default::default()
         };
         let vertex_where = Self::vertex_where_clause("v", &filter);
+        let eq_present = self.eq_columns_present(&mut conn).await?;
+        let node_id = if eq_present {
+            super::super::helpers::coalesce_endpoint("v", "node")
+        } else {
+            super::super::helpers::prop_only_endpoint("v", "node")
+        };
+        let src = if eq_present {
+            super::super::helpers::coalesce_endpoint("e", "source")
+        } else {
+            super::super::helpers::prop_only_endpoint("e", "source")
+        };
+        let label_expr = Self::sql_vertex_search_text("fn");
 
-        // Scoped SQL — same filter-first pattern as pg_get_popular_nodes_with_degree.
-        let sql = format!(
-            "WITH filtered_nodes AS MATERIALIZED ( \
-                SELECT v.id::text AS id_text, v.properties \
-                FROM {}.\"_ag_label_vertex\" v \
-                {} \
-            ), \
-            edge_counts AS ( \
-                SELECT e.start_id::text AS start_id_text, COUNT(*) AS out_degree \
-                FROM {}.\"_ag_label_edge\" e \
-                INNER JOIN filtered_nodes fn ON e.start_id::text = fn.id_text \
-                GROUP BY e.start_id::text \
-            ) \
-            SELECT {} AS label \
-            FROM filtered_nodes fn \
-            LEFT JOIN edge_counts ec ON fn.id_text = ec.start_id_text \
-            ORDER BY COALESCE(ec.out_degree, 0) DESC \
-            LIMIT {}",
-            self.graph_name,
-            vertex_where,
-            self.graph_name,
-            Self::sql_vertex_search_text("fn"),
-            limit
+        let sql = Self::popular_labels_sql(
+            &self.graph_name,
+            &vertex_where,
+            &node_id,
+            &src,
+            &label_expr,
+            limit,
         );
 
         // SPEC-089 / F-336-15 / LAW-H2: no app timeout on trait path — PG must kill.
@@ -136,6 +252,7 @@ impl PostgresAGEGraphStorage {
         // Try full-text search first (best for word matching).
         // 032: FTS must use bare label — scoped node_id (`{ws}::NAME`) breaks
         // keyword validation / prefix match against natural-language terms.
+        // GH-404 residual: scan `"Node"` child (indexed), not parent vertex table.
         let fts_sql = format!(
             "SELECT \
                 {search_text} as label, \
@@ -143,7 +260,7 @@ impl PostgresAGEGraphStorage {
                     to_tsvector('english', coalesce({search_text}, '')), \
                     plainto_tsquery('english', '{0}') \
                 ) as rank \
-             FROM {1}.\"_ag_label_vertex\" v \
+             FROM {1}.\"Node\" v \
              WHERE to_tsvector('english', coalesce({search_text}, '')) \
                    @@ plainto_tsquery('english', '{0}'){2} \
              ORDER BY rank DESC \
@@ -182,7 +299,7 @@ impl PostgresAGEGraphStorage {
                     coalesce({search_text}, ''), \
                     '{0}' \
                 ) as sim \
-             FROM {1}.\"_ag_label_vertex\" v \
+             FROM {1}.\"Node\" v \
              WHERE coalesce({search_text}, '') OPERATOR(ag_catalog.%) '{0}' \
              {2} \
              ORDER BY sim DESC \
@@ -217,7 +334,7 @@ impl PostgresAGEGraphStorage {
         // Final fallback to simple ILIKE prefix matching (always works)
         let prefix_sql = format!(
             "SELECT {search_text} as label \
-             FROM {0}.\"_ag_label_vertex\" v \
+             FROM {0}.\"Node\" v \
              WHERE LOWER(coalesce({search_text}, '')) LIKE LOWER('{1}%') \
              {2} \
              ORDER BY {search_text} \
@@ -277,39 +394,32 @@ impl PostgresAGEGraphStorage {
             ..Default::default()
         };
         let vertex_where = Self::vertex_where_clause("v", &filter);
+        let eq_present = self.eq_columns_present(&mut conn).await?;
+        let node_id = if eq_present {
+            super::super::helpers::coalesce_endpoint("v", "node")
+        } else {
+            super::super::helpers::prop_only_endpoint("v", "node")
+        };
+        let src = if eq_present {
+            super::super::helpers::coalesce_endpoint("e", "source")
+        } else {
+            super::super::helpers::prop_only_endpoint("e", "source")
+        };
+        let tgt = if eq_present {
+            super::super::helpers::coalesce_endpoint("e", "target")
+        } else {
+            super::super::helpers::prop_only_endpoint("e", "target")
+        };
 
-        // WHY: Filter vertices first (MATERIALIZED), scope degree counts to that set,
-        // and join via graphid::text (AGE has no graphid = operator). Global edge
-        // GROUP BY + nested-loop join against tenant filters caused 22s+ timeouts.
-        let sql = format!(
-            "WITH filtered_nodes AS MATERIALIZED ( \
-                SELECT v.id::text AS id_text, ag_catalog.agtype_to_json(v.properties) AS props \
-                FROM {graph}.\"_ag_label_vertex\" v \
-                {vertex_where} \
-            ), \
-            out_degrees AS ( \
-                SELECT e.start_id::text AS id_text, COUNT(*) AS out_degree \
-                FROM {graph}.\"_ag_label_edge\" e \
-                INNER JOIN filtered_nodes fn ON e.start_id::text = fn.id_text \
-                GROUP BY e.start_id::text \
-            ), \
-            in_degrees AS ( \
-                SELECT e.end_id::text AS id_text, COUNT(*) AS in_degree \
-                FROM {graph}.\"_ag_label_edge\" e \
-                INNER JOIN filtered_nodes fn ON e.end_id::text = fn.id_text \
-                GROUP BY e.end_id::text \
-            ) \
-            SELECT \
-                fn.props, \
-                COALESCE(o.out_degree, 0) + COALESCE(i.in_degree, 0) AS degree \
-            FROM filtered_nodes fn \
-            LEFT JOIN out_degrees o ON fn.id_text = o.id_text \
-            LEFT JOIN in_degrees i ON fn.id_text = i.id_text \
-            ORDER BY degree DESC \
-            LIMIT {limit}",
-            graph = self.graph_name,
-            vertex_where = vertex_where,
-            limit = limit
+        // GH-404 residual: filter `"Node"` first, degree via `"EDGE"` eq_* — never
+        // parent-table `start_id::text` joins (those nested-looped for 22s+).
+        let sql = Self::search_nodes_with_degree_sql(
+            &self.graph_name,
+            &vertex_where,
+            &node_id,
+            &src,
+            &tgt,
+            limit,
         );
 
         tracing::debug!(sql = %sql, "search_nodes SQL");
@@ -373,34 +483,27 @@ impl PostgresAGEGraphStorage {
         };
         let vertex_where = Self::vertex_where_clause("v", &filter);
         let min_degree_val = min_degree.unwrap_or(0);
+        let eq_present = self.eq_columns_present(&mut conn).await?;
+        let node_id = if eq_present {
+            super::super::helpers::coalesce_endpoint("v", "node")
+        } else {
+            super::super::helpers::prop_only_endpoint("v", "node")
+        };
+        let src = if eq_present {
+            super::super::helpers::coalesce_endpoint("e", "source")
+        } else {
+            super::super::helpers::prop_only_endpoint("e", "source")
+        };
 
-        // WHY: Filter vertices first (MATERIALIZED), then hash-join edge counts scoped
-        // to those nodes. The previous plan computed global edge_counts first and
-        // nested-loop joined against tenant/workspace filters — PostgreSQL estimated
-        // rows=1 with filters present, producing a nested-loop cartesian (~31k × 15k
-        // comparisons, 22s+) that exceeded the 15s graph query budget (SPEC-006).
-        // graphid::text joins are the AGE-safe pattern (see node_degrees_batch).
-        let sql = format!(
-            "WITH filtered_nodes AS MATERIALIZED ( \
-                SELECT v.id::text AS id_text, v.properties \
-                FROM {}.\"_ag_label_vertex\" v \
-                {} \
-            ), \
-            edge_counts AS ( \
-                SELECT e.start_id::text AS start_id_text, COUNT(*) AS out_degree \
-                FROM {}.\"_ag_label_edge\" e \
-                INNER JOIN filtered_nodes fn ON e.start_id::text = fn.id_text \
-                GROUP BY e.start_id::text \
-            ) \
-            SELECT \
-                ag_catalog.agtype_to_json(fn.properties) AS node_props, \
-                COALESCE(ec.out_degree, 0) AS degree \
-            FROM filtered_nodes fn \
-            LEFT JOIN edge_counts ec ON fn.id_text = ec.start_id_text \
-            WHERE COALESCE(ec.out_degree, 0) >= {} \
-            ORDER BY degree DESC \
-            LIMIT {}",
-            self.graph_name, vertex_where, self.graph_name, min_degree_val, limit
+        // WHY: Filter `"Node"` first (MATERIALIZED), then hash-join EDGE counts on
+        // eq_* text endpoints. Avoids AGE parent `start_id::text` nested loops.
+        let sql = Self::popular_nodes_with_degree_sql(
+            &self.graph_name,
+            &vertex_where,
+            &node_id,
+            &src,
+            min_degree_val,
+            limit,
         );
 
         // SPEC-089 Wave 3 / F-336-10: PG kill aligned with run_timed_graph_query.

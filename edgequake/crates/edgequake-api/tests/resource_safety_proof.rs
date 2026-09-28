@@ -486,7 +486,11 @@ async fn resource_safety_community_guard_rejects_large_graph() {
 
     let result = edgequake_api::services::detect_communities_guarded(
         &state.storage.graph_storage,
-        &edgequake_storage::CommunityConfig::default(),
+        &edgequake_storage::CommunityConfig {
+            workspace_id: Some(PROOF_WORKSPACE.to_string()),
+            tenant_id: Some(PROOF_TENANT.to_string()),
+            ..Default::default()
+        },
         &guard,
     )
     .await;
@@ -783,7 +787,11 @@ async fn resource_safety_community_guard_allows_small_graph() {
 
     let result = edgequake_api::services::detect_communities_guarded(
         &state.storage.graph_storage,
-        &edgequake_storage::CommunityConfig::default(),
+        &edgequake_storage::CommunityConfig {
+            workspace_id: Some(PROOF_WORKSPACE.to_string()),
+            tenant_id: Some(PROOF_TENANT.to_string()),
+            ..Default::default()
+        },
         &guard,
     )
     .await;
@@ -823,7 +831,11 @@ async fn resource_safety_community_guard_threshold_boundary_allow() {
 
     let result = edgequake_api::services::detect_communities_guarded(
         &state.storage.graph_storage,
-        &edgequake_storage::CommunityConfig::default(),
+        &edgequake_storage::CommunityConfig {
+            workspace_id: Some(PROOF_WORKSPACE.to_string()),
+            tenant_id: Some(PROOF_TENANT.to_string()),
+            ..Default::default()
+        },
         &guard,
     )
     .await;

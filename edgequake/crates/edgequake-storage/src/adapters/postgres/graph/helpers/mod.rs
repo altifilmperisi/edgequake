@@ -20,7 +20,7 @@ mod source_lineage_sql;
 mod vertex_filter;
 
 pub(in crate::adapters::postgres::graph) use super::super::statement_timeout::{
-    graph_query_statement_timeout_ms, LocalTimeoutTx,
+    community_statement_timeout_ms, graph_query_statement_timeout_ms, LocalTimeoutTx,
 };
 
 pub use super::super::statement_timeout::interactive_statement_timeout_ms;

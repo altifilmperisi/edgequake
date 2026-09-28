@@ -6,7 +6,8 @@ use super::PostgresAGEGraphStorage;
 use crate::error::Result;
 use crate::traits::{
     EdgeListFilter, GraphEdge, GraphNode, GraphScanOps, GraphStorage, GraphStorageAnalyticsOps,
-    GraphStorageMutateOps, GraphStorageReadOps, KnowledgeGraph, NodeListFilter, PagedGraphResult,
+    GraphStorageMutateOps, GraphStorageReadOps, KeysetPage, KnowledgeGraph, NodeListFilter,
+    PagedGraphResult,
 };
 
 #[async_trait]
@@ -21,6 +22,14 @@ impl GraphStorage for PostgresAGEGraphStorage {
 
     async fn finalize(&self) -> Result<()> {
         self.pg_finalize().await
+    }
+
+    async fn try_community_refresh_advisory_lock(&self, key: &str) -> Result<bool> {
+        self.pg_try_community_refresh_advisory_lock(key).await
+    }
+
+    async fn release_community_refresh_advisory_lock(&self, key: &str) -> Result<()> {
+        self.pg_release_community_refresh_advisory_lock(key).await
     }
 }
 
@@ -371,6 +380,24 @@ impl GraphScanOps for PostgresAGEGraphStorage {
         limit: usize,
     ) -> Result<PagedGraphResult<GraphEdge>> {
         self.pg_list_edges_filtered(filter, offset, limit).await
+    }
+
+    async fn scan_nodes_after(
+        &self,
+        filter: &NodeListFilter,
+        after: Option<&str>,
+        limit: usize,
+    ) -> Result<KeysetPage<GraphNode>> {
+        self.pg_scan_nodes_after(filter, after, limit).await
+    }
+
+    async fn scan_edges_after(
+        &self,
+        filter: &EdgeListFilter,
+        after: Option<&str>,
+        limit: usize,
+    ) -> Result<KeysetPage<GraphEdge>> {
+        self.pg_scan_edges_after(filter, after, limit).await
     }
 
     async fn find_nodes_by_source_prefixes(
