@@ -217,8 +217,7 @@ pub fn pack_prepared_ingestion_batches(
                 .iter()
                 .filter(|extraction| {
                     let source = extraction.source_chunk_id.as_str();
-                    pack_ids.contains(source)
-                        || (include_orphans && !known_ids.contains(source))
+                    pack_ids.contains(source) || (include_orphans && !known_ids.contains(source))
                 })
                 .cloned()
                 .collect(),
@@ -1219,14 +1218,9 @@ mod tests {
         // Two chunks = 12004 > 10000 → must split into 2 packs.
         let result = dense_two_chunk_result(doc_id, 3000);
         let chunks = build_relational_chunks(&ctx, &result).expect("chunks");
-        let single = build_prepared_ingestion_batch(
-            &ctx,
-            &result,
-            &chunks,
-            "text-embedding-3-small",
-            5,
-        )
-        .expect("single batch builds before admission");
+        let single =
+            build_prepared_ingestion_batch(&ctx, &result, &chunks, "text-embedding-3-small", 5)
+                .expect("single batch builds before admission");
         let single_total = single.chunks.len()
             + single.facts.len()
             + single.contributions.len()
@@ -1236,15 +1230,14 @@ mod tests {
             "fixture must exceed admission cap (got {single_total})"
         );
 
-        let batches = pack_prepared_ingestion_batches(
-            &ctx,
-            &result,
-            &chunks,
-            "text-embedding-3-small",
-            5,
-        )
-        .expect("pack");
-        assert!(batches.len() >= 2, "expected multi-batch, got {}", batches.len());
+        let batches =
+            pack_prepared_ingestion_batches(&ctx, &result, &chunks, "text-embedding-3-small", 5)
+                .expect("pack");
+        assert!(
+            batches.len() >= 2,
+            "expected multi-batch, got {}",
+            batches.len()
+        );
         assert_eq!(batches[0].batch_ordinal, 0);
         assert_eq!(batches[0].expected_revision, Some(4));
         assert_eq!(batches[1].batch_ordinal, 1);
@@ -1267,7 +1260,10 @@ mod tests {
 
     #[test]
     fn pack_chunk_index_ranges_respects_budget() {
-        assert_eq!(pack_chunk_index_ranges(&[100, 100, 100], 250), vec![(0, 2), (2, 3)]);
+        assert_eq!(
+            pack_chunk_index_ranges(&[100, 100, 100], 250),
+            vec![(0, 2), (2, 3)]
+        );
         assert_eq!(pack_chunk_index_ranges(&[50, 50], 200), vec![(0, 2)]);
         assert_eq!(pack_chunk_index_ranges(&[], 100), vec![(0, 0)]);
     }

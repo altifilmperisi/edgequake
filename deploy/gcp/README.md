@@ -1,6 +1,6 @@
 # EdgeQuake on GCP — cheapest host (SPEC-148 Option A)
 
-GCE VM **`elitizon-db`** (shared AGE + pgvector host) + Docker Compose (GHCR v0.28.1) in project `saas-app-001`.  
+GCE VM **`elitizon-db`** (shared AGE + pgvector host) + Docker Compose (GHCR v0.28.2) in project `saas-app-001`.  
 Caddy is the only public listener: **:80 always redirects to HTTPS**.
 
 GCP objects (bucket, secrets, WIF, SAs, IP) use the **`edgequake-*`** prefix — not the spec number `eq148`. VPC is **`edgequake-host-vpc`** (leftover Option B already owns `edgequake-vpc`).
@@ -48,13 +48,13 @@ gcloud secrets versions access latest --secret=edgequake-bootstrap-admin-passwor
 
 Set GitHub Actions variables from outputs:
 
-| GitHub variable | Terraform output |
-|-----------------|------------------|
+| GitHub variable              | Terraform output             |
+| ------------------------------| ------------------------------|
 | `EDGEQUAKE_GCP_WIF_PROVIDER` | `workload_identity_provider` |
-| `EDGEQUAKE_GCP_DEPLOY_SA` | `github_service_account` |
-| `EDGEQUAKE_GCP_PROJECT` | `saas-app-001` |
-| `EDGEQUAKE_GCP_ZONE` | `us-central1-a` |
-| `EDGEQUAKE_GCP_INSTANCE` | `elitizon-db` |
+| `EDGEQUAKE_GCP_DEPLOY_SA`    | `github_service_account`     |
+| `EDGEQUAKE_GCP_PROJECT`      | `saas-app-001`               |
+| `EDGEQUAKE_GCP_ZONE`         | `us-central1-a`              |
+| `EDGEQUAKE_GCP_INSTANCE`     | `elitizon-db`                |
 
 Optional LLM keys (never commit):
 
@@ -77,7 +77,7 @@ The workflow file must be on `edgequake-main`. WIF accepts only `refs/heads/edge
 Or on the VM:
 
 ```bash
-sudo /opt/edgequake/scripts/install-release.sh 0.28.1
+sudo /opt/edgequake/scripts/install-release.sh 0.28.2
 ```
 
 `deploy.sh` is LD-15: `migrate dry-run` → `migrate` → `up` → HTTP 301 gate → `/health` → `\dx` (vector + age).

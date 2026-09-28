@@ -4,6 +4,28 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.28.2] — 2026-09-29
+
+Patch: dense-document KG persist no longer dies on SPEC-149 admission when a
+single `PreparedIngestionBatch` exceeds **10 000** records (chunks + facts +
+contributions + embeddings). The pipeline now emits chunk-aligned staging
+batches with correct `expected_revision` fencing and commits them in ordinal
+order. **Schema stays at 160**. Upgrade:
+[`docs/operations/upgrade-to-0.28.2.md`](docs/operations/upgrade-to-0.28.2.md).
+
+**Deps (crates.io):** unchanged (`edgequake-llm` **0.10.8**, `edgequake-pdf2md`
+**0.9.11**, `edgeparse-core` **0.2.5**; `edgequake-sdk` **0.4.0**).
+
+**SPEC-001 Acc:** attested from existing
+[`publish/latest`](specs/001-benchmark/e2e/artifacts/publish/latest/)
+(`valid: true`, medical-mid, `2026-08-15T11:02:18Z`) — no fresh n=200 run;
+**PDF geometry not re-scored**.
+
+### Fixed
+- **Ingestion persist** — `pack_prepared_ingestion_batches` splits under
+  `MAX_BATCH_RECORDS` so dense PDFs (e.g. 10 850 prepared records) commit
+  instead of failing with `batch contains N records; maximum is 10000`.
+
 ## [0.28.1] — 2026-09-28
 
 Patch: post-0.28.0 CI/docs/compose hygiene so required gates match the product
