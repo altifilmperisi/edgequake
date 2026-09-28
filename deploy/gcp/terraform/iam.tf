@@ -68,6 +68,15 @@ resource "google_compute_instance_iam_member" "github_viewer" {
   member        = "serviceAccount:${google_service_account.github.email}"
 }
 
+# gcloud compute ssh resolves the project before the instance. Instance-scoped
+# compute.viewer does not include compute.projects.get — without this binding
+# CD fails with: Required 'compute.projects.get' permission for 'projects/…'
+resource "google_project_iam_member" "github_compute_viewer" {
+  project = var.project_id
+  role    = "roles/compute.viewer"
+  member  = "serviceAccount:${google_service_account.github.email}"
+}
+
 resource "google_project_iam_member" "operators_iap" {
   for_each = toset(var.operator_members)
   project  = var.project_id
