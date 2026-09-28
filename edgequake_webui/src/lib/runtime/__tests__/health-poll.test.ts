@@ -1,6 +1,9 @@
 import { describe, expect, it } from "bun:test";
 import {
+  DEGRADED_HEALTH_POLL_MS,
   HEALTH_DETAILS_MIN_MS,
+  getBackendReadyRefetchIntervalForState,
+  getHealthDetailsRefetchIntervalForState,
   resolveHealthPollIntervals,
 } from "../health-poll";
 
@@ -31,5 +34,24 @@ describe("resolveHealthPollIntervals", () => {
       backendReady: false,
       healthDetails: false,
     });
+  });
+});
+
+describe("GH-400 degraded health poll", () => {
+  it("polls backend-ready while degraded so Busy can clear", () => {
+    expect(getBackendReadyRefetchIntervalForState("degraded")).toBe(
+      DEGRADED_HEALTH_POLL_MS,
+    );
+  });
+
+  it("does not force-poll when ready (honors default-off config)", () => {
+    // Default config is off; ready must not invent a poll loop.
+    expect(getBackendReadyRefetchIntervalForState("ready")).toBe(false);
+  });
+
+  it("keeps health details on a floor while degraded", () => {
+    expect(getHealthDetailsRefetchIntervalForState("degraded")).toBe(
+      Math.max(DEGRADED_HEALTH_POLL_MS, HEALTH_DETAILS_MIN_MS),
+    );
   });
 });

@@ -189,7 +189,7 @@ impl PostgresAGEGraphStorage {
         // SPEC-089 / F-336-15 / LAW-H2: no app timeout on trait path — PG must kill.
         let timeout_ms = super::super::helpers::graph_query_statement_timeout_ms();
         let mut timed = super::super::helpers::LocalTimeoutTx::begin(&mut conn, timeout_ms).await?;
-        let rows = match sqlx::query(&sql).fetch_all(&mut **timed.as_mut()).await {
+        let rows = match sqlx::query(&sql).fetch_all(timed.as_mut()).await {
             Ok(r) => {
                 timed.commit().await?;
                 r
@@ -268,7 +268,7 @@ impl PostgresAGEGraphStorage {
             escaped_query, self.graph_name, tenant_and, limit
         );
 
-        let fts_rows = sqlx::query(&fts_sql).fetch_all(&mut **timed.as_mut()).await;
+        let fts_rows = sqlx::query(&fts_sql).fetch_all(timed.as_mut()).await;
 
         // If full-text search finds results, return them
         if let Ok(rows) = &fts_rows {
@@ -307,9 +307,7 @@ impl PostgresAGEGraphStorage {
             escaped_query, self.graph_name, tenant_and, limit
         );
 
-        let trgm_rows = sqlx::query(&trgm_sql)
-            .fetch_all(&mut **timed.as_mut())
-            .await;
+        let trgm_rows = sqlx::query(&trgm_sql).fetch_all(timed.as_mut()).await;
         tracing::debug!(sql = %trgm_sql, result = ?trgm_rows.as_ref().map(|r| r.len()).unwrap_or(0), "trigram search");
 
         // If trigram search finds results, return them
@@ -342,10 +340,7 @@ impl PostgresAGEGraphStorage {
             self.graph_name, escaped_query, tenant_and, limit
         );
 
-        let prefix_rows = match sqlx::query(&prefix_sql)
-            .fetch_all(&mut **timed.as_mut())
-            .await
-        {
+        let prefix_rows = match sqlx::query(&prefix_sql).fetch_all(timed.as_mut()).await {
             Ok(r) => {
                 timed.commit().await?;
                 r
@@ -427,7 +422,7 @@ impl PostgresAGEGraphStorage {
         // SPEC-089 Wave 3 / F-336-10: match run_timed_graph_query with PG kill.
         let timeout_ms = super::super::helpers::graph_query_statement_timeout_ms();
         let mut timed = super::super::helpers::LocalTimeoutTx::begin(&mut conn, timeout_ms).await?;
-        let rows = match sqlx::query(&sql).fetch_all(&mut **timed.as_mut()).await {
+        let rows = match sqlx::query(&sql).fetch_all(timed.as_mut()).await {
             Ok(r) => {
                 timed.commit().await?;
                 r
@@ -509,7 +504,7 @@ impl PostgresAGEGraphStorage {
         // SPEC-089 Wave 3 / F-336-10: PG kill aligned with run_timed_graph_query.
         let timeout_ms = super::super::helpers::graph_query_statement_timeout_ms();
         let mut timed = super::super::helpers::LocalTimeoutTx::begin(&mut conn, timeout_ms).await?;
-        let rows = match sqlx::query(&sql).fetch_all(&mut **timed.as_mut()).await {
+        let rows = match sqlx::query(&sql).fetch_all(timed.as_mut()).await {
             Ok(r) => {
                 timed.commit().await?;
                 r

@@ -116,11 +116,7 @@ pub async fn workspaces_needing_community_backfill(
         if node.properties.contains_key("community_id") {
             continue;
         }
-        let Some(ws) = node
-            .properties
-            .get("workspace_id")
-            .and_then(|v| v.as_str())
-        else {
+        let Some(ws) = node.properties.get("workspace_id").and_then(|v| v.as_str()) else {
             continue;
         };
         if uuid::Uuid::parse_str(ws).is_ok() {
@@ -296,29 +292,17 @@ mod tests {
                 .unwrap();
         }
         graph
-            .upsert_edge(
-                &format!("{ws}::A"),
-                &format!("{ws}::B"),
-                HashMap::new(),
-            )
+            .upsert_edge(&format!("{ws}::A"), &format!("{ws}::B"), HashMap::new())
             .await
             .unwrap();
         graph
-            .upsert_edge(
-                &format!("{ws}::B"),
-                &format!("{ws}::C"),
-                HashMap::new(),
-            )
+            .upsert_edge(&format!("{ws}::B"), &format!("{ws}::C"), HashMap::new())
             .await
             .unwrap();
 
         let result = backfill_communities_if_needed(graph.clone()).await.unwrap();
         assert!(result.is_some(), "scoped backfill should run");
-        let a = graph
-            .get_node(&format!("{ws}::A"))
-            .await
-            .unwrap()
-            .unwrap();
+        let a = graph.get_node(&format!("{ws}::A")).await.unwrap().unwrap();
         assert!(
             a.properties.contains_key("community_id"),
             "workspace nodes must be labeled"

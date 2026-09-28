@@ -102,8 +102,7 @@ pub struct PostgresAGEGraphStorage {
     ensure_indexes_lock: Arc<Mutex<()>>,
     /// GH-404: held sessions for `pg_try_advisory_lock` community refresh keys.
     /// Connection stays checked out until unlock (session-scoped advisory locks).
-    community_refresh_locks:
-        Mutex<HashMap<String, sqlx::pool::PoolConnection<sqlx::Postgres>>>,
+    community_refresh_locks: Mutex<HashMap<String, sqlx::pool::PoolConnection<sqlx::Postgres>>>,
 }
 
 impl PostgresAGEGraphStorage {
@@ -186,12 +185,11 @@ impl PostgresAGEGraphStorage {
         let Some(mut conn) = held.remove(&payload) else {
             return Ok(());
         };
-        let _ = sqlx::query(
-            "SELECT pg_advisory_unlock(hashtext('edgequake.community'), hashtext($1))",
-        )
-        .bind(&payload)
-        .execute(&mut *conn)
-        .await;
+        let _ =
+            sqlx::query("SELECT pg_advisory_unlock(hashtext('edgequake.community'), hashtext($1))")
+                .bind(&payload)
+                .execute(&mut *conn)
+                .await;
         Ok(())
     }
 

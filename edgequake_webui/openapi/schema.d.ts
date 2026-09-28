@@ -1605,6 +1605,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/documents/{document_id}/pages/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** GET `/api/v1/documents/{document_id}/pages/health` */
+        get: operations["get_pages_health"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/{document_id}/pages/reprocess": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** POST `/api/v1/documents/{document_id}/pages/reprocess` */
+        post: operations["reprocess_pages"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/documents/{document_id}/pages/{page_number}/layout": {
         parameters: {
             query?: never;
@@ -9297,6 +9331,52 @@ export interface components {
             task_queue: components["schemas"]["TaskQueueHealthSnapshot"];
         };
         /**
+         * @description One page's health across stages.
+         * @example {
+         *       "entities": {},
+         *       "figures": {},
+         *       "page_number": {},
+         *       "parse": {}
+         *     }
+         */
+        PageHealth: {
+            entities: components["schemas"]["StageHealth"];
+            figures: components["schemas"]["StageHealth"];
+            /** Format: int32 */
+            page_number: number;
+            parse: components["schemas"]["StageHealth"];
+        };
+        /**
+         * @example {
+         *       "document_id": {},
+         *       "page_count": {},
+         *       "pages": [],
+         *       "source": {},
+         *       "summary": {}
+         *     }
+         */
+        PageHealthResponse: {
+            document_id: string;
+            /** Format: int32 */
+            page_count: number;
+            pages: components["schemas"]["PageHealth"][];
+            /** @description `stored` when rows come from `document_page_states`; else `derived`. */
+            source: string;
+            summary: components["schemas"]["PageHealthSummary"];
+        };
+        /**
+         * @example {
+         *       "entities_failed": {},
+         *       "figures_failed": {},
+         *       "parse_failed": {}
+         *     }
+         */
+        PageHealthSummary: {
+            entities_failed: number;
+            figures_failed: number;
+            parse_failed: number;
+        };
+        /**
          * @example {
          *       "asset_path": {},
          *       "bbox_norm": {},
@@ -9656,6 +9736,29 @@ export interface components {
             page_timings?: components["schemas"]["PageTiming"][] | null;
             request_id: string;
             warnings?: string[];
+        };
+        /**
+         * @description Dry-run / enqueue plan returned to clients.
+         * @example {
+         *       "dirty_chunk_count": {},
+         *       "effective_stages": [],
+         *       "estimated_vision_calls": {},
+         *       "pages": [],
+         *       "requested_stages": [],
+         *       "reusable_chunk_count": {},
+         *       "suggest_full_reprocess": {},
+         *       "warnings": []
+         *     }
+         */
+        PartialReprocessPlan: {
+            dirty_chunk_count: number;
+            effective_stages: string[];
+            estimated_vision_calls: number;
+            pages: number[];
+            requested_stages: string[];
+            reusable_chunk_count: number;
+            suggest_full_reprocess: boolean;
+            warnings: string[];
         };
         /**
          * @description Result for a single file in batch PDF upload.
@@ -11753,6 +11856,40 @@ export interface components {
             v2_migration?: null | components["schemas"]["V2MigrationHint"];
         };
         /**
+         * @description Request body for POST pages/reprocess.
+         *
+         *     `pages` accepts either a JSON array of page numbers or a range string
+         *     (`"1-3,7"`). Clients may also send `page_numbers` as an alias array.
+         * @example {
+         *       "dry_run": {},
+         *       "page_numbers": [],
+         *       "pages": {},
+         *       "stages": []
+         *     }
+         */
+        ReprocessPagesRequest: {
+            dry_run?: boolean;
+            /** @description Alias when clients send a plain array as `page_numbers`. */
+            page_numbers?: number[] | null;
+            /** @description Page list (`[1,2,3]`) or range string (`"1-3,7"`). */
+            pages?: unknown;
+            stages: string[];
+        };
+        /**
+         * @example {
+         *       "dry_run": {},
+         *       "plan": {},
+         *       "task_id": {},
+         *       "track_id": {}
+         *     }
+         */
+        ReprocessPagesResponse: {
+            dry_run: boolean;
+            plan: components["schemas"]["PartialReprocessPlan"];
+            task_id?: string | null;
+            track_id?: string | null;
+        };
+        /**
          * @example {
          *       "coverage_score": {},
          *       "empty_context": {},
@@ -12306,6 +12443,26 @@ export interface components {
             source_type: string;
             /** @description Start line number in the document. */
             start_line?: number | null;
+        };
+        /**
+         * @description Per-stage status payload.
+         * @example {
+         *       "chunk_count": {},
+         *       "count": {},
+         *       "error": {},
+         *       "failed_chunk_count": {},
+         *       "status": {}
+         *     }
+         */
+        StageHealth: {
+            /** Format: int32 */
+            chunk_count?: number | null;
+            /** Format: int32 */
+            count?: number | null;
+            error?: string | null;
+            /** Format: int32 */
+            failed_chunk_count?: number | null;
+            status: string;
         };
         /**
          * @description Task statistics by status.
@@ -15992,6 +16149,13 @@ export interface operations {
                     "application/json": components["schemas"]["DocumentSearchResponse"];
                 };
             };
+            /** @description Read path busy under ingest load */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     get_track_status: {
@@ -16548,6 +16712,93 @@ export interface operations {
             };
             /** @description Invalid document id or missing workspace */
             400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_pages_health: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Document UUID */
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Per-page parse/figures/entities health */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PageHealthResponse"];
+                };
+            };
+            /** @description Invalid document id or missing workspace */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    reprocess_pages: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Document UUID */
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReprocessPagesRequest"];
+            };
+        };
+        responses: {
+            /** @description Dry-run plan */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReprocessPagesResponse"];
+                };
+            };
+            /** @description Reprocess accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReprocessPagesResponse"];
+                };
+            };
+            /** @description Invalid pages or stages */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Active task already running on document */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not a PDF / missing markers / no vision */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -18690,6 +18941,13 @@ export interface operations {
                     "application/json": components["schemas"]["TenantListResponse"];
                 };
             };
+            /** @description Read path busy under ingest load */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     create_tenant: {
@@ -18864,6 +19122,13 @@ export interface operations {
             };
             /** @description Tenant not found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Read path busy under ingest load */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

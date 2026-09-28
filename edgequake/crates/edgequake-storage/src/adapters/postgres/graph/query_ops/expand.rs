@@ -239,7 +239,7 @@ impl PostgresAGEGraphStorage {
         let timeout_ms = super::super::helpers::graph_query_statement_timeout_ms();
         let mut timed = super::super::helpers::LocalTimeoutTx::begin(&mut conn, timeout_ms).await?;
         if let Err(e) = sqlx::query("SET LOCAL search_path TO ag_catalog, \"$user\", public")
-            .execute(&mut **timed.as_mut())
+            .execute(timed.as_mut())
             .await
         {
             let _ = timed.rollback().await;
@@ -249,7 +249,7 @@ impl PostgresAGEGraphStorage {
         }
         let rows = match sqlx::query(&sql)
             .bind(node_ids)
-            .fetch_all(&mut **timed.as_mut())
+            .fetch_all(timed.as_mut())
             .await
         {
             Ok(r) => {

@@ -234,6 +234,7 @@ pub async fn create_tenant(
     params(PaginationParams),
     responses(
         (status = 200, description = "List of tenants", body = TenantListResponse),
+        (status = 503, description = "Read path busy under ingest load")
     ),
     tags = ["tenants"]
 )]

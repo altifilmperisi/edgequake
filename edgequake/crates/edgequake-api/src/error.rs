@@ -173,8 +173,14 @@ pub enum ApiError {
 
     /// Interactive document/tenant read path saturated or past deadline.
     /// Returns HTTP 503 with code `read_path_busy` (local-ingest hardening).
+    ///
+    /// `reason` is machine-readable: `permit_wait`, `permit_closed`, or
+    /// `work_deadline` (GH-400).
     #[error("Read path busy")]
-    ReadPathBusy { retry_after_ms: u64 },
+    ReadPathBusy {
+        retry_after_ms: u64,
+        reason: &'static str,
+    },
 
     /// Not implemented.
     #[error("Not implemented: {feature}")]
@@ -326,9 +332,13 @@ impl ApiError {
                 "retry_after_secs": retry_after_secs,
                 "retryable": true,
             }),
-            Self::ReadPathBusy { retry_after_ms } => json!({
+            Self::ReadPathBusy {
+                retry_after_ms,
+                reason,
+            } => json!({
                 "kind": "read_path_busy",
                 "retry_after_ms": retry_after_ms,
+                "reason": reason,
                 "retryable": true,
             }),
             Self::NotImplemented { feature } => {
@@ -484,11 +494,16 @@ impl IntoResponse for ApiError {
             );
         }
 
-        if let Self::ReadPathBusy { retry_after_ms } = &self {
+        if let Self::ReadPathBusy {
+            retry_after_ms,
+            reason,
+        } = &self
+        {
             let retry_after_secs = (*retry_after_ms).div_ceil(1000).max(1);
-            // Surface machine-readable retry_after_ms in the top-level body too.
+            // Surface machine-readable retry_after_ms + reason in the body.
             error.details = Some(json!({
                 "retry_after_ms": retry_after_ms,
+                "reason": reason,
                 "retryable": true,
             }));
             return problem_details::into_problem_json_response(
@@ -535,8 +550,14 @@ impl ApiError {
 
     /// Interactive read path busy (pool/runtime pressure during ingest).
     pub fn read_path_busy(retry_after_ms: u64) -> Self {
+        Self::read_path_busy_with_reason(retry_after_ms, "work_deadline")
+    }
+
+    /// Interactive read path busy with an explicit machine-readable reason (GH-400).
+    pub fn read_path_busy_with_reason(retry_after_ms: u64, reason: &'static str) -> Self {
         Self::ReadPathBusy {
             retry_after_ms: retry_after_ms.max(500),
+            reason,
         }
     }
 }
@@ -1297,6 +1318,7 @@ mod tests {
             ApiError::RateLimited,
             ApiError::ReadPathBusy {
                 retry_after_ms: 2000,
+                reason: "work_deadline",
             },
             ApiError::NotImplemented {
                 feature: "test".into(),

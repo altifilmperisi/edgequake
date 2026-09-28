@@ -1,6 +1,6 @@
 # SPEC-151 — Partial Page Reprocess
 
-> **Status:** Implementing (WP-1..WP-9).  
+> **Status:** On `main` after v0.27.0 (migration **160**). Not in the v0.27.0 tag.  
 > **Scope:** Reprocess selected pages of an already-uploaded PDF without discarding
 > healthy pages. Stages: **parsing**, **figures/charts**, **entity extraction**.  
 > **Related:** [SPEC-051 reprocess](../051-reprocess/), [SPEC-134 PDF modality](../134-pdf-modality/),

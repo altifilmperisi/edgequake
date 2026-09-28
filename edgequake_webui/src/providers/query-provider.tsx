@@ -35,7 +35,7 @@ interface QueryProviderProps {
  * state (see BackendStatusBanner) instead of crashing with the Next.js dev
  * overlay.
  */
-function retryPolicy(failureCount: number, error: unknown): boolean {
+export function retryPolicy(failureCount: number, error: unknown): boolean {
   // Client-side deadline elapsed — at most one retry so skeletons cannot spin.
   if (error instanceof Error && error.name === 'TimeoutError') {
     return failureCount < 1;
@@ -59,7 +59,22 @@ function retryPolicy(failureCount: number, error: unknown): boolean {
   return failureCount < 1;
 }
 
-function retryDelay(attemptIndex: number): number {
+/**
+ * Backoff for query retries.
+ *
+ * GH-400: honor `details.retry_after_ms` on `read_path_busy` so the single
+ * retry does not immediately re-saturate the interactive read path.
+ */
+export function retryDelay(attemptIndex: number, error?: unknown): number {
+  const code = (error as { code?: string } | undefined)?.code;
+  const details = (error as { details?: { retry_after_ms?: unknown } } | undefined)
+    ?.details;
+  if (code === 'read_path_busy') {
+    const ms = details?.retry_after_ms;
+    if (typeof ms === 'number' && Number.isFinite(ms)) {
+      return Math.min(Math.max(ms, 500), 8000);
+    }
+  }
   // Exponential backoff: 1s, 2s, 4s, 8s — capped at 8s to avoid long stalls
   return Math.min(1000 * 2 ** attemptIndex, 8000);
 }

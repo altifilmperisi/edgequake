@@ -22,6 +22,7 @@ Ingestion cancel, lease, and multi-replica behavior are documented in depth in t
 | **Lease stuck in Processing** | [Common Issues §3.2](/docs/troubleshooting/common-issues/#32-lease-stuck-in-processing) |
 | **`EDGEQUAKE_REPLICAS>1` boot fail** | [Common Issues §3.4](/docs/troubleshooting/common-issues/#34-multi-replica-boot-failure-edgequake_replicas1) |
 | Queue pressure & compensation quarantine | [Observability — queue metrics](../OBSERVABILITY.md#queue-pressure--store-contention-v019) |
+| **Documents "Read path busy"** (503, header Busy) | [Common Issues §10](/docs/troubleshooting/common-issues/#10-documents-page-read-path-busy) |
 
 ## Related
 

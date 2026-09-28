@@ -660,7 +660,7 @@ impl PostgresAGEGraphStorage {
                 tgt = tgt,
             );
 
-            let rows = match sqlx::query(&sql).fetch_all(&mut **timed.as_mut()).await {
+            let rows = match sqlx::query(&sql).fetch_all(timed.as_mut()).await {
                 Ok(r) => r,
                 Err(e) => {
                     let _ = timed.rollback().await;

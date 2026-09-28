@@ -111,6 +111,12 @@ Common `/ready` blockers (v0.23.0):
 
 Env thresholds for store contention: `EDGEQUAKE_DB_POOL_UTIL_WARN=0.75`, `EDGEQUAKE_DB_POOL_UTIL_CRITICAL=0.90`, `EDGEQUAKE_COMPENSATION_QUARANTINE_WARN=1`, `EDGEQUAKE_COMPENSATION_QUARANTINE_CRITICAL=5`.
 
+### Interactive read path vs `/ready`
+
+`/health` may stay HTTP 200 with `"status": "degraded"`. The WebUI shows that as **Busy** and, while degraded, polls every 5s so the pill clears without a reload.
+
+A separate HTTP **503** `read_path_busy` is the catalog deadline (documents, document search, tenants, workspace list). It carries `details.reason` and `Retry-After`. It does not mean `/ready` failed. Operator notes: [Read path busy](/docs/troubleshooting/common-issues/#10-documents-page-read-path-busy).
+
 ### Queue Metrics
 
 ```bash

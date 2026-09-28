@@ -241,7 +241,7 @@ async fn e2e_spec405_typed_fts_without_legacy_vectors() {
         .text_search_filtered(
             TOKEN,
             10,
-            Some(&[prose_key.clone()]),
+            Some(std::slice::from_ref(&prose_key)),
             Some(&MetadataFilter {
                 workspace_id: Some(ws.to_string()),
                 vector_type: Some("chunk".into()),

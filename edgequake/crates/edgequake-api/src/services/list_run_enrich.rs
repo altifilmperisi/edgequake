@@ -4,9 +4,37 @@
 //! and serving-fence queryability (LD-09) must be projections on that surface,
 //! not a second poll product.
 
+use std::future::Future;
+use std::time::Duration;
+
 use edgequake_tasks::{estimate_queues_batch, TaskStorage};
 
 use crate::handlers::documents_types::DocumentSummary;
+
+/// Run best-effort interactive work under the statement-timeout budget.
+///
+/// GH-400 / LAW-H2: on expiry, log and return — **never** map to 503.
+/// Use for page enrich / detail promote that must not fail the HTTP read.
+pub async fn run_best_effort_interactive<F, Fut, T>(label: &'static str, work: F) -> Option<T>
+where
+    F: FnOnce() -> Fut,
+    Fut: Future<Output = T>,
+{
+    // Align with LocalTimeoutTx budget when postgres is on; otherwise the
+    // interactive read envelope minus the LAW-H2 cancel headroom.
+    let timeout_ms = crate::read_path::documents_read_pg_timeout_ms() as u64;
+    match tokio::time::timeout(Duration::from_millis(timeout_ms), work()).await {
+        Ok(value) => Some(value),
+        Err(_) => {
+            tracing::warn!(
+                timeout_ms,
+                label,
+                "GH-400: best-effort interactive work exceeded budget — leaving rows as-is"
+            );
+            None
+        }
+    }
+}
 
 /// True when the row should show queue chrome (pending admission / fairness wait).
 pub fn needs_queue_estimate(doc: &DocumentSummary) -> bool {
@@ -88,6 +116,22 @@ pub async fn enrich_page_query_ready(
         return;
     }
 
+    let timeout_ms = edgequake_storage::interactive_statement_timeout_ms();
+    let mut conn = match pool.acquire().await {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::warn!(error = %e, "query_ready enrich: pool acquire failed");
+            return;
+        }
+    };
+    let mut timed = match edgequake_storage::LocalTimeoutTx::begin(&mut conn, timeout_ms).await {
+        Ok(t) => t,
+        Err(e) => {
+            tracing::warn!(error = %e, "query_ready enrich: statement_timeout begin failed");
+            return;
+        }
+    };
+
     #[derive(sqlx::FromRow)]
     struct Row {
         document_id: uuid::Uuid,
@@ -111,9 +155,13 @@ pub async fn enrich_page_query_ready(
         "#,
     )
     .bind(&ids)
-    .fetch_all(pool)
+    .fetch_all(timed.as_mut())
     .await
     .unwrap_or_default();
+
+    if let Err(e) = timed.commit().await {
+        tracing::warn!(error = %e, "query_ready enrich: commit failed");
+    }
 
     let mut map = std::collections::HashMap::new();
     for row in rows {
@@ -138,8 +186,23 @@ pub async fn enrich_page_query_ready(
 /// WHY: Durable commit leaves `projecting` until SPEC-149 replay settles. The
 /// periodic reconciler eventually heals, but list polls should close ActiveRuns
 /// as soon as deliveries are applied without waiting for the next reconcile tick.
+///
+/// GH-400 / LAW-H2: whole loop is best-effort under the interactive statement
+/// budget — timeout leaves rows as projecting and never fails the list.
 #[cfg(feature = "postgres")]
 pub async fn enrich_page_projecting_promote(
+    kv: &std::sync::Arc<dyn edgequake_storage::traits::KVStorage>,
+    pool: &sqlx::PgPool,
+    documents: &mut [DocumentSummary],
+) {
+    let _ = run_best_effort_interactive("list_projecting_promote", || {
+        enrich_page_projecting_promote_inner(kv, pool, documents)
+    })
+    .await;
+}
+
+#[cfg(feature = "postgres")]
+async fn enrich_page_projecting_promote_inner(
     kv: &std::sync::Arc<dyn edgequake_storage::traits::KVStorage>,
     pool: &sqlx::PgPool,
     documents: &mut [DocumentSummary],

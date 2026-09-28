@@ -419,6 +419,8 @@ Fallback tables `graph_nodes` / `graph_edges` (M013) exist if AGE is missing —
 
 ## 6. pgvector
 
+**Current authority** is `EDGEQUAKE_VECTOR_BACKEND=typed_embeddings` (the default). Dense ANN reads and writes typed embedding tables (`chunk_embeddings` and the fleet tables). Sparse FTS reads `public.chunks.content_tsv` ([#405](https://github.com/raphaelmansuy/edgequake/issues/405)). Retired `eq_*_vectors` relations are not selected on that path; a missing legacy table must not surface as `42P01`. Set `EDGEQUAKE_VECTOR_BACKEND=legacy_tables` only for an explicit rollback. The DDL sketch below is that legacy shape.
+
 ### DDL (runtime)
 
 From [`vector/ddl.rs`](../../edgequake/crates/edgequake-storage/src/adapters/postgres/vector/ddl.rs):
@@ -488,30 +490,24 @@ Also: btree on `document_id`, `(tenant_id, workspace_id)`.
 
 ## 7. Text search (FTS)
 
-### Chunk sparse retrieval (vectors + KV)
+### Chunk sparse retrieval
 
-Chunk vectors store `content_ref` only (SPEC-024) — not inline `content`. SPEC-058 makes `content_tsv` a **writable** column populated at upsert from KV (or metadata content), with `NULLIF(empty_tsv, …)` so legacy empty rows still fall through to the KV join.
-
-[`fts.rs`](../../edgequake/crates/edgequake-storage/src/adapters/postgres/vector/fts.rs):
+Default backend ([#405](https://github.com/raphaelmansuy/edgequake/issues/405) / SPEC-091): FTS is `public.chunks.content_tsv` (migration 136, English regconfig), joined to `documents` for workspace scope. [`fts.rs`](../../edgequake/crates/edgequake-storage/src/adapters/postgres/vector/fts.rs) `TYPED_CHUNKS_FTS_SQL`:
 
 ```sql
-SELECT v.id, v.metadata,
-       ts_rank_cd(
-         coalesce(NULLIF(v.content_tsv, ''::tsvector),
-                  to_tsvector('english', coalesce(v.metadata->>'content',
-                                                 k.value->>'content', ''))),
-         websearch_to_tsquery('english', $1)
-       )::float4 AS score
-FROM public.eq_eq_default_ws_XXXXXXXX_vectors v
-LEFT JOIN public.eq_eq_default_kv k
-  ON k.key = coalesce(v.metadata->>'content_ref', v.id)
-WHERE coalesce(...) @@ websearch_to_tsquery('english', $1)
+SELECT coalesce(c.metadata->>'legacy_chunk_key', c.id::text) AS id,
+       c.metadata,
+       ts_rank_cd(c.content_tsv, websearch_to_tsquery('english', $1))::float4 AS score
+FROM public.chunks c
+JOIN public.documents d ON d.id = c.document_id
+WHERE c.content_tsv @@ websearch_to_tsquery('english', $1)
+  -- workspace, tenant, document, modality, id filters
 ORDER BY score DESC
 LIMIT $k;
 ```
 
-- GIN on writable `content_tsv` (M091 / ensure_content_fts; M045 historically used a generated column).
-- Workspace vector tables hold embeddings; **chunk text SSOT remains default KV**.
+- GIN on `chunks.content_tsv`.
+- The older `eq_*_vectors.content_tsv` query (SPEC-058 writable column, optional KV join while `chunk_kv` still exists) runs only on `EDGEQUAKE_VECTOR_BACKEND=legacy_tables`.
 
 ### Entity CQRS FTS
 

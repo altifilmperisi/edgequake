@@ -128,7 +128,7 @@ impl VectorStorage for PgVectorStorage {
             Self::search_tuning_statements(self.effective_index_type(), tune_k, false, false)
         {
             sqlx::query(&stmt)
-                .execute(&mut **timed.as_mut())
+                .execute(timed.as_mut())
                 .await
                 .map_err(|e| StorageError::Database(format!("Failed to set search GUC: {}", e)))?;
         }
@@ -138,13 +138,13 @@ impl VectorStorage for PgVectorStorage {
                 .bind(&embedding_str)
                 .bind(ids)
                 .bind(top_k as i32)
-                .fetch_all(&mut **timed.as_mut())
+                .fetch_all(timed.as_mut())
                 .await
         } else {
             sqlx::query(&sql)
                 .bind(&embedding_str)
                 .bind(top_k as i32)
-                .fetch_all(&mut **timed.as_mut())
+                .fetch_all(timed.as_mut())
                 .await
         };
 
@@ -1043,7 +1043,7 @@ impl VectorStorage for PgVectorStorage {
             iterative_scan,
         ) {
             sqlx::query(&stmt)
-                .execute(&mut **timed.as_mut())
+                .execute(timed.as_mut())
                 .await
                 .map_err(|e| StorageError::Database(format!("Failed to set search GUC: {}", e)))?;
         }
@@ -1058,7 +1058,7 @@ impl VectorStorage for PgVectorStorage {
             workspace_row_count,
         ) {
             sqlx::query(&stmt)
-                .execute(&mut **timed.as_mut())
+                .execute(timed.as_mut())
                 .await
                 .map_err(|e| {
                     StorageError::Database(format!("Failed to set Wave-2 planner bias: {e}"))
@@ -1066,7 +1066,7 @@ impl VectorStorage for PgVectorStorage {
         }
 
         let rows = sqlx::query_with(&sql, args)
-            .fetch_all(&mut **timed.as_mut())
+            .fetch_all(timed.as_mut())
             .await
             .map_err(|e| StorageError::Database(format!("Filtered vector query failed: {}", e)))?;
 

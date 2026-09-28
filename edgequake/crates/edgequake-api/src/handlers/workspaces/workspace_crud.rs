@@ -199,6 +199,7 @@ pub async fn create_workspace(
     responses(
         (status = 200, description = "List of workspaces", body = WorkspaceListResponse),
         (status = 404, description = "Tenant not found"),
+        (status = 503, description = "Read path busy under ingest load")
     ),
     tags = ["workspaces"]
 )]
@@ -207,9 +208,6 @@ pub async fn list_workspaces(
     Path(tenant_id): Path<Uuid>,
     Query(params): Query<ListWorkspacesParams>,
 ) -> Result<Json<WorkspaceListResponse>, ApiError> {
-    // Owned handle for the optional stats pass: capturing `&state` inside the
-    // guard closure would conflict with the `&state.read_path_db` borrow.
-    let stats_state = state.clone();
     crate::read_path::run_with_read_path_guard(&state.read_path_db, || async move {
         let include_stats = params.include_stats;
         let limit = params.limit.min(100);
@@ -241,14 +239,14 @@ pub async fn list_workspaces(
 
         // Opt-in only: keeps the default payload byte-identical and avoids
         // paying the stats cost for callers that just need the list.
-        // Best-effort per item — a slow workspace yields `stats: null`
-        // rather than failing the whole listing.
+        // GH-400: cache-only under the 2.5s guard — miss → stats: null.
+        // Dedicated GET .../stats warms WORKSPACE_STATS_CACHE outside this path.
         if include_stats {
-            let stats = futures::future::join_all(items.iter().map(|item| {
-                let state = stats_state.clone();
-                let id = item.id;
-                async move { super::stats::workspace_stats_best_effort(&state, id).await }
-            }))
+            let stats = futures::future::join_all(
+                items
+                    .iter()
+                    .map(|item| super::stats::workspace_stats_cached_only(item.id)),
+            )
             .await;
             for (item, stat) in items.iter_mut().zip(stats) {
                 item.stats = stat;

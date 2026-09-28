@@ -23,10 +23,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use uuid::Uuid;
 
-fn scoped_node(
-    ws: &str,
-    name: &str,
-) -> (String, HashMap<String, serde_json::Value>) {
+fn scoped_node(ws: &str, name: &str) -> (String, HashMap<String, serde_json::Value>) {
     let id = format!("{ws}::{name}");
     let mut props = HashMap::new();
     props.insert("node_id".into(), json!(id));
@@ -111,10 +108,7 @@ async fn gh404_community_edge_keyset_explain_avoids_offset_and_vertex_joins() {
             .collect::<Vec<_>>()
             .join("\n");
         assert_no_gh404_anti_patterns(&plan, &format!("{label} EXPLAIN plan"));
-        assert!(
-            !plan.is_empty(),
-            "{label} EXPLAIN returned empty plan"
-        );
+        assert!(!plan.is_empty(), "{label} EXPLAIN returned empty plan");
     }
 
     let _ = graph.clear().await;
@@ -210,7 +204,10 @@ async fn gh404_runtime_scoped_scan_and_join_free_list() {
         )
         .await
         .expect("find_edge_by_relationship_id");
-    assert!(found.is_some(), "must find edge by composite relationship id");
+    assert!(
+        found.is_some(),
+        "must find edge by composite relationship id"
+    );
 
     let _ = graph.clear().await;
     match prev {

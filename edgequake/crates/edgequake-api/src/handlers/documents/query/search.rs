@@ -5,6 +5,9 @@
 //! Returns minimal projections (id, title, status, created_at) — no chunk
 //! counts, no entity counts, no cost data.  Optimised for type-ahead UI.
 
+use std::sync::Arc;
+
+#[cfg(feature = "postgres")]
 use std::collections::HashSet;
 
 use axum::{
@@ -15,11 +18,14 @@ use serde_json::Value;
 use tracing::debug;
 
 use crate::error::ApiResult;
+#[cfg(feature = "postgres")]
+use crate::handlers::documents_types::DocumentSummary;
 use crate::handlers::documents_types::{
-    DocumentSearchItem, DocumentSearchRequest, DocumentSearchResponse, DocumentSummary,
+    DocumentSearchItem, DocumentSearchRequest, DocumentSearchResponse,
 };
 use crate::middleware::TenantContext;
-use crate::services::document_metadata_scan::load_scoped_document_metadata;
+use crate::read_path::{run_with_read_path_guard, ReadPathDbPermit, MAX_LIST_METADATA_ENTRIES};
+use crate::services::document_metadata_scan::load_scoped_document_metadata_entries_limited;
 use crate::services::tenant_guard::{has_full_tenant_context, warn_missing_tenant_context};
 use crate::state::{PostgresRuntime, StorageRuntime};
 
@@ -88,6 +94,7 @@ fn search_candidate_from_metadata(value: &Value) -> Option<SearchCandidate> {
     })
 }
 
+#[cfg(feature = "postgres")]
 fn search_candidate_from_summary(doc: &DocumentSummary) -> SearchCandidate {
     let title = doc
         .title
@@ -105,6 +112,7 @@ fn search_candidate_from_summary(doc: &DocumentSummary) -> SearchCandidate {
 }
 
 /// Keep metadata rows, then append relational rows whose ids are missing.
+#[cfg(feature = "postgres")]
 fn merge_search_candidates(
     metadata: Vec<SearchCandidate>,
     relational: Vec<SearchCandidate>,
@@ -156,13 +164,27 @@ fn filter_search_candidates(
     ),
     responses(
         (status = 200, description = "Search results", body = DocumentSearchResponse),
+        (status = 503, description = "Read path busy under ingest load")
     )
 )]
 pub async fn search_documents(
     State(storage): State<StorageRuntime>,
     State(pg_runtime): State<PostgresRuntime>,
+    State(read_path_db): State<Arc<ReadPathDbPermit>>,
     tenant_ctx: TenantContext,
     Query(params): Query<DocumentSearchRequest>,
+) -> ApiResult<Json<DocumentSearchResponse>> {
+    run_with_read_path_guard(&read_path_db, || {
+        search_documents_inner(storage, pg_runtime, tenant_ctx, params)
+    })
+    .await
+}
+
+async fn search_documents_inner(
+    storage: StorageRuntime,
+    pg_runtime: PostgresRuntime,
+    tenant_ctx: TenantContext,
+    params: DocumentSearchRequest,
 ) -> ApiResult<Json<DocumentSearchResponse>> {
     // Security: require full tenant context — same guard as list_documents
     if !has_full_tenant_context(&tenant_ctx) {
@@ -184,20 +206,28 @@ pub async fn search_documents(
         .map(|q| edgequake_observability::utf8_prefix(q, 200).to_lowercase())
         .filter(|q| !q.is_empty());
 
-    // Same membership SSOT as list_documents. A `None` pool skips the relational
-    // `documents` index and returns an empty picker after the KV cutover.
-    let metadata_values = {
-        let pool = pg_runtime.optional_pg_pool();
-        load_scoped_document_metadata(storage.kv_storage.as_ref(), pool, &tenant_ctx).await?
-    };
+    // Same membership SSOT as list_documents. Cap keys before value fetch so
+    // the scope picker stays inside the interactive read-path envelope (GH-400).
+    let pool = pg_runtime.optional_pg_pool();
+    let scoped = load_scoped_document_metadata_entries_limited(
+        storage.kv_storage.as_ref(),
+        pool,
+        &tenant_ctx,
+        MAX_LIST_METADATA_ENTRIES,
+    )
+    .await?;
+    let metadata_values: Vec<Value> = scoped.entries.into_iter().map(|(_, v)| v).collect();
 
     debug!(
         workspace_id = ?tenant_ctx.workspace_id,
         query = ?query_lower,
         metadata_count = metadata_values.len(),
+        truncated = scoped.truncated,
         "search_documents: scanning metadata"
     );
 
+    // Relational backfill under `postgres` may append; keep `mut` for that path.
+    #[allow(unused_mut)]
     let mut candidates: Vec<SearchCandidate> = metadata_values
         .iter()
         .filter_map(search_candidate_from_metadata)

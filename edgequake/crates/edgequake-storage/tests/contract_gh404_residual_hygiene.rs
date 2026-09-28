@@ -74,7 +74,9 @@ fn contract_popular_and_search_use_edge_eq_endpoints() {
             "async fn pg_get_popular_labels",
         ),
     ] {
-        let start = search.find(marker).unwrap_or_else(|| panic!("{label} builder"));
+        let start = search
+            .find(marker)
+            .unwrap_or_else(|| panic!("{label} builder"));
         let body = &search[start..];
         let end = body.find(next).unwrap_or(body.len().min(1200));
         let region = &body[..end];
@@ -109,10 +111,7 @@ fn contract_node_degree_delegates_to_batch_eq_path() {
         .expect("pg_node_degree");
     let body = &read[start..];
     // Stop at end of this fn body — do not include the next fn's historical docs.
-    let end = body
-        .find("\n    }\n\n")
-        .map(|i| i + 6)
-        .unwrap_or(400);
+    let end = body.find("\n    }\n\n").map(|i| i + 6).unwrap_or(400);
     let region = &body[..end];
     assert!(
         region.contains("pg_node_degrees_batch"),
@@ -157,9 +156,7 @@ fn contract_backfill_is_workspace_scoped() {
 
 #[test]
 fn contract_fuzzy_list_nodes_is_workspace_scoped() {
-    let entity = include_str!(
-        "../../edgequake-pipeline/src/merger/entity.rs"
-    );
+    let entity = include_str!("../../edgequake-pipeline/src/merger/entity.rs");
     let start = entity
         .find("async fn apply_graph_fuzzy_resolution")
         .expect("apply_graph_fuzzy_resolution");
@@ -192,9 +189,7 @@ fn contract_detect_communities_guarded_requires_workspace() {
         .find("pub async fn detect_communities_guarded")
         .expect("detect_communities_guarded");
     let body = &api[start..];
-    let end = body
-        .find("#[cfg(test)]")
-        .unwrap_or(body.len().min(1200));
+    let end = body.find("#[cfg(test)]").unwrap_or(body.len().min(1200));
     let region = &body[..end];
     assert!(
         region.contains("workspace_id.is_none()"),

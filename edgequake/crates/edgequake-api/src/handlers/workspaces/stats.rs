@@ -136,58 +136,22 @@ pub async fn get_workspace_stats(
     Ok(Json(stats))
 }
 
-/// Cache-first, best-effort stats for the workspace **list** endpoint.
+/// Cache-only stats for the workspace **list** endpoint (GH-400).
 ///
-/// Deliberately different from [`get_workspace_stats`]: a list must never fail
-/// (or 500) because one workspace's stats are slow, so timeouts and errors
-/// degrade to `None` for that item instead of failing the whole response.
-/// Shares the same 60s cache, so `?include_stats=true` is cheap on repeat.
-pub(super) async fn workspace_stats_best_effort(
-    state: &AppState,
+/// List runs under the 2.5s read-path guard. Fetching AGE/SQL stats (4s each)
+/// must never start inside that envelope. Miss → `None` (`stats: null`); the
+/// dedicated `GET .../stats` path still warms [`WORKSPACE_STATS_CACHE`].
+pub(super) async fn workspace_stats_cached_only(
     workspace_id: Uuid,
 ) -> Option<WorkspaceStatsResponse> {
-    {
-        let cache = WORKSPACE_STATS_CACHE.read().await;
-        if let Some(cached) = cache.get(&workspace_id) {
-            if cached.cached_at.elapsed() < STATS_CACHE_TTL {
-                return Some(cached.stats.clone());
-            }
+    let cache = WORKSPACE_STATS_CACHE.read().await;
+    cache.get(&workspace_id).and_then(|cached| {
+        if cached.cached_at.elapsed() < STATS_CACHE_TTL {
+            Some(cached.stats.clone())
+        } else {
+            None
         }
-    }
-
-    // Same budget as the single-workspace handler (local const there).
-    const LIST_STATS_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(4);
-
-    let start = Instant::now();
-    let stats = match tokio::time::timeout(
-        LIST_STATS_TIMEOUT,
-        fetch_workspace_stats_uncached(state, workspace_id, start),
-    )
-    .await
-    {
-        Ok(Ok(stats)) => stats,
-        Ok(Err(e)) => {
-            tracing::debug!(workspace_id = %workspace_id, error = %e, "list include_stats: stats unavailable");
-            return None;
-        }
-        Err(_) => {
-            tracing::debug!(workspace_id = %workspace_id, "list include_stats: stats timed out");
-            return None;
-        }
-    };
-
-    {
-        let mut cache = WORKSPACE_STATS_CACHE.write().await;
-        cache.insert(
-            workspace_id,
-            CachedStats {
-                stats: stats.clone(),
-                cached_at: Instant::now(),
-            },
-        );
-    }
-
-    Some(stats)
+    })
 }
 
 /// Fetch workspace stats from storage backends (uncached).

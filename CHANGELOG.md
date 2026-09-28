@@ -4,6 +4,49 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+Work on `main` after the v0.27.0 tag. Schema train on this branch is **160**
+(v0.27.0 shipped through **159**). Run `edgequake migrate` before `/ready` is 200.
+
+### Added
+- **SPEC-143 — Directional PDF/Markdown page sync** — Side-by-side sync is an
+  explicit mode: `none`, `pdf-to-md` (default), or `md-to-pdf`. Choice persists
+  in the browser. Spec:
+  [`specs/143-view-pdf-markdown-sync-view/`](specs/143-view-pdf-markdown-sync-view/).
+- **SPEC-151 — Partial page reprocess** — Reprocess selected PDF pages
+  (`parse`, `figures`, `entities`) without discarding healthy pages.
+  `GET /api/v1/documents/{id}/pages/health`,
+  `POST /api/v1/documents/{id}/pages/reprocess` (`dry_run` previews).
+  Migration **160** (`document_page_states`). Spec:
+  [`specs/151-partial-preprocess/`](specs/151-partial-preprocess/).
+
+### Fixed
+- **[#400](https://github.com/raphaelmansuy/edgequake/issues/400) — Documents "Read path busy"** —
+  Interactive lists (documents, document search, tenants, workspaces) stay
+  inside one deadline (`EDGEQUAKE_DOCUMENTS_READ_TIMEOUT_MS`, default 2.5s).
+  The documents scan no longer detoasts `content`, sets
+  `statement_timeout` inside the transaction, and returns HTTP **503**
+  `read_path_busy` with `reason` (`permit_wait`, `permit_closed`,
+  `work_deadline`) and `Retry-After`. Workspace `?include_stats=true` is
+  cache-only (`stats: null` on miss). The WebUI retries that 503 once, then
+  shows Try again; while `/health` is `degraded`, it polls every 5s so the
+  header Busy pill clears without a reload.
+- **[#404](https://github.com/raphaelmansuy/edgequake/issues/404) — Community refresh monopolizing Postgres** —
+  Workspace-scoped keyset scans replace offset walks. Each page is cancelled
+  by `EDGEQUAKE_COMMUNITY_STATEMENT_TIMEOUT_MS` (default 30s). Automatic
+  refresh is skipped when the node count exceeds
+  `EDGEQUAKE_COMMUNITY_BACKFILL_MAX_NODES` (default 50_000), when that count
+  fails, or when another replica holds the advisory lock. Detection that
+  does run loads at most `EDGEQUAKE_COMMUNITY_MAX_NODES` (default 50_000)
+  and samples past that cap instead of walking the full edge table.
+- **[#405](https://github.com/raphaelmansuy/edgequake/issues/405) — Typed FTS/ANN hitting retired `eq_*_vectors`** —
+  With the default `typed_embeddings` backend, sparse search reads
+  `chunks.content_tsv` and dense ANN reads typed embedding tables. Legacy
+  `eq_*_vectors` SELECTs are probe-guarded so a missing relation does not
+  surface as `42P01`.
+- **Compose migrate command** — Migrate services use `command: ["migrate"]`.
+  `["edgequake", "migrate"]` became `edgequake edgequake migrate` and fell
+  through to serve.
+
 ## [0.27.0] — 2026-09-26
 
 Minor: **SPEC-149** provider-access / P0 projection authority + **SPEC-150**

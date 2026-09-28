@@ -20,10 +20,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use uuid::Uuid;
 
-fn scoped_node(
-    ws: &str,
-    name: &str,
-) -> (String, HashMap<String, serde_json::Value>) {
+fn scoped_node(ws: &str, name: &str) -> (String, HashMap<String, serde_json::Value>) {
     let id = format!("{ws}::{name}");
     let mut props = HashMap::new();
     props.insert("node_id".into(), json!(id));
@@ -187,10 +184,7 @@ async fn gh404_residual_runtime_popular_matches_batch_and_scoped_backfill() {
     assert!(!popular.is_empty());
 
     let ids: Vec<String> = popular.iter().map(|(n, _)| n.id.clone()).collect();
-    let batch_vec = graph
-        .node_degrees_batch(&ids)
-        .await
-        .expect("batch degrees");
+    let batch_vec = graph.node_degrees_batch(&ids).await.expect("batch degrees");
     let batch: HashMap<String, usize> = batch_vec.into_iter().collect();
     for (node, out_deg) in &popular {
         // Popular reports out-degree only; batch is total degree.

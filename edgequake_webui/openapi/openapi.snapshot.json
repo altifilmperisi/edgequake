@@ -3098,8 +3098,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
-        "x-edgequake-v2-job-type": "recover_stuck"
+        "x-edgequake-v2-job-type": "recover_stuck",
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
       }
     },
     "/api/v1/documents/reprocess": {
@@ -3156,8 +3156,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-job-type": "reprocess_failed",
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
+        "x-edgequake-v2-job-type": "reprocess_failed"
       }
     },
     "/api/v1/documents/scan": {
@@ -3261,6 +3261,9 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Read path busy under ingest load"
           }
         },
         "security": [
@@ -4098,6 +4101,126 @@
           },
           "400": {
             "description": "Invalid document id or missing workspace"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": [],
+            "tenant_id": [],
+            "workspace_id": []
+          },
+          {
+            "api_key": [],
+            "tenant_id": [],
+            "workspace_id": []
+          }
+        ]
+      }
+    },
+    "/api/v1/documents/{document_id}/pages/health": {
+      "get": {
+        "tags": [
+          "Documents"
+        ],
+        "summary": "GET `/api/v1/documents/{document_id}/pages/health`",
+        "operationId": "get_pages_health",
+        "parameters": [
+          {
+            "name": "document_id",
+            "in": "path",
+            "description": "Document UUID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Per-page parse/figures/entities health",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PageHealthResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid document id or missing workspace"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": [],
+            "tenant_id": [],
+            "workspace_id": []
+          },
+          {
+            "api_key": [],
+            "tenant_id": [],
+            "workspace_id": []
+          }
+        ]
+      }
+    },
+    "/api/v1/documents/{document_id}/pages/reprocess": {
+      "post": {
+        "tags": [
+          "Documents"
+        ],
+        "summary": "POST `/api/v1/documents/{document_id}/pages/reprocess`",
+        "operationId": "reprocess_pages",
+        "parameters": [
+          {
+            "name": "document_id",
+            "in": "path",
+            "description": "Document UUID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReprocessPagesRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Dry-run plan",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReprocessPagesResponse"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Reprocess accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReprocessPagesResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid pages or stages"
+          },
+          "409": {
+            "description": "Active task already running on document"
+          },
+          "422": {
+            "description": "Not a PDF / missing markers / no vision"
           }
         },
         "security": [
@@ -7786,6 +7909,9 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Read path busy under ingest load"
           }
         },
         "security": [
@@ -8068,6 +8194,9 @@
           },
           "404": {
             "description": "Tenant not found"
+          },
+          "503": {
+            "description": "Read path busy under ingest load"
           }
         },
         "security": [
@@ -9125,8 +9254,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-job-type": "rebuild_embeddings",
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
+        "x-edgequake-v2-job-type": "rebuild_embeddings"
       }
     },
     "/api/v1/workspaces/{workspace_id}/rebuild-knowledge-graph": {
@@ -9797,8 +9926,8 @@
             "description": "Track not found for this workspace"
           }
         },
-        "x-edgequake-upgrade": "RFC6455",
-        "x-edgequake-transport": "websocket"
+        "x-edgequake-transport": "websocket",
+        "x-edgequake-upgrade": "RFC6455"
       }
     }
   },
@@ -21121,6 +21250,105 @@
           "task_queue": {}
         }
       },
+      "PageHealth": {
+        "type": "object",
+        "description": "One page's health across stages.",
+        "required": [
+          "page_number",
+          "parse",
+          "figures",
+          "entities"
+        ],
+        "properties": {
+          "entities": {
+            "$ref": "#/components/schemas/StageHealth"
+          },
+          "figures": {
+            "$ref": "#/components/schemas/StageHealth"
+          },
+          "page_number": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "parse": {
+            "$ref": "#/components/schemas/StageHealth"
+          }
+        },
+        "example": {
+          "entities": {},
+          "figures": {},
+          "page_number": {},
+          "parse": {}
+        }
+      },
+      "PageHealthResponse": {
+        "type": "object",
+        "required": [
+          "document_id",
+          "page_count",
+          "pages",
+          "summary",
+          "source"
+        ],
+        "properties": {
+          "document_id": {
+            "type": "string"
+          },
+          "page_count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "pages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PageHealth"
+            }
+          },
+          "source": {
+            "type": "string",
+            "description": "`stored` when rows come from `document_page_states`; else `derived`."
+          },
+          "summary": {
+            "$ref": "#/components/schemas/PageHealthSummary"
+          }
+        },
+        "example": {
+          "document_id": {},
+          "page_count": {},
+          "pages": [],
+          "source": {},
+          "summary": {}
+        }
+      },
+      "PageHealthSummary": {
+        "type": "object",
+        "required": [
+          "parse_failed",
+          "figures_failed",
+          "entities_failed"
+        ],
+        "properties": {
+          "entities_failed": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "figures_failed": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "parse_failed": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "example": {
+          "entities_failed": {},
+          "figures_failed": {},
+          "parse_failed": {}
+        }
+      },
       "PageLayoutRegionDto": {
         "type": "object",
         "required": [
@@ -21890,6 +22118,73 @@
           "page_count": {},
           "page_timings": [],
           "request_id": {},
+          "warnings": []
+        }
+      },
+      "PartialReprocessPlan": {
+        "type": "object",
+        "description": "Dry-run / enqueue plan returned to clients.",
+        "required": [
+          "pages",
+          "requested_stages",
+          "effective_stages",
+          "dirty_chunk_count",
+          "reusable_chunk_count",
+          "estimated_vision_calls",
+          "warnings",
+          "suggest_full_reprocess"
+        ],
+        "properties": {
+          "dirty_chunk_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "effective_stages": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "estimated_vision_calls": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "pages": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          "requested_stages": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "reusable_chunk_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "suggest_full_reprocess": {
+            "type": "boolean"
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "example": {
+          "dirty_chunk_count": {},
+          "effective_stages": [],
+          "estimated_vision_calls": {},
+          "pages": [],
+          "requested_stages": [],
+          "reusable_chunk_count": {},
+          "suggest_full_reprocess": {},
           "warnings": []
         }
       },
@@ -25733,6 +26028,78 @@
           "v2_migration": {}
         }
       },
+      "ReprocessPagesRequest": {
+        "type": "object",
+        "description": "Request body for POST pages/reprocess.\n\n`pages` accepts either a JSON array of page numbers or a range string\n(`\"1-3,7\"`). Clients may also send `page_numbers` as an alias array.",
+        "required": [
+          "stages"
+        ],
+        "properties": {
+          "dry_run": {
+            "type": "boolean"
+          },
+          "page_numbers": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            },
+            "description": "Alias when clients send a plain array as `page_numbers`."
+          },
+          "pages": {
+            "description": "Page list (`[1,2,3]`) or range string (`\"1-3,7\"`)."
+          },
+          "stages": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "example": {
+          "dry_run": {},
+          "page_numbers": [],
+          "pages": {},
+          "stages": []
+        }
+      },
+      "ReprocessPagesResponse": {
+        "type": "object",
+        "required": [
+          "dry_run",
+          "plan"
+        ],
+        "properties": {
+          "dry_run": {
+            "type": "boolean"
+          },
+          "plan": {
+            "$ref": "#/components/schemas/PartialReprocessPlan"
+          },
+          "task_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "track_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "example": {
+          "dry_run": {},
+          "plan": {},
+          "task_id": {},
+          "track_id": {}
+        }
+      },
       "RetrievalQuality": {
         "type": "object",
         "required": [
@@ -26950,6 +27317,52 @@
           "source_chunk_ids": [],
           "source_type": {},
           "start_line": {}
+        }
+      },
+      "StageHealth": {
+        "type": "object",
+        "description": "Per-stage status payload.",
+        "required": [
+          "status"
+        ],
+        "properties": {
+          "chunk_count": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "count": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "failed_chunk_count": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "example": {
+          "chunk_count": {},
+          "count": {},
+          "error": {},
+          "failed_chunk_count": {},
+          "status": {}
         }
       },
       "StatisticsInfo": {

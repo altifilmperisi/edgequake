@@ -135,6 +135,11 @@ async fn e2e_spec060_fts_p95_and_gin_explain() {
     assert_fts_gin_explain(&config).await;
 
     let _ = vectors.clear().await;
+
+    match prev_backend {
+        Some(v) => std::env::set_var(VECTOR_BACKEND_ENV, v),
+        None => std::env::remove_var(VECTOR_BACKEND_ENV),
+    }
 }
 
 async fn assert_fts_gin_explain(config: &edgequake_storage::PostgresConfig) {
@@ -201,9 +206,4 @@ async fn assert_fts_gin_explain(config: &edgequake_storage::PostgresConfig) {
         "EXPLAIN ANALYZE BUFFERS should report buffer stats; plan was:\n{plan}"
     );
     eprintln!("OK EXPLAIN FTS GIN:\n{plan}");
-
-    match prev_backend {
-        Some(v) => std::env::set_var(VECTOR_BACKEND_ENV, v),
-        None => std::env::remove_var(VECTOR_BACKEND_ENV),
-    }
 }

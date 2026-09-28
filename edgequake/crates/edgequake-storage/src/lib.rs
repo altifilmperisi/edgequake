@@ -351,7 +351,7 @@ pub use adapters::postgres::{
     serving_fence_filtered_total, serving_fence_open_changed, serving_fence_opened_total,
     session_application_name, with_session_hygiene, with_session_hygiene_labeled,
     AnnExactReorderPolicy, BinaryQuantizePolicy, BudgetMode, FilteredDiskannLabelPolicy,
-    HnswIndexManifest, HnswRuntimePolicy, PgBindingRegistry, PgChunkEmbeddingIndex,
+    HnswIndexManifest, HnswRuntimePolicy, LocalTimeoutTx, PgBindingRegistry, PgChunkEmbeddingIndex,
     PgFleetEmbeddingIndex, PgIngestionCommitter, PgPoolBundle, PgQuarantineSink,
     PgServingFenceOpener, PgStandaloneEmbeddingStore, PgVectorStorage, PgVisibilityRepository,
     PgWorkspaceVectorRegistry, PoolBudgetReport, PoolRole, PostgresAGEGraphStorage,

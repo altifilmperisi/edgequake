@@ -8,6 +8,11 @@ fn contract_list_documents_merges_relational_backfill() {
         "documents list must merge relational rows missing from KV (G4)"
     );
     assert!(
+        list.contains("list_relational_document_summaries_limited")
+            || list.contains("list_relational_document_summaries"),
+        "documents list must call relational backfill"
+    );
+    assert!(
         list.contains("document_read_model::reconcile_entity_counts_with_graph"),
         "documents list must reconcile entity counts with AGE graph"
     );

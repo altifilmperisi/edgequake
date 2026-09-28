@@ -368,6 +368,12 @@ Set `EDGEQUAKE_REPLICAS` to your process count. When `EDGEQUAKE_REPLICAS>1`, **`
 
 Monitor: `GET /api/v1/pipeline/queue-metrics` (`store_contention`, `cancel_intent_count`).
 
+### Why does the Documents page say "Read path busy"?
+
+The documents list, document search, tenant list, and workspace list share a short deadline (default **2.5s**, `EDGEQUAKE_DOCUMENTS_READ_TIMEOUT_MS`) and a small database permit. HTTP **503** `read_path_busy` means that budget was spent (`work_deadline`, `permit_wait`, or `permit_closed`). The UI retries once, then offers Try again. The header **Busy** pill is `/health` reporting `degraded`; it polls every 5 seconds until healthy. It is not a lock left held after the error.
+
+A cache miss on `?include_stats=true` returns `stats: null` instead of computing stats inside that deadline. Details: [Common Issues §10](/docs/troubleshooting/common-issues/#10-documents-page-read-path-busy).
+
 ### Why does PDF processing have two phases (convert → ingest)?
 
 PDF admission enqueues **convert only** (`TaskType::PdfProcessing`). After durable markdown is stored and the PDF row is `Completed`, a separate **Insert** task runs KG ingestion under its own lease, timeout, and fairness permit.

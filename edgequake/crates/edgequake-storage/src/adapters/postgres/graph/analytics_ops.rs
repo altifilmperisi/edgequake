@@ -89,7 +89,7 @@ impl PostgresAGEGraphStorage {
         // SPEC-089 Phase 4 / F-336-14 / LAW-H2: under stats 4s app budget.
         let timeout_ms = super::helpers::WORKSPACE_STATS_STATEMENT_TIMEOUT_MS;
         let mut timed = super::helpers::LocalTimeoutTx::begin(&mut conn, timeout_ms).await?;
-        let row = match sqlx::query(&sql).fetch_one(&mut **timed.as_mut()).await {
+        let row = match sqlx::query(&sql).fetch_one(timed.as_mut()).await {
             Ok(r) => {
                 timed.commit().await?;
                 r
@@ -123,7 +123,7 @@ impl PostgresAGEGraphStorage {
         let sql = Self::edge_count_sql(&self.graph_name, "e", &filter);
         let timeout_ms = super::helpers::WORKSPACE_STATS_STATEMENT_TIMEOUT_MS;
         let mut timed = super::helpers::LocalTimeoutTx::begin(&mut conn, timeout_ms).await?;
-        let row = match sqlx::query(&sql).fetch_one(&mut **timed.as_mut()).await {
+        let row = match sqlx::query(&sql).fetch_one(timed.as_mut()).await {
             Ok(r) => {
                 timed.commit().await?;
                 r
@@ -167,10 +167,7 @@ impl PostgresAGEGraphStorage {
         );
         let timeout_ms = super::helpers::WORKSPACE_STATS_STATEMENT_TIMEOUT_MS;
         let mut timed = super::helpers::LocalTimeoutTx::begin(&mut conn, timeout_ms).await?;
-        let count: i64 = match sqlx::query_scalar(&sql)
-            .fetch_one(&mut **timed.as_mut())
-            .await
-        {
+        let count: i64 = match sqlx::query_scalar(&sql).fetch_one(timed.as_mut()).await {
             Ok(c) => {
                 timed.commit().await?;
                 c
@@ -297,7 +294,7 @@ impl PostgresAGEGraphStorage {
         let rows: std::result::Result<Vec<(String, i64)>, sqlx::Error> = sqlx::query_as(&sql)
             .bind(&normalized)
             .bind(probe_limit as i32)
-            .fetch_all(&mut **timed.as_mut())
+            .fetch_all(timed.as_mut())
             .await;
 
         match rows {

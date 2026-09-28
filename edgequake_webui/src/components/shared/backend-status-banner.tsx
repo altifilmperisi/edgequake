@@ -18,7 +18,7 @@ import { Loader2, RefreshCw, WifiOff, X } from 'lucide-react';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { getBackendReadinessSnapshot } from '@/lib/api/client';
-import { getBackendReadyRefetchInterval } from '@/lib/runtime/health-poll';
+import { getBackendReadyRefetchIntervalForState } from '@/lib/runtime/health-poll';
 import { useTranslation } from 'react-i18next';
 
 /**
@@ -26,6 +26,7 @@ import { useTranslation } from 'react-i18next';
  *
  * - One `/live` + `/health` probe on mount; periodic poll only if
  *   `EDGEQUAKE_HEALTH_POLL_MS` is set (paused under Playwright automation).
+ * - While readiness is `degraded`, poll until healthy so Header Busy clears (GH-400).
  * - Shares React Query key `['backend-ready']` with Header and SystemStatus (SSOT).
  * - Auto-dismisses once the backend reports ready.
  * - User can dismiss manually; the banner stays dismissed until the next
@@ -38,7 +39,8 @@ export function BackendStatusBanner() {
   const { data: readiness, isLoading } = useQuery({
     queryKey: ['backend-ready'],
     queryFn: () => getBackendReadinessSnapshot(),
-    refetchInterval: getBackendReadyRefetchInterval(),
+    refetchInterval: (query) =>
+      getBackendReadyRefetchIntervalForState(query.state.data?.state),
     staleTime: 5_000,
   });
 

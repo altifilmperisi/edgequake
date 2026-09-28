@@ -89,7 +89,10 @@ impl ReadPathDbPermit {
                     max_concurrent = self.max_concurrent,
                     "Read-path permit closed — returning read_path_busy"
                 );
-                Err(ApiError::read_path_busy(timeout.as_millis() as u64))
+                Err(ApiError::read_path_busy_with_reason(
+                    timeout.as_millis() as u64,
+                    "permit_closed",
+                ))
             }
             Err(_) => {
                 warn!(
@@ -98,7 +101,10 @@ impl ReadPathDbPermit {
                     available = self.semaphore.available_permits(),
                     "Read-path permit wait exceeded — returning read_path_busy"
                 );
-                Err(ApiError::read_path_busy(timeout.as_millis() as u64))
+                Err(ApiError::read_path_busy_with_reason(
+                    timeout.as_millis() as u64,
+                    "permit_wait",
+                ))
             }
         }
     }
@@ -154,13 +160,19 @@ where
 
     let remaining = remaining_until(deadline);
     if remaining.is_zero() {
-        return Err(ApiError::read_path_busy(retry_after_ms));
+        return Err(ApiError::read_path_busy_with_reason(
+            retry_after_ms,
+            "work_deadline",
+        ));
     }
     let _permit = permits.acquire(remaining).await?;
 
     let remaining = remaining_until(deadline);
     if remaining.is_zero() {
-        return Err(ApiError::read_path_busy(retry_after_ms));
+        return Err(ApiError::read_path_busy_with_reason(
+            retry_after_ms,
+            "work_deadline",
+        ));
     }
     match timeout_at(deadline, work()).await {
         Ok(result) => result,
@@ -170,7 +182,10 @@ where
                 reason = "work_deadline",
                 "Interactive read path exceeded deadline"
             );
-            Err(ApiError::read_path_busy(retry_after_ms))
+            Err(ApiError::read_path_busy_with_reason(
+                retry_after_ms,
+                "work_deadline",
+            ))
         }
     }
 }

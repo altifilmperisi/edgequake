@@ -315,6 +315,27 @@ curl http://localhost:8080/api/v1/documents?limit=10&status=completed \
 }
 ```
 
+The relational scan does not read `documents.content` (preview and length come from metadata). It is capped (`LIMIT`, same envelope as the KV list) and runs under `SET LOCAL statement_timeout`.
+
+**503** `read_path_busy` when the interactive deadline is spent (default 2.5s, `EDGEQUAKE_DOCUMENTS_READ_TIMEOUT_MS`). Same code on document detail, `GET /api/v1/documents/search`, `GET /api/v1/tenants`, and workspace list. Body is `application/problem+json`:
+
+```json
+{
+  "code": "read_path_busy",
+  "message": "Read path busy",
+  "title": "Read Path Busy",
+  "status": 503,
+  "type": "https://edgequake.dev/problems/read-path-busy",
+  "details": {
+    "reason": "work_deadline",
+    "retry_after_ms": 2500,
+    "retryable": true
+  }
+}
+```
+
+`reason` is `permit_wait` (bulkhead queue), `permit_closed`, or `work_deadline` (handler exceeded the shared budget). `Retry-After` is `retry_after_ms` rounded up to seconds. The WebUI retries once, then shows Try again. See [Read path busy](/docs/troubleshooting/common-issues/#10-documents-page-read-path-busy).
+
 ### GET /api/v1/documents/:id
 
 Get document details by ID.
@@ -367,6 +388,24 @@ curl -X DELETE http://localhost:8080/api/v1/documents/doc-uuid \
   "embeddings_deleted": 15,
   "partial_failure": false
 }
+```
+
+### Page health and partial reprocess (SPEC-151)
+
+PDF documents can reprocess selected pages without discarding healthy ones. Migration **160** stores per-page state.
+
+| Endpoint | Description |
+| -------- | ----------- |
+| `GET /api/v1/documents/{id}/pages/health` | Per-page parse / figures / entities health |
+| `POST /api/v1/documents/{id}/pages/reprocess` | `dry_run: true` returns a plan (200). Omit it to enqueue (202) |
+
+`stages` is one or more of `parse`, `figures`, `entities`. `pages` is a JSON array or a range string (`"1-3,7"`). PDF only; an active task on the document returns **409**.
+
+```bash
+curl -X POST http://localhost:8080/api/v1/documents/$DOC_ID/pages/reprocess \
+  -H "Content-Type: application/json" \
+  -H "X-Workspace-ID: workspace-uuid" \
+  -d '{"pages":"1-3","stages":["parse"],"dry_run":true}'
 ```
 
 ---
@@ -778,12 +817,12 @@ curl http://localhost:8080/api/v1/graph/stream \
 
 Manage workspaces for multi-tenant isolation.
 
-### POST /api/v1/workspaces
+### POST /api/v1/tenants/{tenant_id}/workspaces
 
 Create a new workspace.
 
 ```bash
-curl -X POST http://localhost:8080/api/v1/workspaces \
+curl -X POST http://localhost:8080/api/v1/tenants/$TENANT_ID/workspaces \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Research Project",
@@ -794,9 +833,11 @@ curl -X POST http://localhost:8080/api/v1/workspaces \
   }'
 ```
 
-### GET /api/v1/workspaces
+### GET /api/v1/tenants/{tenant_id}/workspaces
 
-List all workspaces.
+List workspaces for a tenant. `total` is `COUNT(*)`. Optional `?include_stats=true` attaches stats **from cache only**: a cold cache returns `stats: null` and does not run the AGE/SQL stats query inside the list deadline. `GET /api/v1/workspaces/{id}/stats` warms that cache.
+
+**503** `read_path_busy` under the same interactive budget as the documents list ([above](#get-apiv1documents)). There is no unscoped `GET /api/v1/workspaces` list.
 
 ### GET /api/v1/workspaces/:id
 

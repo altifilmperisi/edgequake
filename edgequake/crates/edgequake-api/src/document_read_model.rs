@@ -118,19 +118,50 @@ fn normalize_relational_status(status: &str) -> String {
     }
 }
 
+/// Result of a bounded relational documents list (GH-400).
+#[derive(Debug, Clone)]
+pub struct RelationalDocumentList {
+    pub documents: Vec<DocumentSummary>,
+    /// True when the scan hit `max_entries` — corpus may have more rows.
+    pub truncated: bool,
+}
+
 /// Load document summaries from the relational `documents` table for a workspace.
 ///
 /// Used to backfill the documents list when KV metadata is missing or scoped to
 /// a legacy workspace id.
+///
+/// GH-400 / LAW-H2:
+/// - Never detoast `documents.content` (`LEFT`/`LENGTH` hold pool slots for seconds).
+/// - Cap keys with `LIMIT` (interactive envelope, mirrors KV `MAX_LIST_METADATA_ENTRIES`).
+/// - Run under `SET LOCAL statement_timeout` so a Rust deadline cannot leave a
+///   zombie backend.
 #[cfg(feature = "postgres")]
 pub async fn list_relational_document_summaries(
     pool: crate::services::OptionalPgPool<'_>,
     tenant_ctx: &TenantContext,
 ) -> Result<Vec<DocumentSummary>, crate::error::ApiError> {
+    Ok(list_relational_document_summaries_limited(
+        pool,
+        tenant_ctx,
+        crate::read_path::MAX_LIST_METADATA_ENTRIES,
+    )
+    .await?
+    .documents)
+}
+
+/// Bounded relational list with truncation flag (GH-400).
+#[cfg(feature = "postgres")]
+pub async fn list_relational_document_summaries_limited(
+    pool: crate::services::OptionalPgPool<'_>,
+    tenant_ctx: &TenantContext,
+    max_entries: usize,
+) -> Result<RelationalDocumentList, crate::error::ApiError> {
     use crate::error::ApiError;
     use sqlx::Row;
 
     let pool = pool.ok_or_else(|| ApiError::Internal("PostgreSQL pool not available".into()))?;
+    let max_entries = max_entries.max(1);
 
     let workspace_id = tenant_ctx
         .workspace_id
@@ -143,6 +174,17 @@ pub async fn list_relational_document_summaries(
         .as_ref()
         .and_then(|t| Uuid::parse_str(t).ok());
 
+    let timeout_ms = edgequake_storage::interactive_statement_timeout_ms();
+    let mut conn = pool
+        .acquire()
+        .await
+        .map_err(|e| ApiError::Internal(format!("Failed to acquire PG connection: {e}")))?;
+    let mut timed = edgequake_storage::LocalTimeoutTx::begin(&mut conn, timeout_ms)
+        .await
+        .map_err(|e| ApiError::Internal(format!("Failed to begin interactive list TX: {e}")))?;
+
+    // Fetch one extra row to detect truncation without a second COUNT.
+    let fetch_limit = (max_entries as i64).saturating_add(1);
     let rows = sqlx::query(
         r#"
         SELECT
@@ -156,8 +198,15 @@ pub async fn list_relational_document_summaries(
             error_message,
             created_at,
             updated_at,
-            LEFT(content, 200) AS content_preview,
-            LENGTH(content)::int AS content_length,
+            -- GH-400: never detoast `content`. Preview + length come from
+            -- metadata / file_size_bytes (idx_documents_workspace_created).
+            LEFT(COALESCE(metadata->>'content_summary', metadata->>'content_preview', ''), 200)
+                AS content_preview,
+            -- file_size_bytes is BIGINT; COALESCE(int, bigint) → INT8. Decode as i64.
+            COALESCE(
+                NULLIF(metadata->>'content_length', '')::bigint,
+                file_size_bytes
+            ) AS content_length,
             -- WHY: cost/token stats live in the `metadata` JSONB column (written by
             -- the pipeline alongside KV metadata). Reading them from `metadata`
             -- avoids depending on migration-041 stat columns (`cost_usd`,
@@ -169,27 +218,37 @@ pub async fn list_relational_document_summaries(
             (metadata->>'cost_usd')::double precision AS cost_usd,
             (metadata->>'input_tokens')::bigint AS input_tokens,
             (metadata->>'output_tokens')::bigint AS output_tokens,
-            (metadata->>'total_tokens')::bigint AS total_tokens
+            (metadata->>'total_tokens')::bigint AS total_tokens,
+            metadata->>'current_stage' AS current_stage
         FROM public.documents
         WHERE workspace_id = $1
           AND ($2::uuid IS NULL OR tenant_id IS NULL OR tenant_id = $2)
         ORDER BY created_at DESC
+        LIMIT $3
         "#,
     )
     .bind(workspace_id)
     .bind(tenant_uuid)
-    .fetch_all(pool)
+    .bind(fetch_limit)
+    .fetch_all(timed.as_mut())
     .await
     .map_err(|e| ApiError::Internal(format!("Failed to list relational documents: {e}")))?;
 
-    Ok(rows
+    timed
+        .commit()
+        .await
+        .map_err(|e| ApiError::Internal(format!("Failed to commit interactive list TX: {e}")))?;
+
+    let truncated = rows.len() > max_entries;
+    let documents = rows
         .into_iter()
+        .take(max_entries)
         .map(|row| {
             let title: String = row.get("title");
             let status: String = row.get("status");
             let chunk_count: Option<i32> = row.get("chunk_count");
             let entity_count: Option<i32> = row.get("entity_count");
-            let content_length: Option<i32> = row.get("content_length");
+            let content_length: Option<i64> = row.get("content_length");
             let created_at: chrono::DateTime<chrono::Utc> = row.get("created_at");
             let updated_at: chrono::DateTime<chrono::Utc> = row.get("updated_at");
             let cost_usd: Option<f64> = row.get("cost_usd");
@@ -197,13 +256,18 @@ pub async fn list_relational_document_summaries(
             let output_tokens: Option<i64> = row.get("output_tokens");
             let total_tokens: Option<i64> = row.get("total_tokens");
             let track_id: Option<String> = row.get("track_id");
+            let current_stage: Option<String> = row.get("current_stage");
+            let content_preview: Option<String> = row.get("content_preview");
+            let content_summary = content_preview.filter(|s| !s.is_empty());
 
             DocumentSummary {
                 id: row.get("id"),
                 title: Some(title.clone()),
                 file_name: Some(title),
-                content_summary: row.get("content_preview"),
-                content_length: content_length.map(|n| n.max(0) as usize),
+                content_summary,
+                content_length: content_length
+                    .filter(|&n| n >= 0)
+                    .and_then(|n| usize::try_from(n).ok()),
                 chunk_count: chunk_count.unwrap_or(0).max(0) as usize,
                 entity_count: entity_count.map(|n| n.max(0) as usize),
                 status: Some(normalize_relational_status(&status)),
@@ -219,7 +283,7 @@ pub async fn list_relational_document_summaries(
                 llm_model: None,
                 embedding_model: None,
                 source_type: None,
-                current_stage: None,
+                current_stage,
                 stage_progress: None,
                 stage_message: None,
                 pdf_id: None,
@@ -233,7 +297,119 @@ pub async fn list_relational_document_summaries(
                 cancelled_from_stage: None,
             }
         })
-        .collect())
+        .collect();
+
+    Ok(RelationalDocumentList {
+        documents,
+        truncated,
+    })
+}
+
+/// Workspace-wide status bucket counts from `documents` (GH-400).
+///
+/// Cheap aggregate (no row body) so interactive list can report global chips
+/// even when the detail scan is capped at `MAX_LIST_METADATA_ENTRIES`.
+#[cfg(feature = "postgres")]
+pub async fn count_relational_document_statuses(
+    pool: crate::services::OptionalPgPool<'_>,
+    tenant_ctx: &TenantContext,
+) -> Result<crate::handlers::documents_types::StatusCounts, crate::error::ApiError> {
+    use crate::error::ApiError;
+    use crate::handlers::documents_types::StatusCounts;
+    use sqlx::Row;
+
+    let pool = pool.ok_or_else(|| ApiError::Internal("PostgreSQL pool not available".into()))?;
+
+    let workspace_id = tenant_ctx
+        .workspace_id
+        .as_ref()
+        .and_then(|w| Uuid::parse_str(w).ok())
+        .ok_or_else(|| ApiError::BadRequest("workspace_id required".into()))?;
+
+    let tenant_uuid = tenant_ctx
+        .tenant_id
+        .as_ref()
+        .and_then(|t| Uuid::parse_str(t).ok());
+
+    let timeout_ms = edgequake_storage::interactive_statement_timeout_ms();
+    let mut conn = pool
+        .acquire()
+        .await
+        .map_err(|e| ApiError::Internal(format!("Failed to acquire PG connection: {e}")))?;
+    let mut timed = edgequake_storage::LocalTimeoutTx::begin(&mut conn, timeout_ms)
+        .await
+        .map_err(|e| ApiError::Internal(format!("Failed to begin status-count TX: {e}")))?;
+
+    // Bucket using status + metadata current_stage (parity with list.rs chips).
+    let rows = sqlx::query(
+        r#"
+        SELECT bucket, COUNT(*)::bigint AS n
+        FROM (
+            SELECT CASE
+                WHEN lower(COALESCE(status, '')) IN ('pending', 'queued')
+                  OR lower(COALESCE(metadata->>'current_stage', '')) = 'queued'
+                    THEN 'pending'
+                WHEN lower(COALESCE(status, '')) IN ('processing', 'deleting')
+                  OR lower(COALESCE(metadata->>'current_stage', '')) IN (
+                        'converting','preprocessing','chunking','extracting','gleaning',
+                        'merging','summarizing','embedding','storing','projecting',
+                        'indexing','deleting'
+                     )
+                    THEN 'processing'
+                WHEN lower(COALESCE(status, '')) IN ('completed', 'indexed')
+                    THEN 'completed'
+                WHEN lower(COALESCE(status, '')) = 'partial_failure'
+                    THEN 'partial_failure'
+                WHEN lower(COALESCE(status, '')) = 'failed'
+                    THEN 'failed'
+                WHEN lower(COALESCE(status, '')) = 'cancelled'
+                    THEN 'cancelled'
+                ELSE 'unknown'
+            END AS bucket
+            FROM public.documents
+            WHERE workspace_id = $1
+              AND ($2::uuid IS NULL OR tenant_id IS NULL OR tenant_id = $2)
+        ) s
+        GROUP BY bucket
+        "#,
+    )
+    .bind(workspace_id)
+    .bind(tenant_uuid)
+    .fetch_all(timed.as_mut())
+    .await
+    .map_err(|e| {
+        ApiError::Internal(format!("Failed to count relational document statuses: {e}"))
+    })?;
+
+    timed
+        .commit()
+        .await
+        .map_err(|e| ApiError::Internal(format!("Failed to commit status-count TX: {e}")))?;
+
+    let mut counts = StatusCounts {
+        pending: 0,
+        processing: 0,
+        completed: 0,
+        partial_failure: 0,
+        failed: 0,
+        cancelled: 0,
+        unknown: 0,
+    };
+    for row in rows {
+        let bucket: String = row.get("bucket");
+        let n: i64 = row.get("n");
+        let n = n.max(0) as usize;
+        match bucket.as_str() {
+            "pending" => counts.pending = n,
+            "processing" => counts.processing = n,
+            "completed" => counts.completed = n,
+            "partial_failure" => counts.partial_failure = n,
+            "failed" => counts.failed = n,
+            "cancelled" => counts.cancelled = n,
+            _ => counts.unknown = n,
+        }
+    }
+    Ok(counts)
 }
 
 #[cfg(not(feature = "postgres"))]
@@ -304,6 +480,43 @@ pub async fn relational_document_scope(
         status: r.get("status"),
         track_id: r.get("track_id"),
     }))
+}
+
+/// Point lookup of `tenant_id` / `workspace_id` for the detail authority fence.
+///
+/// GH-400: runs under [`LocalTimeoutTx`] so a hung PG session cannot hold the
+/// interactive detail path past the statement budget. Point lookup only —
+/// success path is identical to a bare `fetch_optional`.
+#[cfg(feature = "postgres")]
+pub async fn lookup_document_tenant_workspace(
+    pool: &sqlx::PgPool,
+    document_id: Uuid,
+) -> Result<Option<(Option<Uuid>, Option<Uuid>)>, crate::error::ApiError> {
+    use crate::error::ApiError;
+
+    let timeout_ms = edgequake_storage::interactive_statement_timeout_ms();
+    let mut conn = pool
+        .acquire()
+        .await
+        .map_err(|e| ApiError::Internal(format!("document scope lookup acquire: {e}")))?;
+    let mut timed = edgequake_storage::LocalTimeoutTx::begin(&mut conn, timeout_ms)
+        .await
+        .map_err(|e| ApiError::Internal(format!("document scope lookup begin: {e}")))?;
+
+    let row = sqlx::query_as::<_, (Option<Uuid>, Option<Uuid>)>(
+        "SELECT tenant_id, workspace_id FROM public.documents WHERE id = $1",
+    )
+    .bind(document_id)
+    .fetch_optional(timed.as_mut())
+    .await
+    .map_err(|e| ApiError::Internal(format!("document scope lookup: {e}")))?;
+
+    timed
+        .commit()
+        .await
+        .map_err(|e| ApiError::Internal(format!("document scope lookup commit: {e}")))?;
+
+    Ok(row)
 }
 
 #[cfg(not(feature = "postgres"))]

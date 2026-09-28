@@ -18,8 +18,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { getBackendReadinessSnapshot } from '@/lib/api/client';
 import { checkHealth } from '@/lib/api/edgequake';
 import {
-  getBackendReadyRefetchInterval,
-  getHealthDetailsRefetchInterval,
+  getBackendReadyRefetchIntervalForState,
+  getHealthDetailsRefetchIntervalForState,
 } from '@/lib/runtime/health-poll';
 import { useQuery } from '@tanstack/react-query';
 import { CheckCircle, Circle, Server, XCircle } from 'lucide-react';
@@ -32,7 +32,8 @@ export function SystemStatus() {
   const { data: readiness, isLoading: isReadinessLoading } = useQuery({
     queryKey: ['backend-ready'],
     queryFn: () => getBackendReadinessSnapshot(),
-    refetchInterval: getBackendReadyRefetchInterval(),
+    refetchInterval: (query) =>
+      getBackendReadyRefetchIntervalForState(query.state.data?.state),
     staleTime: 5_000,
     retry: 1,
   });
@@ -44,7 +45,7 @@ export function SystemStatus() {
   const { data: health, isLoading: isHealthLoading } = useQuery({
     queryKey: ['health'],
     queryFn: checkHealth,
-    refetchInterval: getHealthDetailsRefetchInterval(),
+    refetchInterval: () => getHealthDetailsRefetchIntervalForState(state),
     retry: 1,
     enabled: isReachable,
   });

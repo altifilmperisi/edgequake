@@ -86,6 +86,16 @@ Serving uses a four-role `PgPoolBundle` (query / ingest / queue / admin). Idle b
 | `EDGEQUAKE_DB_POOL_MAX_LIFETIME_SECS` | `1800` | sqlx max connection lifetime |
 | `EDGEQUAKE_DB_IDLE_IN_XACT_TIMEOUT_SECS` | `60` | Session `idle_in_transaction_session_timeout` |
 | `DATABASE_READ_URL` | unset | Optional read replica URL for the query pool |
+| `DATABASE_POOL_SIZE` | `32` | Sizes the interactive read-path bulkhead only: concurrent permits = `max(2, DATABASE_POOL_SIZE / 8)`. Role pools above are separate |
+
+Interactive catalog reads (documents list/detail/search, tenants, workspace list) share one deadline. On expiry they return HTTP 503 `read_path_busy` and Postgres cancels the statement 250ms earlier. See [Read path busy](/docs/troubleshooting/common-issues/#10-documents-page-read-path-busy).
+
+| Variable | Default | Clamp | Description |
+| -------- | ------- | ----- | ----------- |
+| `EDGEQUAKE_DOCUMENTS_READ_TIMEOUT_MS` | `2500` | 500–30000 | Wall clock for those interactive reads, including permit wait |
+| `EDGEQUAKE_COMMUNITY_STATEMENT_TIMEOUT_MS` | `30000` | 1000–300000 | Per-page Postgres budget for community snapshot scans (#404). Applied value is 250ms under this |
+| `EDGEQUAKE_COMMUNITY_BACKFILL_MAX_NODES` | `50000` | — | Skip automatic community refresh when the node count is above this, or when the count query fails |
+| `EDGEQUAKE_COMMUNITY_MAX_NODES` | `50000` | 100–5000000 | Nodes loaded for detection. Past the cap, cluster a sample; do not scan every edge |
 
 Backends set `application_name=edgequake:<role>` for `pg_stat_activity` attribution. Graceful shutdown closes all role pools after HTTP drain.
 
@@ -458,7 +468,7 @@ Relational data-layer cutover (typed SSOT) and the LightRAG-parity response cach
 | Variable                         | Type   | Default | Description                                                                                                                             |
 | -------------------------------- | ------ | ------- | --------------------------------------------------------------------------------------------------------------------------------------- |
 | `NEXT_PUBLIC_DISABLE_DEMO_LOGIN` | String | `false` | Set to `true` to hide the demo "skip login" button in production (closes [#139](https://github.com/raphaelmansuy/edgequake/issues/139)) |
-| `EDGEQUAKE_HEALTH_POLL_MS`       | Number | unset   | WebUI periodic `/live`+`/health` poll (ms). Unset/`0`/`false`/`off` = one probe on load. `10000` restores the former 10s loop. Runtime-injected (not baked `NEXT_PUBLIC_*`). Playwright always disables the loop. |
+| `EDGEQUAKE_HEALTH_POLL_MS`       | Number | unset   | WebUI periodic `/live`+`/health` poll (ms) while healthy. Unset/`0`/`false`/`off` = one probe on load. `10000` restores the former 10s loop. While `/health` is `degraded`, the UI polls every 5s anyway so the header Busy pill can clear. Runtime-injected (not baked `NEXT_PUBLIC_*`). Playwright always disables the loop. |
 
 > **Production tip:** Keep `EDGEQUAKE_AUTH_ENABLED=true`, unset `EDGEQUAKE_DEV_MODE`, configure `EDGEQUAKE_MASTER_API_KEY` or `EDGEQUAKE_API_KEYS`, and set `NEXT_PUBLIC_DISABLE_DEMO_LOGIN=true` in your frontend build.
 

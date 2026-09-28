@@ -307,7 +307,10 @@ async fn community_refresh_node_count(
 }
 
 /// True when a count result should skip detection (error or over threshold).
-pub(crate) fn community_refresh_should_skip(count: Result<usize, &crate::error::StorageError>, threshold: usize) -> bool {
+pub(crate) fn community_refresh_should_skip(
+    count: Result<usize, &crate::error::StorageError>,
+    threshold: usize,
+) -> bool {
     match count {
         Ok(n) => n > threshold,
         Err(_) => true,
@@ -401,7 +404,11 @@ mod tests {
         let graph: Arc<dyn GraphStorage> =
             Arc::new(crate::adapters::memory::MemoryGraphStorage::new("sf"));
         sched
-            .schedule(Some(key.to_string()), graph, CommunityRefreshExtras::default())
+            .schedule(
+                Some(key.to_string()),
+                graph,
+                CommunityRefreshExtras::default(),
+            )
             .await;
         {
             let inflight = sched.inflight.lock().await;

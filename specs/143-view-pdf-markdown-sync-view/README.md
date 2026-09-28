@@ -1,14 +1,16 @@
 # SPEC-143 — PDF / Markdown sync view
 
 > **Mission:** In the document side-by-side viewer, the PDF page and the
-> Markdown pane stay synchronized using existing `<!-- edgequake-page:N -->`
-> markers. Mouse wheel (and keyboard) navigate PDF pages via a continuous
-> scroll stack — not toolbar-only single-page flips.
+> Markdown pane stay aligned using existing `<!-- edgequake-page:N -->`
+> markers. Sync is one direction at a time: `none`, `pdf-to-md` (default),
+> or `md-to-pdf` (persisted as `eq-page-sync-mode`). Mouse wheel (and keyboard)
+> navigate PDF pages via a continuous scroll stack — not toolbar-only
+> single-page flips. Shipped on `main` after v0.27.0.
 >
 > **Method:** One `PageSyncController`; PDF continuous stack + IntersectionObserver;
 > markdown marker → DOM `data-eq-page` anchors; sync lock prevents feedback loops.
 >
-> **Target cut:** next patch after SPEC-142.
+> **Shipped:** on `main` after v0.27.0 (not in the v0.27.0 tag).
 
 ## One-screen verdict
 
@@ -19,9 +21,9 @@
 │  Product path:                                                               │
 │    <!-- edgequake-page:N -->  →  inject DOM anchors                          │
 │    PDF continuous stack       →  wheel/keyboard page nav                     │
-│    PageSyncController         →  PDF ↔ MD ↔ ?page= (sync ON)                 │
+│    Page sync mode             →  none | pdf-to-md | md-to-pdf                  │
 │                                                                              │
-│  Sync OFF = independent scroll. Missing markers = PDF works; MD sync no-ops. │
+│  none = independent scroll. Missing markers = PDF works; MD follow no-ops.   │
 │  No DB migration. SPEC-128 overlay stays on active page only.                │
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -64,7 +66,7 @@
 | PDF scroll model | Continuous multi-page stack; native wheel |
 | Large PDFs | Windowed render when `numPages > 20` (±2) |
 | Sync driver | `<!-- edgequake-page:N -->` → `data-eq-page` |
-| Sync directions | Bidirectional when side-by-side + sync ON |
+| Sync directions | Explicit `none` \| `pdf-to-md` (default) \| `md-to-pdf` |
 | Sync control | Real FEAT0733 toggle (default ON) |
 | URL | Debounced `?page=N` via `onPageChange` |
 | Keyboard | PageUp/Down + ArrowUp/Down (PDF focused) |

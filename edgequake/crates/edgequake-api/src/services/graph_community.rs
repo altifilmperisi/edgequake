@@ -83,8 +83,7 @@ mod tests {
     async fn rejects_community_detection_without_workspace_id() {
         let graph: Arc<dyn GraphStorage> = Arc::new(MemoryGraphStorage::new("community-no-ws"));
         let guard = ResourceGuard::new(ResourceBudgetConfig::default());
-        let result =
-            detect_communities_guarded(&graph, &CommunityConfig::default(), &guard).await;
+        let result = detect_communities_guarded(&graph, &CommunityConfig::default(), &guard).await;
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();
         assert!(

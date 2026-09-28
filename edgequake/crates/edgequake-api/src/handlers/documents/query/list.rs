@@ -408,25 +408,63 @@ async fn list_documents_inner(
     // list. A silently-swallowed error here produces the "0 documents" UI state
     // while the graph (populated from a separate write path) shows entities —
     // so we log at ERROR and track a warning string to surface, not just warn.
+    //
+    // GH-400: bounded scan (LIMIT + no content detoast + SET LOCAL timeout).
+    // Never fetch the full workspace body under the interactive read envelope.
+    let mut relational_truncated = false;
+    #[cfg(feature = "postgres")]
+    let mut sql_status_counts: Option<StatusCounts> = None;
     #[cfg(feature = "postgres")]
     if _pg_runtime.pool.is_some() {
-        match crate::document_read_model::list_relational_document_summaries(
+        match crate::document_read_model::list_relational_document_summaries_limited(
             _pg_runtime.pool.as_ref(),
             &tenant_ctx,
+            MAX_LIST_METADATA_ENTRIES,
         )
         .await
         {
-            Ok(relational) if !relational.is_empty() => {
-                documents =
-                    crate::document_read_model::merge_document_summaries(documents, relational);
+            Ok(relational) => {
+                relational_truncated = relational.truncated;
+                if !relational.documents.is_empty() {
+                    documents = crate::document_read_model::merge_document_summaries(
+                        documents,
+                        relational.documents,
+                    );
+                }
             }
-            Ok(_) => {}
             Err(e) => {
                 tracing::error!(
                     error = %e,
                     tenant = ?tenant_ctx.tenant_id,
                     workspace = ?tenant_ctx.workspace_id,
                     "Relational document backfill failed — list may show 0 docs erroneously"
+                );
+            }
+        }
+    }
+    let truncated = truncated || relational_truncated;
+
+    // Global chips when the detail merge is complete (not truncated) and no
+    // date/pattern filters. When truncated, in-memory chips match what can
+    // be paged (GH-400 honesty: avoid SQL chips=5000 vs pager total=2000).
+    #[cfg(feature = "postgres")]
+    if !truncated
+        && _pg_runtime.pool.is_some()
+        && params.date_from.is_none()
+        && params.date_to.is_none()
+        && params.document_pattern.is_none()
+    {
+        match crate::document_read_model::count_relational_document_statuses(
+            _pg_runtime.pool.as_ref(),
+            &tenant_ctx,
+        )
+        .await
+        {
+            Ok(counts) => sql_status_counts = Some(counts),
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    "Relational status-count aggregate failed — falling back to in-memory chips"
                 );
             }
         }
@@ -482,84 +520,12 @@ async fn list_documents_inner(
 
     // Calculate status counts for all documents (after date/pattern, before status filter).
     // SPEC-084 / GH-319 LAW-10: counts stay global; list items honor optional status.
-    let status_counts = StatusCounts {
-        pending: documents
-            .iter()
-            .filter(|d| {
-                matches!(d.status.as_deref(), Some("pending" | "queued"))
-                    || d.current_stage.as_deref() == Some("queued")
-            })
-            .count(),
-        processing: documents
-            .iter()
-            .filter(|d| {
-                // SPEC-098: deleting is lifecycle in-flight — count with processing.
-                matches!(d.status.as_deref(), Some("processing" | "deleting"))
-                    || matches!(
-                        d.current_stage.as_deref(),
-                        Some(
-                            "converting"
-                                | "preprocessing"
-                                | "chunking"
-                                | "extracting"
-                                | "gleaning"
-                                | "merging"
-                                | "summarizing"
-                                | "embedding"
-                                | "storing"
-                                | "indexing"
-                                | "deleting"
-                        )
-                    )
-            })
-            .count(),
-        // SPEC-021 P-B2: only count explicit completed/indexed status, NOT NULL.
-        completed: documents
-            .iter()
-            .filter(|d| {
-                d.status.as_deref() == Some("completed") || d.status.as_deref() == Some("indexed")
-            })
-            .count(),
-        // FIX-5: Track partial_failure status
-        partial_failure: documents
-            .iter()
-            .filter(|d| d.status.as_deref() == Some("partial_failure"))
-            .count(),
-        failed: documents
-            .iter()
-            .filter(|d| {
-                // SPEC-098 LAW-098-11: Retry Failed is pipeline-only.
-                // Lifecycle `delete_failed` must not inflate this bucket.
-                matches!(d.status.as_deref(), Some("failed"))
-            })
-            .count(),
-        cancelled: documents
-            .iter()
-            .filter(|d| d.status.as_deref() == Some("cancelled"))
-            .count(),
-        // SPEC-021 P-B2: NULL/unknown status is its own bucket, not completed.
-        unknown: documents
-            .iter()
-            .filter(|d| {
-                d.status.is_none()
-                    || !matches!(
-                        d.status.as_deref(),
-                        Some(
-                            "pending"
-                                | "queued"
-                                | "processing"
-                                | "completed"
-                                | "indexed"
-                                | "partial_failure"
-                                | "failed"
-                                | "cancelled"
-                                | "deleting"
-                                | "delete_failed"
-                        )
-                    )
-            })
-            .count(),
-    };
+    // GH-400: SQL GROUP BY when !truncated; otherwise in-memory chips match the
+    // capped merge (honest vs pager total).
+    #[cfg(feature = "postgres")]
+    let status_counts = sql_status_counts.unwrap_or_else(|| compute_status_counts(&documents));
+    #[cfg(not(feature = "postgres"))]
+    let status_counts = compute_status_counts(&documents);
 
     // SPEC-084 / GH-319: filter by status before pagination so Failed chip rows match counts.
     if let Some(ref status_raw) = params.status {
@@ -671,4 +637,87 @@ async fn list_documents_inner(
         status_counts,
         truncated: truncated.then_some(true),
     }))
+}
+
+/// In-memory status chips (fallback when SQL aggregate is unavailable / filtered).
+fn compute_status_counts(documents: &[DocumentSummary]) -> StatusCounts {
+    StatusCounts {
+        pending: documents
+            .iter()
+            .filter(|d| {
+                matches!(d.status.as_deref(), Some("pending" | "queued"))
+                    || d.current_stage.as_deref() == Some("queued")
+            })
+            .count(),
+        processing: documents
+            .iter()
+            .filter(|d| {
+                // SPEC-098: deleting is lifecycle in-flight — count with processing.
+                matches!(d.status.as_deref(), Some("processing" | "deleting"))
+                    || matches!(
+                        d.current_stage.as_deref(),
+                        Some(
+                            "converting"
+                                | "preprocessing"
+                                | "chunking"
+                                | "extracting"
+                                | "gleaning"
+                                | "merging"
+                                | "summarizing"
+                                | "embedding"
+                                | "storing"
+                                | "projecting"
+                                | "indexing"
+                                | "deleting"
+                        )
+                    )
+            })
+            .count(),
+        // SPEC-021 P-B2: only count explicit completed/indexed status, NOT NULL.
+        completed: documents
+            .iter()
+            .filter(|d| {
+                d.status.as_deref() == Some("completed") || d.status.as_deref() == Some("indexed")
+            })
+            .count(),
+        // FIX-5: Track partial_failure status
+        partial_failure: documents
+            .iter()
+            .filter(|d| d.status.as_deref() == Some("partial_failure"))
+            .count(),
+        failed: documents
+            .iter()
+            .filter(|d| {
+                // SPEC-098 LAW-098-11: Retry Failed is pipeline-only.
+                // Lifecycle `delete_failed` must not inflate this bucket.
+                matches!(d.status.as_deref(), Some("failed"))
+            })
+            .count(),
+        cancelled: documents
+            .iter()
+            .filter(|d| d.status.as_deref() == Some("cancelled"))
+            .count(),
+        // SPEC-021 P-B2: NULL/unknown status is its own bucket, not completed.
+        unknown: documents
+            .iter()
+            .filter(|d| {
+                d.status.is_none()
+                    || !matches!(
+                        d.status.as_deref(),
+                        Some(
+                            "pending"
+                                | "queued"
+                                | "processing"
+                                | "completed"
+                                | "indexed"
+                                | "partial_failure"
+                                | "failed"
+                                | "cancelled"
+                                | "deleting"
+                                | "delete_failed"
+                        )
+                    )
+            })
+            .count(),
+    }
 }

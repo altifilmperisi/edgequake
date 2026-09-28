@@ -64,18 +64,23 @@ async fn promote_projecting_if_applied(
     if !metadata.is_some_and(crate::services::metadata_is_projecting) {
         return false;
     }
-    match crate::services::sync_doc_projecting_when_applied(
-        Arc::clone(&storage.kv_storage),
-        pg_runtime.optional_pg_pool(),
-        document_id,
+    let kv = Arc::clone(&storage.kv_storage);
+    let pool = pg_runtime.optional_pg_pool();
+    let document_id = document_id.to_string();
+    let result = crate::services::list_run_enrich::run_best_effort_interactive(
+        "detail_projecting_promote",
+        || async move {
+            crate::services::sync_doc_projecting_when_applied(kv, pool, &document_id).await
+        },
     )
-    .await
-    {
-        Ok(promoted) => promoted,
-        Err(e) => {
-            debug!(document_id = %document_id, error = %e, "SPEC-149: detail projecting promote skipped");
+    .await;
+    match result {
+        Some(Ok(promoted)) => promoted,
+        Some(Err(e)) => {
+            debug!(error = %e, "SPEC-149: detail projecting promote skipped");
             false
         }
+        None => false,
     }
 }
 
@@ -152,13 +157,8 @@ async fn get_document_inner(
     #[cfg(feature = "postgres")]
     if let Some(pool) = pg_runtime.pool.as_ref() {
         if let Ok(doc_uuid) = Uuid::parse_str(&document_id) {
-            let row = sqlx::query_as::<_, (Option<Uuid>, Option<Uuid>)>(
-                "SELECT tenant_id, workspace_id FROM public.documents WHERE id = $1",
-            )
-            .bind(doc_uuid)
-            .fetch_optional(pool)
-            .await
-            .map_err(|error| ApiError::Internal(format!("document scope lookup: {error}")))?;
+            let row = crate::document_read_model::lookup_document_tenant_workspace(pool, doc_uuid)
+                .await?;
             if let Some((doc_tenant, doc_workspace)) = row {
                 if let Some(ref filter_tid) = tenant_ctx.tenant_id {
                     if let (Ok(filter), Some(owned)) = (Uuid::parse_str(filter_tid), doc_tenant) {

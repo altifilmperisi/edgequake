@@ -155,6 +155,7 @@ pub use serving_fence_writer::{
     document_batch_deliveries_settled, open_serving_fence_when_deliveries_settled,
     open_settled_serving_fences_bounded, serving_fence_open_changed, PgServingFenceOpener,
 };
+pub use statement_timeout::LocalTimeoutTx;
 
 // SPEC-046 OPS-P2.16: `RlsContext` is no longer re-exported from `postgres::`.
 // Use `acquire_rls_connection` / `with_acquired_tenant_context` (SEC-014 SSOT).

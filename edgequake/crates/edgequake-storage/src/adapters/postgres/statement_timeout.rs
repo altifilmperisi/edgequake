@@ -10,7 +10,10 @@ use sqlx::{Acquire, PgConnection, Postgres, Transaction};
 use crate::error::{Result, StorageError};
 
 /// Open transaction with `SET LOCAL statement_timeout` already applied.
-pub(in crate::adapters::postgres) struct LocalTimeoutTx<'c> {
+///
+/// Public so interactive HTTP read paths (documents list/detail) can cancel
+/// SQL before a Rust deadline abandons the future (LAW-H2 / GH-400).
+pub struct LocalTimeoutTx<'c> {
     inner: Transaction<'c, Postgres>,
 }
 
@@ -29,10 +32,6 @@ impl<'c> LocalTimeoutTx<'c> {
         Ok(Self { inner })
     }
 
-    pub fn as_mut(&mut self) -> &mut Transaction<'c, Postgres> {
-        &mut self.inner
-    }
-
     pub async fn commit(self) -> Result<()> {
         self.inner
             .commit()
@@ -45,6 +44,16 @@ impl<'c> LocalTimeoutTx<'c> {
             .rollback()
             .await
             .map_err(|e| StorageError::Database(format!("statement_timeout rollback failed: {e}")))
+    }
+}
+
+/// Borrow the PG connection for sqlx queries (`Executor`).
+///
+/// WHY: `&mut Transaction` is **not** `Executor` in sqlx 0.8 — callers need
+/// the deref'd `PgConnection` (GH-400 interactive reads).
+impl<'c> AsMut<PgConnection> for LocalTimeoutTx<'c> {
+    fn as_mut(&mut self) -> &mut PgConnection {
+        &mut self.inner
     }
 }
 

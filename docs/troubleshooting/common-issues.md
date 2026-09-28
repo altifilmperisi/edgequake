@@ -1220,6 +1220,12 @@ SET search_path = ag_catalog, "$user", public;
 SELECT create_graph('edgequake_graph');
 ```
 
+#### Symptom: Postgres stays busy during community refresh
+
+Ingest community refresh loads a workspace-scoped snapshot in keyset pages (#404). Each page is cancelled in Postgres (`EDGEQUAKE_COMMUNITY_STATEMENT_TIMEOUT_MS`, default **30s**, clamp 1s–300s). Refresh is skipped when the workspace is above `EDGEQUAKE_COMMUNITY_BACKFILL_MAX_NODES` (default **50_000**), when that count fails, or when another replica holds the advisory lock. A run that does start loads at most `EDGEQUAKE_COMMUNITY_MAX_NODES` nodes (default **50_000**, clamp 100–5_000_000) and, past that cap, clusters a sample instead of walking every edge.
+
+Check logs for `statement_timeout` or `Skipping community index refresh`. Raise the statement budget only for a known-good plan. Raising the node cap does not turn the scan back into a full-graph walk.
+
 #### Symptom: Entities not connected
 
 **Diagnosis**:
@@ -1289,6 +1295,33 @@ curl "http://localhost:8080/api/v1/graph/entities?workspace_id=$WORKSPACE_ID"
 
 ---
 
+### 10. Documents page: Read path busy
+
+#### Symptom: "Error loading documents — Read path busy", header shows Busy
+
+Interactive catalog reads share one deadline and a small DB permit so ingest cannot hold the pool until the client gives up ([#400](https://github.com/raphaelmansuy/edgequake/issues/400)). HTTP **503** with code `read_path_busy` means that budget was spent. It is retryable. It is not a lock that stays taken after the response.
+
+| `details.reason` | Meaning |
+| ---------------- | ------- |
+| `work_deadline` | The handler exceeded `EDGEQUAKE_DOCUMENTS_READ_TIMEOUT_MS` (default 2500, clamp 500–30000) |
+| `permit_wait` | Too many list/search/tenant/workspace reads were already in flight |
+| `permit_closed` | The permit semaphore was shut down |
+
+Guarded routes: `GET /api/v1/documents`, document detail, `GET /api/v1/documents/search`, `GET /api/v1/tenants`, `GET /api/v1/tenants/{id}/workspaces`.
+
+The WebUI retries the 503 **once**, waiting `details.retry_after_ms` (clamped 500–8000), then shows **Try again**. The header **Busy** pill is readiness `degraded` (`/live` ok, `/health` not healthy). While degraded, the header re-checks `/live` and `/health` every **5s** so Busy clears without a reload. Dashboard component details stay on a **30s** floor. `EDGEQUAKE_HEALTH_POLL_MS` still controls the healthy-state loop (default off).
+
+`?include_stats=true` on the workspace list does not compute stats under this deadline. A cache miss returns `stats: null`. Open the workspace or call `GET /api/v1/workspaces/{id}/stats` to fill the cache.
+
+**What to do:**
+
+1. Retry. A single 503 during a heavy ingest is expected.
+2. If every list fails, check pool saturation and slow queries (`pg_stat_activity`) rather than restarting to "release a lock".
+3. Raise `EDGEQUAKE_DOCUMENTS_READ_TIMEOUT_MS` only when the list query is legitimately slower than 2.5s. Postgres is killed 250ms earlier so the connection returns to the pool.
+4. Permit count is `max(2, DATABASE_POOL_SIZE / 8)` (`DATABASE_POOL_SIZE` default 32 → 4). That env sizes the bulkhead; the four role pools (`EDGEQUAKE_DB_POOL_SIZE_*`) are separate.
+
+---
+
 ## Diagnostic Commands
 
 ### Logs
@@ -1349,7 +1382,7 @@ curl -I http://localhost:8080/health
 | 422        | Validation error    | Check required fields     |
 | 429        | Rate limited        | Wait and retry            |
 | 500        | Server error        | Check logs                |
-| 503        | Service unavailable | Check DB/LLM connection   |
+| 503        | Service unavailable | `read_path_busy`: retry (see §10). Other 503: DB/LLM or `/ready` blockers |
 
 ---
 

@@ -152,11 +152,7 @@ impl MemoryGraphStorage {
             Some(wid) => {
                 // Strict: scoped id prefix OR explicit property (no legacy-null wildcard).
                 Self::node_matches_scoped_workspace(node, Some(wid))
-                    || node
-                        .properties
-                        .get("workspace_id")
-                        .and_then(|v| v.as_str())
-                        == Some(wid)
+                    || node.properties.get("workspace_id").and_then(|v| v.as_str()) == Some(wid)
             }
         }
     }
@@ -172,11 +168,8 @@ impl MemoryGraphStorage {
             Some(wid) => {
                 let prefix = format!("{wid}::");
                 let scoped = edge.source.starts_with(&prefix) && edge.target.starts_with(&prefix);
-                let prop = edge
-                    .properties
-                    .get("workspace_id")
-                    .and_then(|v| v.as_str())
-                    == Some(wid);
+                let prop =
+                    edge.properties.get("workspace_id").and_then(|v| v.as_str()) == Some(wid);
                 scoped || prop
             }
         }
@@ -1416,8 +1409,7 @@ impl GraphScanOps for MemoryGraphStorage {
                 .unwrap_or(matching.len()),
             None => 0,
         };
-        let page: Vec<(String, GraphEdge)> =
-            matching.into_iter().skip(start).take(limit).collect();
+        let page: Vec<(String, GraphEdge)> = matching.into_iter().skip(start).take(limit).collect();
         let next_after = if page.len() >= limit {
             page.last().map(|(c, _)| c.clone())
         } else {

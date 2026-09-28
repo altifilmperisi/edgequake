@@ -33,7 +33,7 @@ import {
     TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { getBackendReadinessSnapshot } from '@/lib/api/client';
-import { getBackendReadyRefetchInterval } from '@/lib/runtime/health-poll';
+import { getBackendReadyRefetchIntervalForState } from '@/lib/runtime/health-poll';
 import { useAuthStore } from '@/stores/use-auth-store';
 import { Circle, LogOut, Monitor, Moon, Sun, User } from 'lucide-react';
 import { useTheme } from 'next-themes';
@@ -55,7 +55,8 @@ export function Header() {
   const { data: readiness, isLoading } = useQuery({
     queryKey: ['backend-ready'],
     queryFn: () => getBackendReadinessSnapshot(),
-    refetchInterval: getBackendReadyRefetchInterval(),
+    refetchInterval: (query) =>
+      getBackendReadyRefetchIntervalForState(query.state.data?.state),
     staleTime: 5_000,
     retry: 1,
   });

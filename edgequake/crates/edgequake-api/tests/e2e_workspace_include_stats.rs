@@ -105,16 +105,45 @@ async fn list_workspaces_include_stats_does_not_fail() {
         )
         .await
         .unwrap();
-    assert_eq!(resp.status(), StatusCode::OK, "include_stats must not 500");
+    assert_eq!(
+        resp.status(),
+        StatusCode::OK,
+        "include_stats must not 503/500"
+    );
     let body = json_body(resp).await;
     let items = body["items"].as_array().expect("items");
     assert!(!items.is_empty(), "{body}");
     for item in items {
-        if let Some(stats) = item.get("stats") {
-            assert!(
-                stats.is_object() || stats.is_null(),
-                "stats must be object or null: {item}"
-            );
-        }
+        // GH-400: cold cache → stats null (no nested AGE/SQL under the guard).
+        let stats = item.get("stats");
+        assert!(
+            stats.is_none() || stats.is_some_and(|s| s.is_null()),
+            "cold-cache include_stats must be null: {item}"
+        );
     }
+}
+
+#[tokio::test]
+async fn documents_search_returns_200_with_read_path_extractor() {
+    // GH-400: proves State<Arc<ReadPathDbPermit>> is wired on search; missing
+    // tenant context still yields 200 empty (same as list security guard).
+    let app = test_app();
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/v1/documents/search?q=test&page_size=5")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        resp.status(),
+        StatusCode::OK,
+        "search must not 500 from missing ReadPathDbPermit extractor"
+    );
+    let body = json_body(resp).await;
+    assert!(body["items"].as_array().is_some(), "{body}");
+    assert_eq!(body["total"].as_u64(), Some(0));
 }

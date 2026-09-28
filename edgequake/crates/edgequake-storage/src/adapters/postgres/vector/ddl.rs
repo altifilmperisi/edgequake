@@ -242,7 +242,11 @@ impl PgVectorStorage {
         // Missing table ⇒ not retired — allow CREATE on legacy_tables rollback
         // / pre-write-stop paths (never treat never-created workspace tables
         // as dropped). Probe first so Postgres never logs 42P01 (#405).
-        if !self.legacy_vectors_relation_exists_cached().await.unwrap_or(false) {
+        if !self
+            .legacy_vectors_relation_exists_cached()
+            .await
+            .unwrap_or(false)
+        {
             return false;
         }
         let non_chunk: std::result::Result<i64, sqlx::Error> = sqlx::query_scalar(&format!(

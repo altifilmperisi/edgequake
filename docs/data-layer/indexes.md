@@ -28,6 +28,8 @@ Bidirectional: each index lists consuming Ref IDs; each op lists indexes in engi
 
 ## `HNSW/IVF embedding (eq_*_vectors)`
 
+Legacy rollback tables (`EDGEQUAKE_VECTOR_BACKEND=legacy_tables`). The default `typed_embeddings` backend serves ANN from typed embedding tables and FTS from `chunks.content_tsv` (#405). Do not add new readers of `eq_*_vectors`.
+
 - `DATA-PGVEC-VECTORS-ANN-QUERY-001`
 - `DATA-PGVEC-VECTORS-ANN-QUERY-FILTERED-002`
 - `DATA-PGVEC-VECTORS-UPSERT-BATCH-004`

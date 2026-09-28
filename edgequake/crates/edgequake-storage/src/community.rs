@@ -1018,11 +1018,7 @@ mod tests {
         edge_a.insert("workspace_id".into(), serde_json::json!(ws_a));
         edge_a.insert("weight".into(), serde_json::json!(1.0));
         graph
-            .upsert_edge(
-                &format!("{ws_a}::ALPHA"),
-                &format!("{ws_a}::BETA"),
-                edge_a,
-            )
+            .upsert_edge(&format!("{ws_a}::ALPHA"), &format!("{ws_a}::BETA"), edge_a)
             .await
             .unwrap();
         let mut edge_b = HashMap::new();

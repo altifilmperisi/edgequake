@@ -88,12 +88,8 @@ impl PostgresAGEGraphStorage {
             .await
             .map_err(|e| StorageError::Database(format!("Node count query failed: {}", e)))?;
 
-        let page_sql = Self::list_nodes_filtered_page_sql(
-            &self.graph_name,
-            &where_clause,
-            offset,
-            limit,
-        );
+        let page_sql =
+            Self::list_nodes_filtered_page_sql(&self.graph_name, &where_clause, offset, limit);
 
         let rows = sqlx::query(&page_sql)
             .fetch_all(&mut *conn)
@@ -160,14 +156,8 @@ impl PostgresAGEGraphStorage {
             .await
             .map_err(|e| StorageError::Database(format!("Edge count query failed: {}", e)))?;
 
-        let page_sql = Self::list_edges_page_sql(
-            &self.graph_name,
-            &where_clause,
-            &src,
-            &tgt,
-            offset,
-            limit,
-        );
+        let page_sql =
+            Self::list_edges_page_sql(&self.graph_name, &where_clause, &src, &tgt, offset, limit);
 
         let rows = sqlx::query(&page_sql)
             .fetch_all(&mut *conn)
@@ -236,10 +226,7 @@ impl PostgresAGEGraphStorage {
         limit: usize,
     ) -> String {
         let cursor_pred = match after {
-            Some(c) => format!(
-                "AND e.id::text > '{}'",
-                Self::escape_sql_string(c)
-            ),
+            Some(c) => format!("AND e.id::text > '{}'", Self::escape_sql_string(c)),
             None => String::new(),
         };
         format!(
@@ -271,10 +258,7 @@ impl PostgresAGEGraphStorage {
         limit: usize,
     ) -> String {
         let cursor_pred = match after {
-            Some(c) => format!(
-                "AND v.id::text > '{}'",
-                Self::escape_sql_string(c)
-            ),
+            Some(c) => format!("AND v.id::text > '{}'", Self::escape_sql_string(c)),
             None => String::new(),
         };
         format!(
@@ -402,7 +386,7 @@ impl PostgresAGEGraphStorage {
 
         let timeout_ms = super::helpers::community_statement_timeout_ms();
         let mut timed = super::helpers::LocalTimeoutTx::begin(&mut conn, timeout_ms).await?;
-        let rows = match sqlx::query(&page_sql).fetch_all(&mut **timed.as_mut()).await {
+        let rows = match sqlx::query(&page_sql).fetch_all(timed.as_mut()).await {
             Ok(r) => {
                 timed.commit().await?;
                 r
@@ -481,7 +465,7 @@ impl PostgresAGEGraphStorage {
 
         let timeout_ms = super::helpers::community_statement_timeout_ms();
         let mut timed = super::helpers::LocalTimeoutTx::begin(&mut conn, timeout_ms).await?;
-        let rows = match sqlx::query(&page_sql).fetch_all(&mut **timed.as_mut()).await {
+        let rows = match sqlx::query(&page_sql).fetch_all(timed.as_mut()).await {
             Ok(r) => {
                 timed.commit().await?;
                 r
@@ -656,7 +640,7 @@ impl PostgresAGEGraphStorage {
             .bind(&exact_ids)
             .bind(&chunk_prefixes)
             .bind(probe_limit)
-            .fetch_all(&mut **timed.as_mut())
+            .fetch_all(timed.as_mut())
             .await
         {
             Ok(r) => r,
@@ -683,10 +667,7 @@ impl PostgresAGEGraphStorage {
 
         // SPEC-071: legacy SeqScan only when explicitly enabled.
         if let Some(legacy_sql) = legacy_sql {
-            let legacy_rows = match sqlx::query(&legacy_sql)
-                .fetch_all(&mut **timed.as_mut())
-                .await
-            {
+            let legacy_rows = match sqlx::query(&legacy_sql).fetch_all(timed.as_mut()).await {
                 Ok(r) => r,
                 Err(e) => {
                     let _ = timed.rollback().await;
@@ -830,7 +811,7 @@ impl PostgresAGEGraphStorage {
             .bind(&exact_ids)
             .bind(&chunk_prefixes)
             .bind(probe_limit)
-            .fetch_all(&mut **timed.as_mut())
+            .fetch_all(timed.as_mut())
             .await
         {
             Ok(r) => r,
@@ -846,10 +827,7 @@ impl PostgresAGEGraphStorage {
         }
 
         if let Some(legacy_sql) = legacy_sql {
-            let legacy_rows = match sqlx::query(&legacy_sql)
-                .fetch_all(&mut **timed.as_mut())
-                .await
-            {
+            let legacy_rows = match sqlx::query(&legacy_sql).fetch_all(timed.as_mut()).await {
                 Ok(r) => r,
                 Err(e) => {
                     let _ = timed.rollback().await;
@@ -902,7 +880,7 @@ impl PostgresAGEGraphStorage {
             .bind(&exact_ids)
             .bind(&chunk_prefixes)
             .bind(probe_limit)
-            .fetch_all(&mut **timed.as_mut())
+            .fetch_all(timed.as_mut())
             .await
         {
             Ok(r) => r,
