@@ -549,7 +549,7 @@ async fn persist_processing_result_impl(
                         ),
                     )
                 })?;
-                let command = super::relational_chunk_writer::build_prepared_ingestion_batch(
+                let commands = super::relational_chunk_writer::pack_prepared_ingestion_batches(
                     ctx,
                     result,
                     &chunks,
@@ -558,11 +558,13 @@ async fn persist_processing_result_impl(
                 )
                 .map_err(crate::error::PipelineError::StorageError)?;
                 let stage_start = Instant::now();
-                committer
-                    .commit_batch(&command)
-                    .await
-                    .map_err(edgequake_storage::StorageError::from)
-                    .map_err(crate::error::PipelineError::StorageError)?;
+                for command in &commands {
+                    committer
+                        .commit_batch(command)
+                        .await
+                        .map_err(edgequake_storage::StorageError::from)
+                        .map_err(crate::error::PipelineError::StorageError)?;
+                }
                 record_ingest_stage_duration(
                     "relational_commit_batch",
                     stage_start.elapsed().as_secs_f64(),

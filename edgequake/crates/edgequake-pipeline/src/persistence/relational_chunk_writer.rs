@@ -9,10 +9,13 @@ use edgequake_storage::traits::domain::{
     Chunk, ChunkId, ChunkRepository, DocumentId, TenantId, UnitOfWork, WorkspaceId,
 };
 use edgequake_storage::{normalize_relation_type_str, EntityId, StorageError};
-use edgequake_storage_contracts::{AccessScope, PreparedIngestionBatch, PreparedRecord};
+use edgequake_storage_contracts::{
+    AccessScope, PreparedIngestionBatch, PreparedRecord, MAX_BATCH_RECORDS,
+};
 use sha2::{Digest as _, Sha256};
 use uuid::Uuid;
 
+use crate::chunker::TextChunk;
 use crate::extractor::{ExtractedEntity, ExtractedRelationship};
 use crate::pipeline::helpers::mention_merge::{
     merge_entity_type_vote, merge_importance, merge_relationship_weight, prefer_filled_option,
@@ -98,18 +101,162 @@ pub fn build_relational_chunks(
         .collect())
 }
 
-/// Build the canonical authority command consumed by `IngestionCommitter`.
+/// Build a single authority command (ordinal 0, expected revision = generation − 1).
 ///
-/// Duplicate extraction mentions collapse to one fact/contribution pair keyed
-/// by stable logical identity. Record revisions equal `generation` so reprocess
-/// advances without colliding with prior immutable rows. IDs and JSON field
-/// ordering stay deterministic so a retry produces the same digest.
+/// Prefer [`pack_prepared_ingestion_batches`] for production persist so dense
+/// documents stay under [`MAX_BATCH_RECORDS`].
 pub fn build_prepared_ingestion_batch(
     ctx: &IngestionPersistContext,
     result: &ProcessingResult,
     chunks: &[Chunk],
     embedding_model_id: &str,
     generation: u64,
+) -> Result<PreparedIngestionBatch, StorageError> {
+    build_prepared_ingestion_batch_at(
+        ctx,
+        result,
+        chunks,
+        &result.chunks,
+        embedding_model_id,
+        generation,
+        0,
+        Some(generation.saturating_sub(1)),
+    )
+}
+
+/// SPEC-149: split a processing result into bounded staging commands.
+///
+/// Packs contiguous relational chunks so each command's
+/// `chunks + facts + contributions + embeddings` count is ≤ [`MAX_BATCH_RECORDS`].
+/// Ordinal fencing matches the postgres ingestion committer:
+/// - ordinal 0 → `expected_revision = generation - 1`
+/// - ordinal > 0 → `expected_revision = generation` (revision already advanced)
+pub fn pack_prepared_ingestion_batches(
+    ctx: &IngestionPersistContext,
+    result: &ProcessingResult,
+    chunks: &[Chunk],
+    embedding_model_id: &str,
+    generation: u64,
+) -> Result<Vec<PreparedIngestionBatch>, StorageError> {
+    if generation == 0 {
+        return Err(StorageError::InvalidData(
+            "ingest generation must be greater than zero".into(),
+        ));
+    }
+    if chunks.len() != result.chunks.len() {
+        return Err(StorageError::InvalidData(format!(
+            "relational chunk count {} != source chunk count {}",
+            chunks.len(),
+            result.chunks.len()
+        )));
+    }
+
+    if chunks.is_empty() {
+        return Ok(vec![build_prepared_ingestion_batch(
+            ctx,
+            result,
+            chunks,
+            embedding_model_id,
+            generation,
+        )?]);
+    }
+
+    let known_ids = result
+        .chunks
+        .iter()
+        .map(|chunk| chunk.id.as_str())
+        .collect::<std::collections::HashSet<_>>();
+    let mut per_chunk_cost = per_chunk_record_costs(ctx, result, generation)?;
+    // Orphan extractions (unknown source_chunk_id) ride with ordinal 0.
+    let orphan_cost = orphan_extraction_record_cost(ctx, result, &known_ids, generation)?;
+    if let Some(first) = per_chunk_cost.first_mut() {
+        *first = first.saturating_add(orphan_cost);
+    }
+    for (index, cost) in per_chunk_cost.iter().enumerate() {
+        if *cost > MAX_BATCH_RECORDS {
+            return Err(StorageError::InvalidData(format!(
+                "chunk index {index} alone requires {cost} records; maximum is {MAX_BATCH_RECORDS}"
+            )));
+        }
+    }
+
+    let total_cost: usize = per_chunk_cost.iter().copied().sum();
+    if total_cost <= MAX_BATCH_RECORDS {
+        return Ok(vec![build_prepared_ingestion_batch(
+            ctx,
+            result,
+            chunks,
+            embedding_model_id,
+            generation,
+        )?]);
+    }
+
+    let ranges = pack_chunk_index_ranges(&per_chunk_cost, MAX_BATCH_RECORDS);
+
+    let mut batches = Vec::with_capacity(ranges.len());
+    for (ordinal, (start, end)) in ranges.into_iter().enumerate() {
+        let batch_ordinal = u64::try_from(ordinal)
+            .map_err(|_| StorageError::InvalidData("batch ordinal exceeds u64".into()))?;
+        let expected_revision = if batch_ordinal == 0 {
+            Some(generation.saturating_sub(1))
+        } else {
+            Some(generation)
+        };
+        let slice_chunks = &chunks[start..end];
+        let slice_sources = &result.chunks[start..end];
+        let pack_ids = slice_sources
+            .iter()
+            .map(|chunk| chunk.id.as_str())
+            .collect::<std::collections::HashSet<_>>();
+        let include_orphans = batch_ordinal == 0;
+        let filtered = ProcessingResult {
+            document_id: result.document_id.clone(),
+            chunks: slice_sources.to_vec(),
+            extractions: result
+                .extractions
+                .iter()
+                .filter(|extraction| {
+                    let source = extraction.source_chunk_id.as_str();
+                    pack_ids.contains(source)
+                        || (include_orphans && !known_ids.contains(source))
+                })
+                .cloned()
+                .collect(),
+            stats: result.stats.clone(),
+            lineage: None,
+        };
+        batches.push(build_prepared_ingestion_batch_at(
+            ctx,
+            &filtered,
+            slice_chunks,
+            slice_sources,
+            embedding_model_id,
+            generation,
+            batch_ordinal,
+            expected_revision,
+        )?);
+    }
+    Ok(batches)
+}
+
+/// Build the canonical authority command consumed by `IngestionCommitter`.
+///
+/// Duplicate extraction mentions collapse to one fact/contribution pair keyed
+/// by stable logical identity. Record revisions equal `generation` so reprocess
+/// advances without colliding with prior immutable rows. IDs and JSON field
+/// ordering stay deterministic so a retry produces the same digest.
+///
+/// `source_chunks` must align 1:1 with `chunks` (embeddings + legacy ids).
+#[allow(clippy::too_many_arguments)]
+pub fn build_prepared_ingestion_batch_at(
+    ctx: &IngestionPersistContext,
+    result: &ProcessingResult,
+    chunks: &[Chunk],
+    source_chunks: &[TextChunk],
+    embedding_model_id: &str,
+    generation: u64,
+    batch_ordinal: u64,
+    expected_revision: Option<u64>,
 ) -> Result<PreparedIngestionBatch, StorageError> {
     let document_id = parse_document_id(&ctx.document_id)?;
     let tenant_id = required_scope_uuid("tenant", ctx.tenant_id.as_deref())?;
@@ -119,8 +266,13 @@ pub fn build_prepared_ingestion_batch(
             "ingest generation must be greater than zero".into(),
         ));
     }
-    let batch_ordinal = 0;
-    let expected_revision = generation.saturating_sub(1);
+    if chunks.len() != source_chunks.len() {
+        return Err(StorageError::InvalidData(format!(
+            "relational chunk count {} != source chunk count {}",
+            chunks.len(),
+            source_chunks.len()
+        )));
+    }
     let revision = generation;
 
     let chunk_records = chunks
@@ -138,7 +290,7 @@ pub fn build_prepared_ingestion_batch(
 
     let embeddings = chunks
         .iter()
-        .zip(&result.chunks)
+        .zip(source_chunks)
         .filter_map(|(chunk, source)| {
             source.embedding.as_ref().map(|embedding| {
                 let payload = serde_json::json!({
@@ -177,7 +329,7 @@ pub fn build_prepared_ingestion_batch(
         document_id,
         ingest_generation: generation,
         batch_ordinal,
-        expected_revision: Some(expected_revision),
+        expected_revision,
         idempotency_key,
         schema_version: 1,
         canonical_digest: sha256(&canonical),
@@ -186,6 +338,102 @@ pub fn build_prepared_ingestion_batch(
         contributions,
         embeddings,
     })
+}
+
+/// Per-chunk admission cost: 1 chunk + facts + contributions + optional embedding.
+fn per_chunk_record_costs(
+    ctx: &IngestionPersistContext,
+    result: &ProcessingResult,
+    generation: u64,
+) -> Result<Vec<usize>, StorageError> {
+    let document_id = parse_document_id(&ctx.document_id)?;
+    let tenant_id = required_scope_uuid("tenant", ctx.tenant_id.as_deref())?;
+    let workspace_id = required_scope_uuid("workspace", ctx.workspace_id.as_deref())?;
+    let revision = generation;
+    let mut costs = Vec::with_capacity(result.chunks.len());
+    for source in &result.chunks {
+        let filtered = ProcessingResult {
+            document_id: result.document_id.clone(),
+            chunks: vec![source.clone()],
+            extractions: result
+                .extractions
+                .iter()
+                .filter(|extraction| extraction.source_chunk_id == source.id)
+                .cloned()
+                .collect(),
+            stats: Default::default(),
+            lineage: None,
+        };
+        let (facts, contributions) = build_canonical_fact_records(
+            document_id.into_uuid(),
+            tenant_id,
+            workspace_id,
+            &filtered,
+            revision,
+        )?;
+        let embedding = usize::from(source.embedding.is_some());
+        costs.push(
+            1usize
+                .saturating_add(facts.len())
+                .saturating_add(contributions.len())
+                .saturating_add(embedding),
+        );
+    }
+    Ok(costs)
+}
+
+fn orphan_extraction_record_cost(
+    ctx: &IngestionPersistContext,
+    result: &ProcessingResult,
+    known_ids: &std::collections::HashSet<&str>,
+    generation: u64,
+) -> Result<usize, StorageError> {
+    let orphans: Vec<_> = result
+        .extractions
+        .iter()
+        .filter(|extraction| !known_ids.contains(extraction.source_chunk_id.as_str()))
+        .cloned()
+        .collect();
+    if orphans.is_empty() {
+        return Ok(0);
+    }
+    let document_id = parse_document_id(&ctx.document_id)?;
+    let tenant_id = required_scope_uuid("tenant", ctx.tenant_id.as_deref())?;
+    let workspace_id = required_scope_uuid("workspace", ctx.workspace_id.as_deref())?;
+    let filtered = ProcessingResult {
+        document_id: result.document_id.clone(),
+        chunks: Vec::new(),
+        extractions: orphans,
+        stats: Default::default(),
+        lineage: None,
+    };
+    let (facts, contributions) = build_canonical_fact_records(
+        document_id.into_uuid(),
+        tenant_id,
+        workspace_id,
+        &filtered,
+        generation,
+    )?;
+    Ok(facts.len().saturating_add(contributions.len()))
+}
+
+/// Greedy contiguous packs of chunk indexes under `budget`.
+fn pack_chunk_index_ranges(costs: &[usize], budget: usize) -> Vec<(usize, usize)> {
+    let mut ranges = Vec::new();
+    let mut start = 0usize;
+    let mut used = 0usize;
+    for (index, cost) in costs.iter().enumerate() {
+        if start < index && used.saturating_add(*cost) > budget {
+            ranges.push((start, index));
+            start = index;
+            used = 0;
+        }
+        used = used.saturating_add(*cost);
+    }
+    if start < costs.len() || costs.is_empty() {
+        ranges.push((start, costs.len()));
+    }
+    ranges
 }
 
 /// Ordered canonical entity/relationship facts keyed by stable identity.
@@ -917,5 +1165,110 @@ mod tests {
                 Some(fact.id)
             );
         }
+    }
+
+    /// Dense synthetic doc: two chunks each with 3k entities → >10k total records.
+    fn dense_two_chunk_result(doc_id: Uuid, entities_per_chunk: usize) -> ProcessingResult {
+        let doc = doc_id.to_string();
+        let mut chunks = Vec::with_capacity(2);
+        let mut extractions = Vec::with_capacity(2);
+        for index in 0..2 {
+            let chunk_id = format!("{doc}-chunk-{index}");
+            chunks.push(TextChunk {
+                id: chunk_id.clone(),
+                content: format!("chunk {index}"),
+                index,
+                start_offset: index * 10,
+                end_offset: index * 10 + 9,
+                start_line: 1,
+                end_line: 1,
+                token_count: 2,
+                embedding: Some(vec![0.1, 0.2]),
+                section: None,
+                page_start: None,
+                page_end: None,
+                modality: None,
+            });
+            let mut extraction = ExtractionResult::new(&chunk_id);
+            extraction.entities = (0..entities_per_chunk)
+                .map(|n| {
+                    entity(
+                        &format!("Entity{index}_{n}"),
+                        "CONCEPT",
+                        &format!("desc {index} {n}"),
+                        0.5,
+                    )
+                })
+                .collect();
+            extractions.push(extraction);
+        }
+        ProcessingResult {
+            document_id: doc,
+            chunks,
+            extractions,
+            stats: Default::default(),
+            lineage: None,
+        }
+    }
+
+    #[test]
+    fn pack_splits_when_total_exceeds_max_batch_records() {
+        let doc_id = Uuid::new_v4();
+        let (ctx, _, _) = scoped_ctx(doc_id);
+        // 3000 entities → 1 chunk + 3000 facts + 3000 contribs + 1 emb = 6002 per chunk.
+        // Two chunks = 12004 > 10000 → must split into 2 packs.
+        let result = dense_two_chunk_result(doc_id, 3000);
+        let chunks = build_relational_chunks(&ctx, &result).expect("chunks");
+        let single = build_prepared_ingestion_batch(
+            &ctx,
+            &result,
+            &chunks,
+            "text-embedding-3-small",
+            5,
+        )
+        .expect("single batch builds before admission");
+        let single_total = single.chunks.len()
+            + single.facts.len()
+            + single.contributions.len()
+            + single.embeddings.len();
+        assert!(
+            single_total > MAX_BATCH_RECORDS,
+            "fixture must exceed admission cap (got {single_total})"
+        );
+
+        let batches = pack_prepared_ingestion_batches(
+            &ctx,
+            &result,
+            &chunks,
+            "text-embedding-3-small",
+            5,
+        )
+        .expect("pack");
+        assert!(batches.len() >= 2, "expected multi-batch, got {}", batches.len());
+        assert_eq!(batches[0].batch_ordinal, 0);
+        assert_eq!(batches[0].expected_revision, Some(4));
+        assert_eq!(batches[1].batch_ordinal, 1);
+        assert_eq!(batches[1].expected_revision, Some(5));
+        assert_eq!(batches[0].idempotency_key, format!("{}:5:0", doc_id));
+        assert_eq!(batches[1].idempotency_key, format!("{}:5:1", doc_id));
+        for batch in &batches {
+            let total = batch.chunks.len()
+                + batch.facts.len()
+                + batch.contributions.len()
+                + batch.embeddings.len();
+            assert!(
+                total <= MAX_BATCH_RECORDS,
+                "batch {} has {total} records",
+                batch.batch_ordinal
+            );
+            assert!(edgequake_storage_contracts::validate_prepared_ingestion_batch(batch).is_ok());
+        }
+    }
+
+    #[test]
+    fn pack_chunk_index_ranges_respects_budget() {
+        assert_eq!(pack_chunk_index_ranges(&[100, 100, 100], 250), vec![(0, 2), (2, 3)]);
+        assert_eq!(pack_chunk_index_ranges(&[50, 50], 200), vec![(0, 2)]);
+        assert_eq!(pack_chunk_index_ranges(&[], 100), vec![(0, 0)]);
     }
 }
