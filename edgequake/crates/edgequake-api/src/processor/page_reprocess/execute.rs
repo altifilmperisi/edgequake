@@ -8,6 +8,7 @@ use edgequake_pdf::{
     PdfConversionConfig, PdfParserBackend, VisionConversionConfig,
 };
 use edgequake_pdf2md::PageSelection;
+#[cfg(feature = "postgres")]
 use edgequake_storage::{UpsertPageParse, PAGE_STAGE_FAILED, PAGE_STAGE_OK, PAGE_STAGE_RUNNING};
 use edgequake_tasks::{Task, TaskError, TaskResult};
 use sha2::{Digest, Sha256};

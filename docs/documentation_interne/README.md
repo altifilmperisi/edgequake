@@ -1,3 +1,7 @@
+---
+title: "EdgeQuake — Dossier technique de déploiement {client}"
+---
+
 # EdgeQuake — Dossier technique de déploiement {client}
 
 ## Contrôle documentaire

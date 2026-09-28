@@ -1,3 +1,7 @@
+---
+title: "RLS superuser acceptance"
+---
+
 # RLS Superuser Acceptance — GAP-091-12 Decision Record
 
 **Status:** ACCEPTED (recorded at SPEC-091 IW0)

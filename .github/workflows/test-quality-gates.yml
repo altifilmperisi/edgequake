@@ -46,7 +46,7 @@ jobs:
           cargo test --package edgequake-core --test inviolable_invariants --locked --no-fail-fast 2>&1 | tee invariant_output.txt
           cargo test --package edgequake-core --test edge_case_invariants --locked --no-fail-fast 2>&1 | tee -a invariant_output.txt
           cargo test --package edgequake-api --test integration_invariants --locked --no-fail-fast 2>&1 | tee -a invariant_output.txt
-          if grep -q "FAILED" invariant_output.txt; then
+          if grep -E -q '^test .+ FAILED$|test result: FAILED' invariant_output.txt; then
             echo "::error::CRITICAL: Invariant tests failed! This is a reliability violation."
             exit 1
           fi

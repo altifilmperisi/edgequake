@@ -243,7 +243,8 @@ impl PostgresAGEGraphStorage {
 
     /// GH-404 / e2e: production community edge keyset SQL for EXPLAIN.
     ///
-    /// Mirrors [`Self::pg_scan_edges_after`] without executing it so tests can
+    /// Mirrors the production community edge keyset scan SQL (used by
+    /// `scan_edges_after` / community refresh) without executing it so tests can
     /// assert the planner never sees OFFSET / parent-vertex text-cast joins.
     pub fn community_edge_keyset_sql_for_explain(
         &self,

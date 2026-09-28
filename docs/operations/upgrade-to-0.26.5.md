@@ -1,3 +1,7 @@
+---
+title: "Upgrade to EdgeQuake v0.26.5"
+---
+
 # Upgrade to EdgeQuake v0.26.5
 
 > **From:** v0.26.4 · **To:** v0.26.5 · **CD:** GHCR (`edgequake`,

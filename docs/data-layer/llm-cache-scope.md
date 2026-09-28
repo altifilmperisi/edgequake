@@ -1,3 +1,7 @@
+---
+title: "LLM cache scope decision (GAP-091-14)"
+---
+
 # LLM Cache Scope Decision (SPEC-091, GAP-091-14)
 
 **Status:** ACCEPTED (IW0, 2026-07-30) — pinned by

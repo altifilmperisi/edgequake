@@ -1,3 +1,7 @@
+---
+title: "SPEC-098 — Entity spine + EDGE arbiter (operator)"
+---
+
 # SPEC-098 — Entity spine + EDGE arbiter (operator)
 
 Typed fleet embeddings require relational spine rows. Migrations **139** (entities)

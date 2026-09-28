@@ -38,7 +38,6 @@ services:
   # ── PostgreSQL with pgvector + Apache AGE ──────────────────────────────────
   postgres:
     image: ghcr.io/raphaelmansuy/edgequake-postgres:${EDGEQUAKE_POSTGRES_TAG:-${EDGEQUAKE_VERSION:-latest}}
-    container_name: edgequake-postgres
     restart: unless-stopped
     shm_size: '256m'
     environment:
@@ -59,7 +58,6 @@ services:
   # ── Schema migrate (SPEC-150: before API) ───────────────────────────────────
   migrate:
     image: ghcr.io/raphaelmansuy/edgequake:${EDGEQUAKE_VERSION:-latest}
-    container_name: edgequake-migrate
     restart: "no"
     environment:
       DATABASE_URL: postgres://edgequake:${POSTGRES_PASSWORD:-edgequake_secret}@postgres:5432/edgequake
@@ -77,7 +75,6 @@ services:
   # ── EdgeQuake API ──────────────────────────────────────────────────────────
   api:
     image: ghcr.io/raphaelmansuy/edgequake:${EDGEQUAKE_VERSION:-latest}
-    container_name: edgequake-api
     restart: unless-stopped
     ports:
       - "${EDGEQUAKE_PORT:-8080}:8080"
@@ -87,6 +84,8 @@ services:
       DATABASE_URL: postgres://edgequake:${POSTGRES_PASSWORD:-edgequake_secret}@postgres:5432/edgequake
       # SPEC-150: wait for migrate instead of exit 78
       EDGEQUAKE_SCHEMA_GATE: ${EDGEQUAKE_SCHEMA_GATE:-wait}
+      # Opt-in mock LLM for smoke/CI (unset by default — keep Ollama/OpenAI demos)
+      EDGEQUAKE_ALLOW_MOCK_PROVIDER: ${EDGEQUAKE_ALLOW_MOCK_PROVIDER:-}
       # ── LLM Provider ────────────────────────────────────────────────────────
       # Default: Ollama running on the host machine.
       # Override: EDGEQUAKE_LLM_PROVIDER=openai OPENAI_API_KEY=sk-...
@@ -182,7 +181,6 @@ services:
   # ── Next.js Web UI ─────────────────────────────────────────────────────────
   frontend:
     image: ghcr.io/raphaelmansuy/edgequake-frontend:${EDGEQUAKE_VERSION:-latest}
-    container_name: edgequake-frontend
     restart: unless-stopped
     ports:
       - "${FRONTEND_PORT:-3000}:3000"

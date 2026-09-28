@@ -1,3 +1,7 @@
+---
+title: "Upgrade to EdgeQuake v0.26.2"
+---
+
 # Upgrade to EdgeQuake v0.26.2
 
 > **From:** v0.26.1 · **To:** v0.26.2 · **CD:** GHCR (`edgequake`, `edgequake-frontend`, `edgequake-postgres`)

@@ -336,6 +336,7 @@ mod tests {
         assert_eq!(ids(&items), vec!["c", "p"]);
     }
 
+    #[cfg(feature = "postgres")]
     #[test]
     fn backfill_adds_missing_and_skips_duplicate() {
         let merged = merge_search_candidates(
@@ -350,6 +351,7 @@ mod tests {
         assert_eq!(merged[0].title, "From metadata");
     }
 
+    #[cfg(feature = "postgres")]
     #[test]
     fn title_query_ai_matches_relational_title_only() {
         let merged = merge_search_candidates(
@@ -380,6 +382,7 @@ mod tests {
         assert_eq!(items[0].title, "AI Safety Notes");
     }
 
+    #[cfg(feature = "postgres")]
     #[test]
     fn summary_backfill_uses_title_and_keeps_indexed_status() {
         let summary = DocumentSummary {

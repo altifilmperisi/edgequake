@@ -1,3 +1,7 @@
+---
+title: "Local extract reliability (Ollama / LM Studio)"
+---
+
 # Local extract reliability (Ollama / LM Studio)
 
 Quick ops runbook when KG extraction stalls with `Network error … /api/chat` or

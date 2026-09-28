@@ -1,3 +1,7 @@
+---
+title: "Serving fence decision"
+---
+
 # Serving fence default decision (GAP-091-21b / SPEC-091 IP2)
 
 > **Status:** Accepted — default **on** (2026-07-31, SPEC-091 IP2)

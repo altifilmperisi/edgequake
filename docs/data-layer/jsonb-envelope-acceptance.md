@@ -1,3 +1,7 @@
+---
+title: "JSONB envelope acceptance (GAP-091-05)"
+---
+
 # JSONB envelope acceptance (GAP-091-05)
 
 > **Status:** Accepted by design — not a migration gap
