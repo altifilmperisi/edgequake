@@ -4,6 +4,35 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.28.1] — 2026-09-28
+
+Patch: post-0.28.0 CI/docs/compose hygiene so required gates match the product
+pin. **No schema change** (still **160**). Operators already on 0.28.0 only
+need to pull new images if they want the pin that includes these fixes;
+runtime behavior for default Ollama/OpenAI stacks is unchanged. Upgrade:
+[`docs/operations/upgrade-to-0.28.1.md`](docs/operations/upgrade-to-0.28.1.md).
+
+**Deps (crates.io):** unchanged (`edgequake-llm` **0.10.8**, `edgequake-pdf2md`
+**0.9.11**, `edgeparse-core` **0.2.5**; `edgequake-sdk` **0.4.0**).
+
+**SPEC-001 Acc:** attested from existing
+[`publish/latest`](specs/001-benchmark/e2e/artifacts/publish/latest/)
+(`valid: true`, medical-mid, `2026-08-15T11:02:18Z`) — no fresh n=200 run
+against schema 160; **PDF geometry not re-scored** (same honesty as 0.28.0).
+
+### Fixed
+- **CI / lib tests** — Postgres-only document-search unit tests gated behind
+  `feature = "postgres"` so `--no-default-features` Test Count / SPEC-091
+  compile paths stay green.
+- **rustdoc** — `community_edge_keyset_sql_for_explain` no longer links a
+  private method (Documentation job).
+- **Invariant Quality Gate** — failure grep matches real cargo test failures,
+  not `PAGE_STAGE_FAILED` in unused-import warnings.
+- **Website Astro** — Starlight `title` frontmatter on data-layer / upgrade /
+  interne docs so Pages build succeeds.
+- **Quickstart compose** — drop hardcoded `container_name` (project isolation);
+  passthrough `EDGEQUAKE_ALLOW_MOCK_PROVIDER` on the API service (opt-in mock).
+
 ## [0.28.0] — 2026-09-28
 
 Minor: **SPEC-143** directional PDF/Markdown page sync + **SPEC-151** partial
