@@ -4,8 +4,23 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-Work on `main` after the v0.27.0 tag. Schema train on this branch is **160**
-(v0.27.0 shipped through **159**). Run `edgequake migrate` before `/ready` is 200.
+## [0.28.0] — 2026-09-28
+
+Minor: **SPEC-143** directional PDF/Markdown page sync + **SPEC-151** partial
+page reprocess + interactive read-path hardening (#400) + community/FTS
+storage fixes (#404/#405). Schema train moves **159 → 160**. Operators must
+run `edgequake migrate` (or the compose / Helm migrate Job) before `/ready`
+is 200. Upgrade:
+[`docs/operations/upgrade-to-0.28.0.md`](docs/operations/upgrade-to-0.28.0.md).
+
+**Deps (crates.io):** unchanged (`edgequake-llm` **0.10.8**, `edgequake-pdf2md`
+**0.9.11**, `edgeparse-core` **0.2.5**; `edgequake-sdk` **0.4.0**).
+
+**SPEC-001 Acc:** attested from existing
+[`publish/latest`](specs/001-benchmark/e2e/artifacts/publish/latest/)
+(`valid: true`, medical-mid, `2026-08-15T11:02:18Z`) — no fresh n=200 run
+against schema 160; **PDF geometry not re-scored** (same honesty pattern as
+0.27.0).
 
 ### Added
 - **SPEC-143 — Directional PDF/Markdown page sync** — Side-by-side sync is an

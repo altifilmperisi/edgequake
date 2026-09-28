@@ -260,6 +260,11 @@ mod tests {
 
     #[tokio::test]
     async fn backfill_skips_when_no_uuid_workspace() {
+        // Makefile defaults EDGEQUAKE_COMMUNITY_GLOBAL=false; tests need product default.
+        let prev = std::env::var("EDGEQUAKE_COMMUNITY_GLOBAL").ok();
+        // SAFETY: test-only env restore; not concurrent with other env writers in this module.
+        unsafe { std::env::remove_var("EDGEQUAKE_COMMUNITY_GLOBAL") };
+
         let graph: Arc<dyn GraphStorage> = Arc::new(MemoryGraphStorage::new("comm-backfill-skip"));
         graph.initialize().await.unwrap();
         let mut props = HashMap::new();
@@ -275,10 +280,18 @@ mod tests {
             !a.properties.contains_key("community_id"),
             "must not label without UUID workspace"
         );
+
+        match prev {
+            Some(v) => unsafe { std::env::set_var("EDGEQUAKE_COMMUNITY_GLOBAL", v) },
+            None => unsafe { std::env::remove_var("EDGEQUAKE_COMMUNITY_GLOBAL") },
+        }
     }
 
     #[tokio::test]
     async fn backfill_scopes_to_uuid_workspace() {
+        let prev = std::env::var("EDGEQUAKE_COMMUNITY_GLOBAL").ok();
+        unsafe { std::env::remove_var("EDGEQUAKE_COMMUNITY_GLOBAL") };
+
         let graph: Arc<dyn GraphStorage> = Arc::new(MemoryGraphStorage::new("comm-backfill-ws"));
         graph.initialize().await.unwrap();
         let ws = uuid::Uuid::new_v4().to_string();
@@ -307,5 +320,10 @@ mod tests {
             a.properties.contains_key("community_id"),
             "workspace nodes must be labeled"
         );
+
+        match prev {
+            Some(v) => unsafe { std::env::set_var("EDGEQUAKE_COMMUNITY_GLOBAL", v) },
+            None => unsafe { std::env::remove_var("EDGEQUAKE_COMMUNITY_GLOBAL") },
+        }
     }
 }

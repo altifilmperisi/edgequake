@@ -15,9 +15,9 @@ The API process never auto-applies numbered migrations on start.
 | Check immutability | `./scripts/check_migration_checksums.sh` |
 | Manifest SSOT | `edgequake/migrations/manifest.toml` |
 
-**Train:** v0.27.0 shipped through migration **159**. `main` adds **160**
-(`160_spec151_document_page_states.sql`, partial page reprocess). Apply it
-with `edgequake migrate` before expecting `/ready` 200.
+**Train:** v0.28.0 ships through migration **160**
+(`160_spec151_document_page_states.sql`, partial page reprocess). v0.27.0
+stopped at **159**. Apply with `edgequake migrate` before expecting `/ready` 200.
 
 ## How Migrations Work
 

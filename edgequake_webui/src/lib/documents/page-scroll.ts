@@ -71,9 +71,11 @@ export function scrollTopForPage(
 function normalizeStarts(
   starts: ReadonlyMap<number, number> | ReadonlyArray<readonly [number, number]>,
 ): Array<[number, number]> {
-  const raw: Array<[number, number]> = Array.isArray(starts)
-    ? starts.map(([p, s]) => [p, s] as [number, number])
-    : Array.from(starts.entries());
+  // Array.isArray does not narrow ReadonlyArray away from Map in the else branch.
+  const pairs: ReadonlyArray<readonly [number, number]> = Array.isArray(starts)
+    ? starts
+    : Array.from(starts as ReadonlyMap<number, number>);
+  const raw: Array<[number, number]> = pairs.map(([p, s]) => [p, s]);
   // Ascending by start offset; for duplicate offsets keep lower page first.
   raw.sort((a, b) => a[1] - b[1] || a[0] - b[0]);
   return raw;
