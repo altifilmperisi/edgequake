@@ -8,11 +8,14 @@
 //! `chunk_kv_table_exists` (≤0.22 mid-upgrade). Post-125 census, content comes
 //! from `content_tsv` / metadata only (typed chunks SSOT via serving path).
 //!
-//! Text search language is configurable via `EDGEQUAKE_FTS_LANGUAGE`
-//! (default `english`).
+//! #405 / SPEC-091: under typed vector backend, FTS reads `public.chunks.content_tsv`
+//! (migration 136) — never retired `eq_*_vectors`. Legacy path keeps
+//! `EDGEQUAKE_FTS_LANGUAGE` for rollback only.
 
 use sqlx::Row;
+use uuid::Uuid;
 
+use super::typed_read::resolve_workspace_uuid;
 use super::PgVectorStorage;
 use crate::adapters::postgres::schema;
 use crate::error::{Result, StorageError};
@@ -58,6 +61,33 @@ fn fts_content_expr(join_kv: bool, lang: &str) -> String {
     }
 }
 
+/// SQL for typed chunk FTS (migration 136 `chunks.content_tsv`). Exposed for
+/// contract tests — must not reference legacy `eq_*_vectors`.
+pub(crate) const TYPED_CHUNKS_FTS_SQL: &str = r#"
+            SELECT coalesce(c.metadata->>'legacy_chunk_key', c.id::text) AS id,
+                   c.metadata,
+                   ts_rank_cd(
+                       c.content_tsv,
+                       websearch_to_tsquery('english', $1)
+                   )::float4 AS score
+            FROM public.chunks c
+            JOIN public.documents d ON d.id = c.document_id
+            WHERE c.content_tsv @@ websearch_to_tsquery('english', $1)
+              AND ($2::uuid IS NULL
+                   OR d.workspace_id = $2
+                   OR (d.workspace_id IS NULL AND d.metadata->>'workspace_id' = $3))
+              AND ($4::uuid[] IS NULL OR c.document_id = ANY($4))
+              AND ($5::uuid IS NULL OR c.tenant_id = $5)
+              AND ($6::text[] IS NULL OR c.metadata->>'modality' = ANY($6))
+              AND (
+                    $7::text[] IS NULL
+                    OR c.id::text = ANY($7)
+                    OR c.metadata->>'legacy_chunk_key' = ANY($7)
+                  )
+            ORDER BY score DESC
+            LIMIT $8
+            "#;
+
 impl PgVectorStorage {
     pub(crate) async fn chunk_kv_table_exists_cached(&self) -> Result<bool> {
         if let Some(exists) = self.chunk_kv_table_exists.get() {
@@ -70,7 +100,94 @@ impl PgVectorStorage {
         Ok(exists)
     }
 
-    /// Full-text search with `ts_rank_cd` over chunk content (cover-density rank).
+    /// Typed-authority FTS over `public.chunks.content_tsv` (#405 / SPEC-091).
+    ///
+    /// Regconfig is fixed to `english` (STORED generated column in migration 136).
+    /// Returns legacy-shaped ids via `metadata.legacy_chunk_key`.
+    pub(crate) async fn typed_chunks_text_search_filtered(
+        &self,
+        query_text: &str,
+        top_k: usize,
+        filter_ids: Option<&[String]>,
+        metadata_filter: Option<&MetadataFilter>,
+    ) -> Result<Vec<VectorSearchResult>> {
+        if query_text.trim().is_empty() || top_k == 0 {
+            return Ok(Vec::new());
+        }
+
+        let mf = metadata_filter.cloned().unwrap_or_default();
+        if let Some(vtype) = mf.vector_type.as_deref() {
+            if !vtype.eq_ignore_ascii_case("chunk") {
+                // Non-chunk vector_type short-circuit: no entity/rel tsvector.
+                return Ok(Vec::new());
+            }
+        }
+
+        let pool = self.pool.get().await?;
+
+        let workspace_uuid = if let Some(wid) = mf.workspace_id.as_deref() {
+            match resolve_workspace_uuid(&pool, wid).await? {
+                Some(u) => Some(u),
+                None => return Ok(Vec::new()),
+            }
+        } else {
+            None
+        };
+        let workspace_text = workspace_uuid.map(|u| u.to_string());
+
+        let document_ids = match &mf.document_ids {
+            Some(ids) if !ids.is_empty() => {
+                let parsed: Vec<Uuid> = ids
+                    .iter()
+                    .filter_map(|id| Uuid::parse_str(id).ok())
+                    .collect();
+                if parsed.is_empty() {
+                    return Ok(Vec::new());
+                }
+                Some(parsed)
+            }
+            _ => None,
+        };
+
+        let tenant_id = match mf.tenant_id.as_deref() {
+            Some(tid) => match Uuid::parse_str(tid) {
+                Ok(u) => Some(u),
+                Err(_) => return Ok(Vec::new()),
+            },
+            None => None,
+        };
+
+        let modalities = mf.modalities.clone().filter(|m| !m.is_empty());
+        let id_filter = filter_ids
+            .filter(|ids| !ids.is_empty())
+            .map(|ids| ids.to_vec());
+
+        let rows = sqlx::query(TYPED_CHUNKS_FTS_SQL)
+            .bind(query_text)
+            .bind(workspace_uuid)
+            .bind(workspace_text)
+            .bind(document_ids.as_deref())
+            .bind(tenant_id)
+            .bind(modalities.as_deref())
+            .bind(id_filter.as_deref())
+            .bind(top_k as i32)
+            .fetch_all(&pool)
+            .await
+            .map_err(|e| StorageError::Database(format!("Typed chunk FTS query failed: {e}")))?;
+
+        Ok(rows
+            .iter()
+            .map(|row| VectorSearchResult {
+                id: row.get("id"),
+                score: row.get::<f32, _>("score"),
+                metadata: row.get("metadata"),
+            })
+            .collect())
+    }
+
+    /// Full-text search with `ts_rank_cd` over legacy vector chunk content.
+    ///
+    /// Rollback path when `EDGEQUAKE_VECTOR_BACKEND=legacy_tables`.
     pub(crate) async fn postgres_text_search_filtered(
         &self,
         query_text: &str,
@@ -190,6 +307,23 @@ impl PgVectorStorage {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn contract_typed_chunks_fts_sql_shape() {
+        let sql = TYPED_CHUNKS_FTS_SQL;
+        assert!(sql.contains("c.content_tsv"));
+        assert!(sql.contains("legacy_chunk_key"));
+        assert!(sql.contains("websearch_to_tsquery('english'"));
+        assert!(sql.contains("ts_rank_cd"));
+        assert!(
+            !sql.contains("eq_") && !sql.contains("self.table_name"),
+            "typed FTS must not reference legacy vectors tables"
+        );
+        assert!(
+            !sql.contains("metadata->>'type'"),
+            "typed FTS must not filter metadata type=chunk (relational rows omit it)"
+        );
+    }
 
     #[test]
     fn e2e_fts_language_config() {

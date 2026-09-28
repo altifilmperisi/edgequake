@@ -2,6 +2,10 @@
 //! chunk vectors so the typed `chunk_embeddings` cutover can be exercised.
 #![allow(dead_code)]
 
+use std::fs::File;
+use std::io;
+use std::path::PathBuf;
+
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -11,6 +15,51 @@ pub const W3_STEP: &str = "w3-chunk-embedding-backfill";
 pub fn w3_lock() -> &'static tokio::sync::Mutex<()> {
     static LOCK: std::sync::OnceLock<tokio::sync::Mutex<()>> = std::sync::OnceLock::new();
     LOCK.get_or_init(|| tokio::sync::Mutex::new(()))
+}
+
+/// Cross-process exclusive lockfile so parallel cargo test binaries cannot race
+/// `EDGEQUAKE_VECTOR_BACKEND` (in-process [`w3_lock`] alone is not enough).
+pub struct W3EnvFileLock {
+    path: PathBuf,
+    _file: File,
+}
+
+impl W3EnvFileLock {
+    pub async fn acquire() -> io::Result<Self> {
+        let path = std::env::temp_dir().join("edgequake-w3-vector-backend.lock");
+        // Stale lock from a crashed test older than 10 minutes — reclaim.
+        if let Ok(meta) = std::fs::metadata(&path) {
+            if let Ok(modified) = meta.modified() {
+                if modified.elapsed().unwrap_or_default().as_secs() > 600 {
+                    let _ = std::fs::remove_file(&path);
+                }
+            }
+        }
+        loop {
+            match File::options().write(true).create_new(true).open(&path) {
+                Ok(file) => {
+                    return Ok(Self { path, _file: file });
+                }
+                Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {
+                    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                }
+                Err(e) => return Err(e),
+            }
+        }
+    }
+}
+
+impl Drop for W3EnvFileLock {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.path);
+    }
+}
+
+/// Hold both in-process mutex and cross-process lockfile for VECTOR_BACKEND tests.
+pub async fn w3_env_guard() -> (tokio::sync::MutexGuard<'static, ()>, W3EnvFileLock) {
+    let g = w3_lock().lock().await;
+    let file = W3EnvFileLock::acquire().await.expect("w3 env lockfile");
+    (g, file)
 }
 
 /// Insert a workspace row (tenant + workspace) and return its UUID.

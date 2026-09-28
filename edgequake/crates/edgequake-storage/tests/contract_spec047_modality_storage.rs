@@ -78,47 +78,70 @@ fn metadata_filter_predicate_matches_sql_for_modalities() {
 mod postgres_test_config;
 
 #[cfg(feature = "postgres")]
+#[path = "support/spec091_w3.rs"]
+mod w3;
+
+#[cfg(feature = "postgres")]
 mod postgres_modality_e2e {
     use super::{
         assert_query_filtered_chart_modality, assert_query_filtered_excludes_missing_modality,
-        assert_text_search_chart_modality_when_supported, postgres_test_config,
+        assert_text_search_chart_modality_when_supported, postgres_test_config, w3,
     };
-    use edgequake_storage::{PgVectorStorage, VectorStorage};
+    use edgequake_storage::{PgVectorStorage, VectorStorage, VECTOR_BACKEND_ENV};
 
-    async fn postgres_vector() -> Option<PgVectorStorage> {
+    async fn postgres_vector() -> Option<(PgVectorStorage, Option<String>)> {
+        // Legacy eq_*_vectors modality/FTS fixtures (typed path is #405 / chunks).
+        let prev = std::env::var(VECTOR_BACKEND_ENV).ok();
+        std::env::set_var(VECTOR_BACKEND_ENV, "legacy_tables");
         let config = postgres_test_config::contract_postgres_config("modality_filter")?;
         let storage = PgVectorStorage::with_dimension(config, super::TEST_DIM);
         storage.initialize().await.ok()?;
-        Some(storage)
+        Some((storage, prev))
     }
 
-    #[tokio::test]
+    fn restore_backend(prev: Option<String>) {
+        match prev {
+            Some(v) => std::env::set_var(VECTOR_BACKEND_ENV, v),
+            None => std::env::remove_var(VECTOR_BACKEND_ENV),
+        }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    #[allow(clippy::await_holding_lock)]
     async fn postgres_vector_query_filtered_chart_modality_e2e() {
-        let Some(storage) = postgres_vector().await else {
+        let _env = w3::w3_env_guard().await;
+        let Some((storage, prev)) = postgres_vector().await else {
             eprintln!("Skipping: DATABASE_URL/POSTGRES_PASSWORD not set");
             return;
         };
         assert_query_filtered_chart_modality(&storage).await;
         let _ = storage.clear().await;
+        restore_backend(prev);
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
+    #[allow(clippy::await_holding_lock)]
     async fn postgres_vector_query_filtered_strict_missing_modality_e2e() {
-        let Some(storage) = postgres_vector().await else {
+        let _env = w3::w3_env_guard().await;
+        let Some((storage, prev)) = postgres_vector().await else {
             eprintln!("Skipping: DATABASE_URL/POSTGRES_PASSWORD not set");
             return;
         };
         assert_query_filtered_excludes_missing_modality(&storage).await;
         let _ = storage.clear().await;
+        restore_backend(prev);
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
+    #[allow(clippy::await_holding_lock)]
     async fn postgres_vector_native_fts_chart_modality_e2e() {
-        let Some(storage) = postgres_vector().await else {
+        let _env = w3::w3_env_guard().await;
+        let Some((storage, prev)) = postgres_vector().await else {
             eprintln!("Skipping: DATABASE_URL/POSTGRES_PASSWORD not set");
             return;
         };
         assert_text_search_chart_modality_when_supported(&storage).await;
         let _ = storage.clear().await;
+        restore_backend(prev);
     }
 }

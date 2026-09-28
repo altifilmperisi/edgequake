@@ -68,6 +68,19 @@ impl VectorStorage for PgVectorStorage {
     ) -> Result<Vec<VectorSearchResult>> {
         let _timer =
             crate::TimedStorageOp::start_dataop(crate::dataop::DATA_PGVEC_VECTORS_ANN_QUERY_001);
+        // #405 sibling: typed dense ANN is workspace-scoped via query_filtered.
+        // Unfiltered query cannot express a workspace — never SELECT retired eq_*_vectors.
+        if crate::vector_backend::vector_backend_reads_typed(crate::vector_backend_from_env()) {
+            tracing::debug!(
+                table = %self.table_name,
+                "SPEC-091/#405: typed backend — unfiltered query returns empty (use query_filtered with workspace)"
+            );
+            let _ = (query_embedding, top_k, filter_ids);
+            return Ok(Vec::new());
+        }
+        if self.skip_legacy_read_if_absent("query").await? {
+            return Ok(Vec::new());
+        }
         let pool = self.pool.get().await?;
         let embedding_str = Self::format_embedding(query_embedding);
         let emb_type = self.embedding_pg_type();
@@ -466,6 +479,9 @@ impl VectorStorage for PgVectorStorage {
     }
 
     async fn get_by_id(&self, id: &str) -> Result<Option<Vec<f32>>> {
+        if self.skip_legacy_read_if_absent("get_by_id").await? {
+            return Ok(None);
+        }
         let pool = self.pool.get().await?;
 
         let sql = format!(
@@ -484,6 +500,9 @@ impl VectorStorage for PgVectorStorage {
 
     async fn get_by_ids(&self, ids: &[String]) -> Result<Vec<(String, Vec<f32>)>> {
         if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        if self.skip_legacy_read_if_absent("get_by_ids").await? {
             return Ok(Vec::new());
         }
 
@@ -507,6 +526,9 @@ impl VectorStorage for PgVectorStorage {
     }
 
     async fn is_empty(&self) -> Result<bool> {
+        if self.skip_legacy_read_if_absent("is_empty").await? {
+            return Ok(true);
+        }
         let pool = self.pool.get().await?;
 
         let sql = format!(
@@ -523,6 +545,10 @@ impl VectorStorage for PgVectorStorage {
     }
 
     async fn count(&self) -> Result<usize> {
+        if self.skip_legacy_read_if_absent("count").await? {
+            return Ok(0);
+        }
+
         let pool = self.pool.get().await?;
 
         // SPEC-011 iter 02 Fix A: O(1) read from maintained counter — never
@@ -568,6 +594,8 @@ impl VectorStorage for PgVectorStorage {
         // Health must probe the typed table, not a retired fleet relation.
         let sql = if crate::legacy_vector_writes_stopped() {
             "SELECT 1 FROM chunk_embeddings LIMIT 1".to_string()
+        } else if self.skip_legacy_read_if_absent("ping").await? {
+            return Ok(());
         } else {
             format!("SELECT 1 FROM {} LIMIT 1", self.table_name)
         };
@@ -722,10 +750,19 @@ impl VectorStorage for PgVectorStorage {
         let _timed = crate::TimedStorageOp::start_dataop(
             crate::dataop::DATA_PGVEC_VECTORS_ANN_QUERY_FILTERED_002,
         );
-        // Fast path: if no metadata filter, delegate to standard query
+        // Fast path: if no metadata filter, delegate to standard query.
+        // #405 sibling: typed ANN is workspace-scoped — empty filter → empty
+        // (never unfiltered legacy SELECT).
         let mf = match metadata_filter {
             Some(mf) if !mf.is_empty() => mf,
-            _ => return self.query(query_embedding, top_k, filter_ids).await,
+            _ => {
+                if crate::vector_backend::vector_backend_reads_typed(
+                    crate::vector_backend_from_env(),
+                ) {
+                    return Ok(Vec::new());
+                }
+                return self.query(query_embedding, top_k, filter_ids).await;
+            }
         };
 
         // SPEC-091: typed authority — chunk queries from `chunk_embeddings`;
@@ -855,10 +892,13 @@ impl VectorStorage for PgVectorStorage {
                     return Ok(results);
                 }
             }
-            // Typed authority + no workspace / unsupported type: do not hit legacy.
-            if mf.workspace_id.is_some() {
-                return Ok(Vec::new());
-            }
+            // Typed authority: after typed short-circuits, never SELECT legacy
+            // (no workspace / unsupported type / unresolvable scope).
+            return Ok(Vec::new());
+        }
+
+        if self.skip_legacy_read_if_absent("query_filtered").await? {
+            return Ok(Vec::new());
         }
 
         // SPEC-090 F-090-05 / LAW-P1: never CREATE INDEX on the query path.
@@ -1068,6 +1108,22 @@ impl VectorStorage for PgVectorStorage {
     ) -> Result<Vec<VectorSearchResult>> {
         // SPEC-060: storage op histogram (op label only)
         let _timed = crate::TimedStorageOp::start("text_search_filtered");
+        // #405 / SPEC-091: typed authority → chunks.content_tsv (never eq_*_vectors).
+        if crate::vector_backend::vector_backend_reads_typed(crate::vector_backend_from_env()) {
+            let results = self
+                .typed_chunks_text_search_filtered(query_text, top_k, filter_ids, metadata_filter)
+                .await?;
+            let pool = self.pool.get().await?;
+            return super::super::serving_fence_query::apply_serving_fence(&pool, results).await;
+        }
+        // Legacy rollback: probe before SELECT so Postgres never logs 42P01.
+        if !self.legacy_vectors_relation_exists_cached().await? {
+            return Err(StorageError::Database(format!(
+                "Postgres FTS unavailable: legacy vectors relation {} absent \
+                 (set EDGEQUAKE_VECTOR_BACKEND=typed_embeddings)",
+                self.table_name
+            )));
+        }
         let results = self
             .postgres_text_search_filtered(query_text, top_k, filter_ids, metadata_filter)
             .await?;

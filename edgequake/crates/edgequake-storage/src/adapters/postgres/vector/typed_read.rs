@@ -43,7 +43,9 @@ fn record_typed_hit() {
 /// Resolve the `workspaces.workspace_id` UUID for a metadata workspace key.
 /// Returns `None` when the key is not a resolvable workspace (typed path is
 /// workspace-scoped by construction; absence → caller uses legacy path).
-async fn resolve_workspace_uuid(
+///
+/// Shared with typed chunk FTS (#405 / SPEC-091).
+pub(crate) async fn resolve_workspace_uuid(
     pool: &PgPool,
     workspace_key: &str,
 ) -> Result<Option<Uuid>, StorageError> {

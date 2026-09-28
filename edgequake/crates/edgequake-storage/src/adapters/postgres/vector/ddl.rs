@@ -239,9 +239,12 @@ impl PgVectorStorage {
             return false;
         }
         // Retire DDL only for chunk-dedicated tables that still exist.
-        // Missing table (42P01 / probe fail) ⇒ not retired — allow CREATE on
-        // legacy_tables rollback / pre-write-stop paths (never treat never-
-        // created workspace tables as dropped).
+        // Missing table ⇒ not retired — allow CREATE on legacy_tables rollback
+        // / pre-write-stop paths (never treat never-created workspace tables
+        // as dropped). Probe first so Postgres never logs 42P01 (#405).
+        if !self.legacy_vectors_relation_exists_cached().await.unwrap_or(false) {
+            return false;
+        }
         let non_chunk: std::result::Result<i64, sqlx::Error> = sqlx::query_scalar(&format!(
             "SELECT COUNT(*) FROM {} WHERE id NOT LIKE '%-chunk-%'",
             self.table_name
@@ -566,6 +569,12 @@ impl PgVectorStorage {
 
     /// Count rows for a workspace (denorm column).
     pub async fn count_workspace_rows(&self, workspace_id: &str) -> Result<u64> {
+        if self
+            .skip_legacy_read_if_absent("count_workspace_rows")
+            .await?
+        {
+            return Ok(0);
+        }
         let pool = self.pool.get().await?;
         let sql = format!(
             "SELECT COUNT(*)::bigint FROM {} WHERE workspace_id = $1",

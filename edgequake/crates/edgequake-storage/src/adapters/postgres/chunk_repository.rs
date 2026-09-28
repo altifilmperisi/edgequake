@@ -136,7 +136,9 @@ pub(crate) async fn clear_document_chunks_in_transaction(
         .execute(&mut **tx)
         .await
         .map_err(|e| {
-            StorageError::Database(format!("clear document chunks for ingest replace failed: {e}"))
+            StorageError::Database(format!(
+                "clear document chunks for ingest replace failed: {e}"
+            ))
         })?;
     Ok(result.rows_affected())
 }

@@ -62,6 +62,9 @@ impl PgVectorStorage {
                 Ok(Some(dim as usize))
             }
             _ => {
+                if !self.table_exists().await? {
+                    return Ok(None);
+                }
                 let fallback_sql = format!(
                     "SELECT vector_dims(embedding) as dim FROM {} LIMIT 1",
                     self.table_name

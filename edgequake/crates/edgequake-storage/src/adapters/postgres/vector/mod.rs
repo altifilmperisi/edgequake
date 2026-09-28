@@ -210,6 +210,22 @@ impl PgVectorStorage {
         Ok(true)
     }
 
+    /// Skip a legacy SELECT when `eq_*_vectors` is absent (probe-before-read).
+    ///
+    /// Returns `true` when the caller must soft-empty. Independent of
+    /// `EDGEQUAKE_VECTOR_BACKEND` so misconfig / mid-upgrade never 42P01.
+    pub(crate) async fn skip_legacy_read_if_absent(&self, op: &str) -> crate::error::Result<bool> {
+        if self.legacy_vectors_relation_exists_cached().await? {
+            return Ok(false);
+        }
+        tracing::debug!(
+            table = %self.table_name,
+            op = %op,
+            "SPEC-405: skip legacy read — vectors relation absent"
+        );
+        Ok(true)
+    }
+
     /// SPEC-091: soft-treat missing legacy `eq_*_vectors` (42P01) as write-stop success.
     /// TOCTOU fallback when the relation is dropped between probe and execute.
     pub(crate) fn map_legacy_mutate_err(

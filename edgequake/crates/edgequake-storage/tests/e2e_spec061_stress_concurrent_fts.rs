@@ -10,10 +10,12 @@ mod perf_harness;
 mod perf_stress;
 #[path = "support/postgres_test_config.rs"]
 mod postgres_test_config;
+#[path = "support/spec091_w3.rs"]
+mod w3;
 
 use edgequake_storage::adapters::postgres::PostgresPool;
 use edgequake_storage::traits::{KVStorage, MetadataFilter, VectorStorage};
-use edgequake_storage::{PgVectorStorage, PostgresKVStorage};
+use edgequake_storage::{PgVectorStorage, PostgresKVStorage, VECTOR_BACKEND_ENV};
 use perf_harness::{finish_report, percentile_p95_ms};
 use perf_stress::{
     fts_scale, perf_scale, stress_clients, stress_mult, stress_pool_max, with_stress_pool,
@@ -26,7 +28,8 @@ fn emb(dim: usize, i: usize) -> Vec<f32> {
     (0..dim).map(|d| ((d + i) as f32 * 0.013).sin()).collect()
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
+#[allow(clippy::await_holding_lock)]
 async fn e2e_spec061_stress_concurrent_fts() {
     let scale = perf_scale();
     let fts = fts_scale(scale);
@@ -37,6 +40,11 @@ async fn e2e_spec061_stress_concurrent_fts() {
     let Some(base) = postgres_test_config::require_or_skip_postgres("stress061_fts") else {
         return;
     };
+    let _env = w3::w3_env_guard().await;
+    // Legacy eq_*_vectors FTS stress path (not typed chunks FTS / #405).
+    let prev_backend = std::env::var(VECTOR_BACKEND_ENV).ok();
+    std::env::set_var(VECTOR_BACKEND_ENV, "legacy_tables");
+
     let config = with_stress_pool(base, clients);
     let kv = PostgresKVStorage::new(config.clone());
     kv.initialize().await.expect("kv");
@@ -137,4 +145,9 @@ async fn e2e_spec061_stress_concurrent_fts() {
         ),
     );
     let _ = vectors.clear().await;
+
+    match prev_backend {
+        Some(v) => std::env::set_var(VECTOR_BACKEND_ENV, v),
+        None => std::env::remove_var(VECTOR_BACKEND_ENV),
+    }
 }

@@ -7,6 +7,7 @@ use crate::error::{Error, Result};
 use crate::types::{
     ContextEntity, DocumentInfo, GraphStats, QueryContext, QueryParams, QueryResult,
 };
+use edgequake_storage::traits::MetadataFilter;
 
 use super::EdgeQuake;
 
@@ -211,8 +212,22 @@ impl EdgeQuake {
             .first()
             .ok_or_else(|| Error::internal("No embedding generated"))?;
 
-        // 2. Search vector store
-        let results = vector_storage.query(query_embedding, limit, None).await?;
+        // 2. Workspace-scoped entity ANN (typed SSOT). Bare `query()` returns
+        // empty under typed_embeddings; never SELECT retired eq_*_vectors.
+        let Some(workspace_id) = self.config.workspace_id.clone() else {
+            tracing::debug!(
+                "search_entities: no workspace on orchestrator — empty (typed ANN is workspace-scoped)"
+            );
+            return Ok(Vec::new());
+        };
+        let mf = MetadataFilter {
+            workspace_id: Some(workspace_id),
+            vector_type: Some("entity".into()),
+            ..Default::default()
+        };
+        let results = vector_storage
+            .query_filtered(query_embedding, limit, None, Some(&mf))
+            .await?;
 
         // 3. Map to ContextEntity
         let mut entities = Vec::new();
@@ -303,5 +318,190 @@ impl EdgeQuake {
             relationships,
             ..Default::default()
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::orchestrator::{EdgeQuake, EdgeQuakeConfig};
+    use async_trait::async_trait;
+    use edgequake_llm::MockProvider;
+    use edgequake_storage::adapters::memory::{
+        MemoryGraphStorage, MemoryKVStorage, MemoryVectorStorage,
+    };
+    use edgequake_storage::error::Result as StorageResult;
+    use edgequake_storage::traits::{
+        GraphStorage, GraphStorageMutateOps, KVStorage, MetadataFilter, VectorSearchResult,
+        VectorStorage,
+    };
+    use std::sync::{Arc, Mutex};
+
+    struct RecordingVector {
+        inner: MemoryVectorStorage,
+        query_calls: Mutex<usize>,
+        last_filter: Mutex<Option<MetadataFilter>>,
+    }
+
+    impl RecordingVector {
+        fn new(dim: usize) -> Self {
+            Self {
+                inner: MemoryVectorStorage::new("test", dim),
+                query_calls: Mutex::new(0),
+                last_filter: Mutex::new(None),
+            }
+        }
+    }
+
+    #[async_trait]
+    impl VectorStorage for RecordingVector {
+        fn namespace(&self) -> &str {
+            self.inner.namespace()
+        }
+        fn dimension(&self) -> usize {
+            self.inner.dimension()
+        }
+        async fn initialize(&self) -> StorageResult<()> {
+            self.inner.initialize().await
+        }
+        async fn finalize(&self) -> StorageResult<()> {
+            self.inner.finalize().await
+        }
+        async fn query(
+            &self,
+            query_embedding: &[f32],
+            top_k: usize,
+            filter_ids: Option<&[String]>,
+        ) -> StorageResult<Vec<VectorSearchResult>> {
+            *self.query_calls.lock().expect("query_calls") += 1;
+            self.inner.query(query_embedding, top_k, filter_ids).await
+        }
+        async fn upsert(
+            &self,
+            data: &[(String, Vec<f32>, serde_json::Value)],
+        ) -> StorageResult<()> {
+            self.inner.upsert(data).await
+        }
+        async fn delete(&self, ids: &[String]) -> StorageResult<()> {
+            self.inner.delete(ids).await
+        }
+        async fn delete_entity(&self, entity_name: &str) -> StorageResult<()> {
+            self.inner.delete_entity(entity_name).await
+        }
+        async fn delete_entity_relations(&self, entity_name: &str) -> StorageResult<()> {
+            self.inner.delete_entity_relations(entity_name).await
+        }
+        async fn get_by_id(&self, id: &str) -> StorageResult<Option<Vec<f32>>> {
+            self.inner.get_by_id(id).await
+        }
+        async fn get_by_ids(&self, ids: &[String]) -> StorageResult<Vec<(String, Vec<f32>)>> {
+            self.inner.get_by_ids(ids).await
+        }
+        async fn is_empty(&self) -> StorageResult<bool> {
+            self.inner.is_empty().await
+        }
+        async fn count(&self) -> StorageResult<usize> {
+            self.inner.count().await
+        }
+        async fn clear(&self) -> StorageResult<()> {
+            self.inner.clear().await
+        }
+        async fn clear_workspace(&self, workspace_id: &uuid::Uuid) -> StorageResult<usize> {
+            self.inner.clear_workspace(workspace_id).await
+        }
+        async fn delete_by_document(&self, document_id: &str) -> StorageResult<usize> {
+            self.inner.delete_by_document(document_id).await
+        }
+        async fn query_filtered(
+            &self,
+            query_embedding: &[f32],
+            top_k: usize,
+            filter_ids: Option<&[String]>,
+            metadata_filter: Option<&MetadataFilter>,
+        ) -> StorageResult<Vec<VectorSearchResult>> {
+            *self.last_filter.lock().expect("last_filter") = metadata_filter.cloned();
+            self.inner
+                .query_filtered(query_embedding, top_k, filter_ids, metadata_filter)
+                .await
+        }
+    }
+
+    #[tokio::test]
+    async fn search_entities_uses_query_filtered_entity_workspace() {
+        let rec = Arc::new(RecordingVector::new(1536));
+        rec.upsert(&[(
+            "ACME".into(),
+            vec![0.1; 1536],
+            serde_json::json!({
+                "workspace_id": "ws-405",
+                "type": "entity",
+            }),
+        )])
+        .await
+        .unwrap();
+
+        let graph = MemoryGraphStorage::new("test");
+        let mut props = std::collections::HashMap::new();
+        props.insert("name".into(), serde_json::json!("ACME"));
+        props.insert("entity_type".into(), serde_json::json!("ORG"));
+        graph.upsert_node("ACME", props).await.unwrap();
+
+        let mock = Arc::new(MockProvider::new());
+        let kv: Arc<dyn KVStorage> = Arc::new(MemoryKVStorage::new("test"));
+        let vector: Arc<dyn VectorStorage> = rec.clone();
+        let graph_storage: Arc<dyn GraphStorage> = Arc::new(graph);
+
+        let cfg = EdgeQuakeConfig {
+            workspace_id: Some("ws-405".into()),
+            ..Default::default()
+        };
+        let mut eq = EdgeQuake::new(cfg)
+            .with_storage_backends(kv, vector, graph_storage)
+            .with_providers(mock.clone(), mock);
+        eq.initialize().await.unwrap();
+
+        let found = eq.search_entities("acme", 5).await.unwrap();
+        assert_eq!(
+            *rec.query_calls.lock().unwrap(),
+            0,
+            "must not call bare query()"
+        );
+        let mf = rec
+            .last_filter
+            .lock()
+            .unwrap()
+            .clone()
+            .expect("query_filtered");
+        assert_eq!(mf.workspace_id.as_deref(), Some("ws-405"));
+        assert_eq!(mf.vector_type.as_deref(), Some("entity"));
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].name, "ACME");
+    }
+
+    #[tokio::test]
+    async fn search_entities_without_workspace_is_empty() {
+        let rec = Arc::new(RecordingVector::new(1536));
+        rec.upsert(&[(
+            "ACME".into(),
+            vec![0.1; 1536],
+            serde_json::json!({ "type": "entity" }),
+        )])
+        .await
+        .unwrap();
+
+        let graph = MemoryGraphStorage::new("test");
+        let mock = Arc::new(MockProvider::new());
+        let kv: Arc<dyn KVStorage> = Arc::new(MemoryKVStorage::new("test"));
+        let vector: Arc<dyn VectorStorage> = rec.clone();
+        let graph_storage: Arc<dyn GraphStorage> = Arc::new(graph);
+
+        let mut eq = EdgeQuake::new(EdgeQuakeConfig::default())
+            .with_storage_backends(kv, vector, graph_storage)
+            .with_providers(mock.clone(), mock);
+        eq.initialize().await.unwrap();
+
+        let found = eq.search_entities("acme", 5).await.unwrap();
+        assert!(found.is_empty());
+        assert_eq!(*rec.query_calls.lock().unwrap(), 0);
+        assert!(rec.last_filter.lock().unwrap().is_none());
     }
 }

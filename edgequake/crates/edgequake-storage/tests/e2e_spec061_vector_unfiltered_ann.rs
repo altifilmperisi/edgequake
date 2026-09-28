@@ -5,9 +5,11 @@
 mod perf_harness;
 #[path = "support/postgres_test_config.rs"]
 mod postgres_test_config;
+#[path = "support/spec091_w3.rs"]
+mod w3;
 
 use edgequake_storage::traits::VectorStorage;
-use edgequake_storage::{PgVectorStorage, PostgresConfig};
+use edgequake_storage::{PgVectorStorage, PostgresConfig, VECTOR_BACKEND_ENV};
 use perf_harness::{
     assert_plan_uses_index, finish_report, join_plan_rows, plan_has_buffers, PlanKind,
 };
@@ -24,11 +26,17 @@ fn emb(seed: f32) -> Vec<f32> {
         .collect()
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
+#[allow(clippy::await_holding_lock)]
 async fn e2e_spec061_unfiltered_ann_p95_and_hnsw_explain() {
     let Some(config) = postgres_test_config::require_or_skip_postgres("perf061_ann") else {
         return;
     };
+    // Legacy eq_*_vectors unfiltered ANN path (#405: typed query() returns empty).
+    let _env = w3::w3_env_guard().await;
+    let prev_backend = std::env::var(VECTOR_BACKEND_ENV).ok();
+    std::env::set_var(VECTOR_BACKEND_ENV, "legacy_tables");
+
     let storage = PgVectorStorage::with_dimension(config.clone(), DIM);
     storage.initialize().await.expect("init");
 
@@ -69,6 +77,11 @@ async fn e2e_spec061_unfiltered_ann_p95_and_hnsw_explain() {
 
     assert_hnsw_explain(&config).await;
     let _ = storage.clear().await;
+
+    match prev_backend {
+        Some(v) => std::env::set_var(VECTOR_BACKEND_ENV, v),
+        None => std::env::remove_var(VECTOR_BACKEND_ENV),
+    }
 }
 
 async fn assert_hnsw_explain(config: &PostgresConfig) {

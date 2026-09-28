@@ -12,10 +12,12 @@
 mod perf_harness;
 #[path = "support/postgres_test_config.rs"]
 mod postgres_test_config;
+#[path = "support/spec091_w3.rs"]
+mod w3;
 
 use edgequake_storage::adapters::postgres::PostgresPool;
 use edgequake_storage::traits::{KVStorage, MetadataFilter, VectorStorage};
-use edgequake_storage::{PgVectorStorage, PostgresKVStorage};
+use edgequake_storage::{PgVectorStorage, PostgresKVStorage, VECTOR_BACKEND_ENV};
 use perf_harness::finish_report;
 use std::time::{Duration, Instant};
 
@@ -37,11 +39,17 @@ fn emb(i: usize) -> Vec<f32> {
     (0..DIM).map(|d| ((d + i) as f32 * 0.011).sin()).collect()
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
+#[allow(clippy::await_holding_lock)]
 async fn e2e_spec060_fts_p95_and_gin_explain() {
     let Some(config) = postgres_test_config::require_or_skip_postgres("perf060_fts") else {
         return;
     };
+
+    let _env = w3::w3_env_guard().await;
+    // Legacy eq_*_vectors + content_tsv GIN perf path (not typed chunks FTS / #405).
+    let prev_backend = std::env::var(VECTOR_BACKEND_ENV).ok();
+    std::env::set_var(VECTOR_BACKEND_ENV, "legacy_tables");
 
     let kv = PostgresKVStorage::new(config.clone());
     kv.initialize().await.expect("kv init");
@@ -193,4 +201,9 @@ async fn assert_fts_gin_explain(config: &edgequake_storage::PostgresConfig) {
         "EXPLAIN ANALYZE BUFFERS should report buffer stats; plan was:\n{plan}"
     );
     eprintln!("OK EXPLAIN FTS GIN:\n{plan}");
+
+    match prev_backend {
+        Some(v) => std::env::set_var(VECTOR_BACKEND_ENV, v),
+        None => std::env::remove_var(VECTOR_BACKEND_ENV),
+    }
 }
