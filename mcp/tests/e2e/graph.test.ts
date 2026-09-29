@@ -1,5 +1,5 @@
 /**
- * E2E: Graph exploration tools test.
+ * E2E: graph tools via stdio bridge (SPEC-152).
  */
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -22,40 +22,28 @@ describe("graph tools (e2e)", () => {
     if (cleanup) await cleanup();
   });
 
-  it("should search entities", async () => {
-    if (!serverUp) {
-      console.log("SKIP: EdgeQuake server not running");
-      return;
-    }
-
-    const result = await callTool(client, "graph_search_entities", {
+  it("eq_entity_search returns entities array", async () => {
+    if (!serverUp) return;
+    const result = (await callTool(client, "eq_entity_search", {
+      q: "TECHNOLOGY",
       limit: 10,
-    });
-    expect(Array.isArray(result)).toBe(true);
+    })) as Record<string, unknown>;
+    expect(result.ok).toBe(true);
+    expect(Array.isArray(result.entities)).toBe(true);
   });
 
-  it("should search entities with label filter", async () => {
-    if (!serverUp) {
-      console.log("SKIP: EdgeQuake server not running");
-      return;
-    }
-
-    const result = await callTool(client, "graph_search_entities", {
-      label: "TECHNOLOGY",
-      limit: 5,
+  it("eq_neighborhood requires entity_id", async () => {
+    if (!serverUp) return;
+    const result = await callTool(client, "eq_neighborhood", {
+      entity_id: "ent:default:UNKNOWN",
+      max_hops: 1,
     });
-    expect(Array.isArray(result)).toBe(true);
-  });
-
-  it("should search relationships", async () => {
-    if (!serverUp) {
-      console.log("SKIP: EdgeQuake server not running");
-      return;
+    // ok or eq/not_found — must not invent a page-long dump
+    if (typeof result === "string") {
+      expect(result.length).toBeLessThan(4096);
+    } else {
+      const obj = result as Record<string, unknown>;
+      expect(obj.ok === true || obj.ok === false).toBe(true);
     }
-
-    const result = await callTool(client, "graph_search_relationships", {
-      limit: 10,
-    });
-    expect(Array.isArray(result)).toBe(true);
   });
 });

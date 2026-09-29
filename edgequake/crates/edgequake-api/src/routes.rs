@@ -103,7 +103,7 @@ pub fn create_router(state: AppState) -> Router {
 }
 
 fn create_router_inner(state: AppState) -> Router {
-    let api_v1 = api_v1_routes()
+    let api_v1 = api_v1_routes(state.clone())
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             crate::middleware::tenant_rate_limit_from_state,
@@ -199,9 +199,28 @@ fn mcp_routes(state: AppState) -> Router<AppState> {
             get(handlers::mcp_oauth_protected_resource),
         )
         .route(
+            "/.well-known/oauth-protected-resource/mcp",
+            get(handlers::mcp::mcp_oauth_protected_resource_path),
+        )
+        .route(
             "/.well-known/mcp/server.json",
             get(handlers::mcp_registry_server_json),
         )
+        .route(
+            "/.well-known/oauth-authorization-server",
+            get(handlers::oauth_authorization_server_metadata),
+        )
+        .route(
+            "/.well-known/openid-configuration",
+            get(handlers::openid_configuration),
+        )
+        .route(
+            "/oauth/authorize",
+            get(handlers::oauth_authorize_get).post(handlers::oauth_authorize_post),
+        )
+        .route("/oauth/token", post(handlers::oauth_token_post))
+        .route("/oauth/revoke", post(handlers::oauth_revoke_post))
+        .route("/oauth/register", post(handlers::oauth_register_post))
         .merge(mcp_post)
 }
 
@@ -236,7 +255,9 @@ fn ollama_api_routes() -> Router<AppState> {
 }
 
 /// API v1 routes.
-fn api_v1_routes() -> Router<AppState> {
+fn api_v1_routes(state: AppState) -> Router<AppState> {
+    use crate::mcp::gateway::body::MCP_MAX_BODY_BYTES;
+
     Router::new()
         // Authentication (Phase 3)
         .route("/auth/login", post(handlers::login))
@@ -543,7 +564,15 @@ fn api_v1_routes() -> Router<AppState> {
             "/query/context/{retrieval_id}",
             get(handlers::fetch_query_context),
         )
-        .route("/mcp", post(handlers::mcp_handler_v1))
+        .route(
+            "/mcp",
+            post(handlers::mcp_handler_v1)
+                .layer(DefaultBodyLimit::max(MCP_MAX_BODY_BYTES))
+                .layer(middleware::from_fn_with_state(
+                    state,
+                    crate::mcp::auth::mcp_gateway_auth,
+                )),
+        )
         // Chat (Unified chat completions API - preferred for client applications)
         .route("/chat/completions", post(handlers::chat_completion))
         .route(

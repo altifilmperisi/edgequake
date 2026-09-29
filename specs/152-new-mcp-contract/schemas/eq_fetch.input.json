@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://edgequake.dev/schemas/eq-mcp-1.0/eq_fetch.input.json",
+  "title": "eq_fetch input",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["retrieval_id"],
+  "properties": {
+    "retrieval_id": { "type": "string", "pattern": "^ret_" },
+    "ids": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Subset of hit/chunk/entity ids; empty means view default selection"
+    },
+    "view": {
+      "type": "string",
+      "enum": ["toc", "chunks", "entities", "citations", "full"],
+      "default": "toc"
+    },
+    "budget": {
+      "enum": ["cheap", "standard", "deep"],
+      "default": "standard"
+    },
+    "include_subgraph": {
+      "type": "boolean",
+      "default": false
+    },
+    "include_artifacts": {
+      "type": "boolean",
+      "default": false
+    },
+    "include_weak_edges": {
+      "type": "boolean",
+      "default": false
+    },
+    "cursor": { "type": "string" }
+  }
+}

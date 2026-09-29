@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://edgequake.dev/schemas/eq-mcp-1.0/eq_entity_get.input.json",
+  "title": "eq_entity_get input",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["entity_id"],
+  "properties": {
+    "entity_id": { "type": "string", "minLength": 1 },
+    "budget": {
+      "enum": ["cheap", "standard", "deep"],
+      "default": "standard"
+    },
+    "workspace_id": {
+      "type": "string",
+      "x-mcp-header": "Workspace-Id"
+    }
+  }
+}

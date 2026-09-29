@@ -543,9 +543,10 @@ fn is_public_request(state: &crate::state::AppState, method: &Method, path: &str
             | "/auth/oidc/callback"
             | "/setup/status"
             | "/setup/initialize"
-    ) || (*method == Method::POST
-        && normalized_path == "/users"
-        && state.auth.config.allow_registration)
+    ) || (*method == Method::POST && normalized_path == "/mcp")
+        || (*method == Method::POST
+            && normalized_path == "/users"
+            && state.auth.config.allow_registration)
 }
 
 /// OpenAPI / Swagger documentation paths (including static assets under subpaths).

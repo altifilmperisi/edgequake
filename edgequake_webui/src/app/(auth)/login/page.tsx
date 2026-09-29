@@ -9,12 +9,24 @@ import { login } from '@/lib/api/edgequake';
 import { getRuntimeConfig } from '@/lib/runtime-config';
 import { useAuthStore } from '@/stores/use-auth-store';
 import { AlertCircle, Loader2, Network } from 'lucide-react';
-import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Suspense, useState } from 'react';
 import { toast } from 'sonner';
 
-export default function LoginPage() {
+/** Same-origin relative path only (blocks open redirects). */
+function safeRedirectPath(raw: string | null): string | null {
+  if (!raw || !raw.startsWith('/') || raw.startsWith('//')) {
+    return null;
+  }
+  if (raw.includes('://') || raw.includes('\\')) {
+    return null;
+  }
+  return raw;
+}
+
+function LoginPageInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const authLogin = useAuthStore((s) => s.login);
   const { data: setupStatus, isLoading: setupLoading } = useSetupStatus();
 
@@ -24,6 +36,8 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const { authEnabled, disableDemoLogin } = getRuntimeConfig();
   const showDemoLogin = !disableDemoLogin && !authEnabled;
+  const postLoginPath =
+    safeRedirectPath(searchParams.get('redirect')) ?? '/graph';
 
   // SPEC-101: empty auth-on install → first-run wizard instead of login form
   if (!setupLoading && setupStatus?.needs_setup && setupStatus.auth_enabled) {
@@ -43,7 +57,7 @@ export default function LoginPage() {
       const response = await login({ username, password });
       authLogin(response);
       toast.success('Successfully logged in');
-      router.push('/graph');
+      router.push(postLoginPath);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Login failed';
       setError(message);
@@ -55,7 +69,7 @@ export default function LoginPage() {
 
   const handleSkipLogin = () => {
     // For development/demo mode without auth
-    router.push('/graph');
+    router.push(postLoginPath);
   };
 
   return (
@@ -159,5 +173,19 @@ export default function LoginPage() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex h-full min-h-0 items-center justify-center bg-gradient-to-br from-background to-muted/50 p-4">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        </div>
+      }
+    >
+      <LoginPageInner />
+    </Suspense>
   );
 }

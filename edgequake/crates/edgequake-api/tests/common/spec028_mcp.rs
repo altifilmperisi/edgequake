@@ -39,13 +39,28 @@ pub fn auth_enabled_mcp_state() -> AppState {
     state
 }
 
-/// Issue an EdgeQuake JWT for MCP Bearer auth e2e (same verifier as OIDC login).
+/// Issue an EdgeQuake JWT for MCP Bearer auth e2e (aud = resource, full scopes).
 pub fn issue_test_jwt(state: &AppState, role: Role) -> String {
+    issue_mcp_jwt(state, role, "edgequake:read edgequake:query")
+}
+
+/// Issue an MCP-bound JWT with explicit OAuth scopes.
+pub fn issue_mcp_jwt(state: &AppState, role: Role, scope: &str) -> String {
+    use edgequake_auth::Claims;
+
+    let resource = std::env::var("EDGEQUAKE_PUBLIC_URL")
+        .ok()
+        .map(|s| format!("{}/mcp", s.trim().trim_end_matches('/')))
+        .unwrap_or_else(|| "http://127.0.0.1:8080/mcp".to_string());
+
+    let claims = Claims::new(Uuid::new_v4(), role, 3600)
+        .with_audience(vec![resource])
+        .with_scope(scope.to_string());
     state
         .auth
         .jwt
-        .generate_token(Uuid::new_v4(), role)
-        .expect("sign test jwt")
+        .generate_token_with_claims(claims)
+        .expect("sign mcp test jwt")
 }
 
 pub fn mcp_post_bearer(uri: &str, token: &str, body: Value) -> Request<Body> {
@@ -99,6 +114,14 @@ pub async fn parse_json(response: axum::response::Response) -> Value {
         .await
         .expect("read body");
     serde_json::from_slice(&body).expect("parse json")
+}
+
+/// Extract CallToolResult.structuredContent (MCP 2026-07-28); fall back to raw result.
+pub fn tool_structured(body: &Value) -> &Value {
+    body.get("result")
+        .and_then(|r| r.get("structuredContent"))
+        .or_else(|| body.get("result"))
+        .unwrap_or(body)
 }
 
 pub fn mcp_post_legacy(uri: &str, body: Value) -> Request<Body> {

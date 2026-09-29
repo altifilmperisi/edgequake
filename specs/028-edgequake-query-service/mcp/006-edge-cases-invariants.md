@@ -49,7 +49,7 @@
 | EC-MCP-17 | OAuth scope insufficient | 403 + required scope in error |
 | EC-MCP-18 | DCR registration missing redirect | 400 from AS — document allowed URIs |
 | EC-MCP-19 | Claude Code loopback redirect port varies | AS must match port-agnostic |
-| EC-MCP-20 | Refresh token expired | 401; client must re-login |
+| EC-MCP-20 | Refresh token expired / reused | AS `invalid_grant`; reuse revokes family; client re-auth |
 
 ### Tool Execution — Retrieval
 
@@ -125,7 +125,8 @@
 | EC-MCP-01..08,10,03,09,35,41..43 + registry | `spec028_mcp_transport.rs` ✅ |
 | EC-MCP-11,12,14,16,29,30,39 + PRM + JWT + OIDC | `spec028_mcp_oauth_e2e.rs` ✅ |
 | MCP Registry server.json SSOT | `spec028_mcp_registry.rs` ✅ |
-| EC-MCP-13,15,17..20 | deferred (Keycloak prod smoke; wiremock in CI) |
+| EC-MCP-13,15,17..19 | deferred (Keycloak prod smoke; wiremock in CI) |
+| EC-MCP-20 | covered (`spec028_mcp_oauth_e2e` refresh/reuse/revoke) |
 | EC-MCP-28,31..33,36..37,47,48 | future / operational |
 
 ---

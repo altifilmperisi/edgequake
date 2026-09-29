@@ -32,6 +32,19 @@ describe("proxy-guards (SPEC-144)", () => {
     expect(isPublicPath("/documents")).toBe(false);
   });
 
+  it("isPublicPath allows MCP OAuth discovery paths", () => {
+    expect(isPublicPath("/mcp")).toBe(true);
+    expect(isPublicPath("/.well-known/oauth-protected-resource")).toBe(true);
+    expect(isPublicPath("/.well-known/oauth-protected-resource/mcp")).toBe(true);
+    expect(isPublicPath("/.well-known/oauth-authorization-server")).toBe(true);
+    expect(isPublicPath("/.well-known/openid-configuration")).toBe(true);
+    expect(isPublicPath("/.well-known/mcp/server.json")).toBe(true);
+    expect(isPublicPath("/oauth/authorize")).toBe(true);
+    expect(isPublicPath("/oauth/token")).toBe(true);
+    expect(isPublicPath("/oauth/revoke")).toBe(true);
+    expect(isPublicPath("/oauth/register")).toBe(true);
+  });
+
   it("swaggerSlash redirects exact /swagger-ui to trailing slash", () => {
     const res = applySwaggerSlashRedirect(req("/swagger-ui"));
     expect(res).not.toBeNull();

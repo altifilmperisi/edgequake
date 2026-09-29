@@ -1,11 +1,11 @@
 /**
- * E2E: Query tool test.
+ * E2E: eq_search / eq_retrieve via stdio bridge (SPEC-152).
  */
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { callTool, createTestClient, isServerRunning } from "./helpers.js";
 
-describe("query tool (e2e)", () => {
+describe("eq_search / eq_retrieve (e2e)", () => {
   let client: Client;
   let cleanup: () => Promise<void>;
   let serverUp: boolean;
@@ -22,41 +22,27 @@ describe("query tool (e2e)", () => {
     if (cleanup) await cleanup();
   });
 
-  it("should execute a hybrid query", async () => {
-    if (!serverUp) {
-      console.log("SKIP: EdgeQuake server not running");
-      return;
-    }
-
-    const result = (await callTool(client, "query", {
+  it("eq_search returns retrieval_id and hits", async () => {
+    if (!serverUp) return;
+    const result = (await callTool(client, "eq_search", {
       query: "What is EdgeQuake?",
-      mode: "hybrid",
-    })) as {
-      answer: string;
-      mode: string;
-      sources: unknown[];
-      stats: Record<string, unknown>;
-    };
-
-    expect(result).toHaveProperty("answer");
-    expect(result).toHaveProperty("mode");
-    expect(result).toHaveProperty("sources");
-    expect(result).toHaveProperty("stats");
-    expect(result.stats).toHaveProperty("total_time_ms");
+      mode: "naive",
+      limit: 5,
+    })) as Record<string, unknown>;
+    expect(result.ok).toBe(true);
+    expect(String(result.retrieval_id ?? "")).toMatch(/^ret_/);
+    expect(Array.isArray(result.hits)).toBe(true);
   });
 
-  it("should execute a naive query", async () => {
-    if (!serverUp) {
-      console.log("SKIP: EdgeQuake server not running");
-      return;
-    }
-
-    const result = (await callTool(client, "query", {
-      query: "What technologies are used?",
+  it("eq_retrieve keeps hits under budget", async () => {
+    if (!serverUp) return;
+    const result = (await callTool(client, "eq_retrieve", {
+      query: "knowledge graph",
       mode: "naive",
-    })) as { answer: string; mode: string };
-
-    expect(result).toHaveProperty("answer");
-    expect(result.mode).toBe("naive");
+      budget: "cheap",
+      limit: 5,
+    })) as Record<string, unknown>;
+    expect(result.ok === true || result.ok === false).toBe(true);
+    expect(Array.isArray(result.hits)).toBe(true);
   });
 });

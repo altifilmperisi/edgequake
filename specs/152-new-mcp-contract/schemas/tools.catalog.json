@@ -1,0 +1,179 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://edgequake.dev/schemas/eq-mcp-1.0/tools.catalog.json",
+  "title": "EQ-MCP-1.0 tool catalog index",
+  "description": "SSOT index of tool names, profiles, conformance level, and schema files",
+  "tools": [
+    {
+      "name": "eq_workspace_list",
+      "level": "L2",
+      "profiles": ["query", "memory"],
+      "inputSchema": "eq_workspace_list.input.json",
+      "annotations": {
+        "readOnlyHint": true,
+        "idempotentHint": true,
+        "destructiveHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "eq_workspace_stats",
+      "level": "L2",
+      "profiles": ["query", "memory"],
+      "inputSchema": "eq_workspace_stats.input.json",
+      "annotations": {
+        "readOnlyHint": true,
+        "idempotentHint": true,
+        "destructiveHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "eq_document_list",
+      "level": "L1",
+      "profiles": ["query", "memory"],
+      "inputSchema": "eq_document_list.input.json",
+      "annotations": {
+        "readOnlyHint": true,
+        "idempotentHint": true,
+        "destructiveHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "eq_document_get",
+      "level": "L2",
+      "profiles": ["query", "memory"],
+      "inputSchema": "eq_document_get.input.json",
+      "annotations": {
+        "readOnlyHint": true,
+        "idempotentHint": true,
+        "destructiveHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "eq_search",
+      "level": "L1",
+      "profiles": ["query", "memory"],
+      "aliases": ["edgequake_search"],
+      "inputSchema": "eq_search.input.json",
+      "annotations": {
+        "readOnlyHint": true,
+        "idempotentHint": true,
+        "destructiveHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "eq_fetch",
+      "level": "L1",
+      "profiles": ["query", "memory"],
+      "aliases": ["edgequake_fetch"],
+      "inputSchema": "eq_fetch.input.json",
+      "annotations": {
+        "readOnlyHint": true,
+        "idempotentHint": true,
+        "destructiveHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "eq_retrieve",
+      "level": "L1",
+      "profiles": ["query", "memory"],
+      "aliases": ["edgequake_retrieve"],
+      "inputSchema": "eq_retrieve.input.json",
+      "annotations": {
+        "readOnlyHint": true,
+        "idempotentHint": true,
+        "destructiveHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "eq_entity_search",
+      "level": "L1",
+      "profiles": ["query", "memory"],
+      "inputSchema": "eq_entity_search.input.json",
+      "annotations": {
+        "readOnlyHint": true,
+        "idempotentHint": true,
+        "destructiveHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "eq_entity_get",
+      "level": "L2",
+      "profiles": ["query", "memory"],
+      "inputSchema": "eq_entity_get.input.json",
+      "annotations": {
+        "readOnlyHint": true,
+        "idempotentHint": true,
+        "destructiveHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "eq_neighborhood",
+      "level": "L1",
+      "profiles": ["query", "memory"],
+      "inputSchema": "eq_neighborhood.input.json",
+      "annotations": {
+        "readOnlyHint": true,
+        "idempotentHint": true,
+        "destructiveHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "eq_ingest",
+      "level": "L3",
+      "profiles": ["memory"],
+      "inputSchema": "eq_ingest.input.json",
+      "annotations": {
+        "readOnlyHint": false,
+        "idempotentHint": false,
+        "destructiveHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "eq_task_get",
+      "level": "L3",
+      "profiles": ["memory"],
+      "inputSchema": "eq_task_get.input.json",
+      "annotations": {
+        "readOnlyHint": true,
+        "idempotentHint": true,
+        "destructiveHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "eq_document_delete",
+      "level": "L3",
+      "profiles": ["memory"],
+      "inputSchema": "eq_document_delete.input.json",
+      "annotations": {
+        "readOnlyHint": false,
+        "idempotentHint": false,
+        "destructiveHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "eq_workspace_delete",
+      "level": "L3",
+      "profiles": ["memory"],
+      "inputSchema": "eq_workspace_delete.input.json",
+      "annotations": {
+        "readOnlyHint": false,
+        "idempotentHint": false,
+        "destructiveHint": true,
+        "openWorldHint": false
+      }
+    }
+  ]
+}

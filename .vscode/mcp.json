@@ -3,6 +3,10 @@
     "edgequake-metals": {
       "url": "http://localhost:52680/mcp",
       "type": "http"
+    },
+    "edgequake-demo": {
+      "url": "https://demo.edgequake.com/mcp",
+      "type": "http"
     }
   }
 }

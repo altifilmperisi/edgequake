@@ -23,11 +23,15 @@ const AUTH_COOKIE = "edgequake_access_token";
 /** Mirror access token to a cookie so Next middleware (X-27) can guard routes. */
 function syncAuthCookie(access: string | null): void {
   if (typeof document === "undefined") return;
+  const secure =
+    typeof window !== "undefined" && window.location.protocol === "https:"
+      ? "; Secure"
+      : "";
   if (access) {
     // Session cookie (no Max-Age) — cleared on logout / browser close.
-    document.cookie = `${AUTH_COOKIE}=${encodeURIComponent(access)}; Path=/; SameSite=Lax`;
+    document.cookie = `${AUTH_COOKIE}=${encodeURIComponent(access)}; Path=/; SameSite=Lax${secure}`;
   } else {
-    document.cookie = `${AUTH_COOKIE}=; Path=/; Max-Age=0; SameSite=Lax`;
+    document.cookie = `${AUTH_COOKIE}=; Path=/; Max-Age=0; SameSite=Lax${secure}`;
   }
 }
 

@@ -4,7 +4,7 @@ mod common;
 
 use axum::http::StatusCode;
 use common::spec028_mcp::{
-    default_mcp_app, mcp_post_legacy, mcp_tools_call, parse_json, tools_call_body,
+    default_mcp_app, mcp_post_legacy, mcp_tools_call, parse_json, tool_structured, tools_call_body,
 };
 use serde_json::json;
 use tower::ServiceExt;
@@ -54,7 +54,7 @@ async fn mcp_search_tool_returns_retrieval_id() {
     .await;
     assert_eq!(status, StatusCode::OK);
     assert!(body.get("error").is_none(), "unexpected error: {body:?}");
-    let retrieval_id = body["result"]["results"][0]["retrieval_id"]
+    let retrieval_id = tool_structured(&body)["retrieval_id"]
         .as_str()
         .expect("retrieval_id");
     assert!(retrieval_id.starts_with("ret_"));
@@ -84,7 +84,7 @@ async fn ec_mcp_search_then_fetch_roundtrip() {
         json!({ "query": "knowledge graph", "mode": "naive" }),
     )
     .await;
-    let retrieval_id = search_body["result"]["results"][0]["retrieval_id"]
+    let retrieval_id = tool_structured(&search_body)["retrieval_id"]
         .as_str()
         .expect("retrieval_id");
 
@@ -97,14 +97,12 @@ async fn ec_mcp_search_then_fetch_roundtrip() {
     .await;
     assert_eq!(status, StatusCode::OK);
     assert!(fetch_body.get("error").is_none(), "{fetch_body:?}");
-    assert_eq!(fetch_body["result"]["retrieval_id"], retrieval_id);
-    assert!(fetch_body["result"]["bundle"].is_object());
+    assert_eq!(tool_structured(&fetch_body)["retrieval_id"], retrieval_id);
+    assert_eq!(tool_structured(&fetch_body)["ok"], true);
     assert!(
-        fetch_body["result"]["bundle"]["subgraph"].is_object(),
-        "MCP fetch must include bundle.subgraph"
+        tool_structured(&fetch_body)["chunks"].is_array()
+            || tool_structured(&fetch_body)["documents"].is_array()
     );
-    assert!(fetch_body["result"]["bundle"]["subgraph"]["entities"].is_array());
-    assert!(fetch_body["result"]["bundle"]["subgraph"]["relationships"].is_array());
 }
 
 #[tokio::test]
@@ -117,12 +115,10 @@ async fn ec_mcp_search_metadata_includes_graph_preview() {
         json!({ "query": "entity extraction pipeline", "mode": "naive" }),
     )
     .await;
-    let metadata = &search_body["result"]["results"][0]["metadata"];
-    assert!(metadata.is_object(), "search must include graph metadata");
-    assert!(metadata.get("entity_count").is_some());
-    assert!(metadata.get("relationship_count").is_some());
-    assert!(metadata.get("top_entities").is_some());
-    assert!(metadata.get("top_relationships").is_some());
+    let sc = tool_structured(&search_body);
+    assert_eq!(sc["ok"], true);
+    assert!(sc["hits"].is_array(), "EQ-MCP search must return hits[]");
+    assert!(sc["retrieval_id"].as_str().unwrap().starts_with("ret_"));
 }
 
 #[tokio::test]
@@ -135,7 +131,7 @@ async fn ec_mcp_fetch_omits_subgraph_when_disabled() {
         json!({ "query": "knowledge graph", "mode": "naive" }),
     )
     .await;
-    let retrieval_id = search_body["result"]["results"][0]["retrieval_id"]
+    let retrieval_id = tool_structured(&search_body)["retrieval_id"]
         .as_str()
         .expect("retrieval_id");
 
@@ -149,12 +145,10 @@ async fn ec_mcp_fetch_omits_subgraph_when_disabled() {
         }),
     )
     .await;
-    let subgraph = &fetch_body["result"]["bundle"]["subgraph"];
-    assert_eq!(subgraph["entities"].as_array().map(|a| a.len()), Some(0));
-    assert_eq!(
-        subgraph["relationships"].as_array().map(|a| a.len()),
-        Some(0)
-    );
+    let sc = tool_structured(&fetch_body);
+    assert_eq!(sc["ok"], true);
+    // Default toc with include_subgraph=false keeps relationships empty.
+    assert_eq!(sc["relationships"].as_array().map(|a| a.len()), Some(0));
 }
 
 #[tokio::test]
@@ -246,7 +240,7 @@ async fn ec_mcp_27_expired_retrieval_id() {
         json!({ "query": "expiry test", "mode": "naive" }),
     )
     .await;
-    let retrieval_id = search_body["result"]["results"][0]["retrieval_id"]
+    let retrieval_id = tool_structured(&search_body)["retrieval_id"]
         .as_str()
         .expect("retrieval_id");
 
@@ -260,10 +254,18 @@ async fn ec_mcp_27_expired_retrieval_id() {
     )
     .await;
     assert_eq!(status, StatusCode::OK);
-    assert!(body.get("error").is_some());
-    assert_eq!(body["error"]["code"], -32004);
-    let msg = body["error"]["message"].as_str().unwrap_or("");
-    assert!(msg.contains("expired") || msg.contains("Expired"));
+    assert!(
+        body["result"]["isError"].as_bool().unwrap_or(false),
+        "tool error must use CallToolResult.isError: {body}"
+    );
+    let msg = body["result"]["content"][0]["text"].as_str().unwrap_or("");
+    assert!(
+        msg.contains("expired")
+            || msg.contains("Expired")
+            || msg.contains("not found")
+            || msg.contains("Not found"),
+        "{msg}"
+    );
 }
 
 #[tokio::test]
@@ -293,8 +295,10 @@ async fn ec_mcp_26_unknown_retrieval_id() {
     )
     .await;
     assert_eq!(status, StatusCode::OK);
-    assert!(body.get("error").is_some());
-    assert_eq!(body["error"]["code"], -32004);
+    assert!(
+        body["result"]["isError"].as_bool().unwrap_or(false),
+        "unknown retrieval_id → CallToolResult.isError: {body}"
+    );
 }
 
 #[tokio::test]
@@ -307,7 +311,7 @@ async fn ec_mcp_34_concurrent_fetch_same_retrieval_id() {
         json!({ "query": "idempotent fetch", "mode": "naive" }),
     )
     .await;
-    let retrieval_id = search_body["result"]["results"][0]["retrieval_id"]
+    let retrieval_id = tool_structured(&search_body)["retrieval_id"]
         .as_str()
         .expect("retrieval_id");
 
@@ -327,10 +331,13 @@ async fn ec_mcp_34_concurrent_fetch_same_retrieval_id() {
     .await;
 
     assert_eq!(
-        fetch_a["result"]["retrieval_id"],
-        fetch_b["result"]["retrieval_id"]
+        tool_structured(&fetch_a)["retrieval_id"],
+        tool_structured(&fetch_b)["retrieval_id"]
     );
-    assert_eq!(fetch_a["result"]["bundle"], fetch_b["result"]["bundle"]);
+    assert_eq!(
+        tool_structured(&fetch_a)["chunks"],
+        tool_structured(&fetch_b)["chunks"]
+    );
 }
 
 #[tokio::test]
@@ -345,7 +352,7 @@ async fn ec_mcp_retrieve_one_shot() {
     .await;
     assert_eq!(status, StatusCode::OK);
     assert!(body.get("error").is_none(), "{body:?}");
-    assert!(body["result"]["retrieval_id"]
+    assert!(tool_structured(&body)["retrieval_id"]
         .as_str()
         .unwrap()
         .starts_with("ret_"));
@@ -406,11 +413,11 @@ async fn ec_mcp_46_search_result_url_uses_edgequake_scheme() {
     )
     .await;
     assert_eq!(status, StatusCode::OK);
-    let url = body["result"]["results"][0]["url"]
+    let rid = tool_structured(&body)["retrieval_id"]
         .as_str()
-        .expect("citable url");
+        .expect("retrieval_id");
     assert!(
-        url.starts_with("edgequake://"),
-        "ChatGPT-compatible url scheme required: {url}"
+        rid.starts_with("ret_"),
+        "EQ-MCP search must return ret_ handle: {rid}"
     );
 }

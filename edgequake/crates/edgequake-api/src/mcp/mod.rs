@@ -1,10 +1,11 @@
-//! EdgeQuake MCP server module (SPEC-028 SOTA).
+//! EdgeQuake MCP server module (SPEC-028 transport + SPEC-152 AgentView).
 //!
 //! Streamable HTTP gateway, OAuth resource metadata, and tool dispatch SSOT.
 
 pub mod auth;
 pub mod config;
 pub mod gateway;
+pub mod project;
 pub mod registry;
 
 pub use auth::protected_resource_metadata;

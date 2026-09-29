@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://edgequake.dev/schemas/eq-mcp-1.0/eq_ingest.input.json",
+  "title": "eq_ingest input",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "content": {
+      "type": "string",
+      "description": "Plain text body to ingest"
+    },
+    "title": { "type": "string" },
+    "upload_ref": {
+      "type": "string",
+      "description": "Reference to a prior upload or local file handle resolved by the host"
+    },
+    "workspace_id": {
+      "type": "string",
+      "x-mcp-header": "Workspace-Id"
+    }
+  },
+  "anyOf": [
+    { "required": ["content"] },
+    { "required": ["upload_ref"] }
+  ]
+}

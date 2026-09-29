@@ -85,7 +85,7 @@ Every tool `inputSchema` MUST be:
 | OAuth OK, tools fail on call | Workspace / scope | Pass workspace_id; check JWT scopes |
 | Never POST /token in logs | token_endpoint is localhost | Fix AS metadata |
 | Connected but 401 on tools | Token not bound to connector | Re-add connector; check AS issuer |
-| Daily disconnect | No refresh token | Implement refresh (SEP-2207) |
+| Daily disconnect | Refresh expired / family revoked after reuse | Re-auth; AS rotates `eqr_*` (SEP-2207); do not replay old refresh |
 
 ---
 

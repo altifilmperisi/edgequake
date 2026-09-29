@@ -2,7 +2,7 @@
 
 use axum::{
     body::Bytes,
-    extract::State,
+    extract::{Extension, State},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     Json,
@@ -14,6 +14,7 @@ use crate::handlers::auth::ApiOptionalAuth;
 use crate::mcp::gateway::body::{parse_mcp_body, ParsedMcpBody};
 use crate::mcp::gateway::{handle_mcp_request, McpHandleOutcome};
 use crate::middleware::TenantContext;
+use crate::oauth::types::McpAuthScopes;
 use crate::state::AppState;
 
 #[derive(Debug, Clone, serde::Deserialize, ToSchema)]
@@ -52,10 +53,12 @@ pub async fn mcp_handler(
     headers: HeaderMap,
     tenant_ctx: TenantContext,
     auth: ApiOptionalAuth,
+    scopes: Option<Extension<McpAuthScopes>>,
     body: Bytes,
 ) -> Response {
     let role = auth.context().map(|ctx| ctx.role.clone());
-    mcp_handler_inner(&state, &headers, &tenant_ctx, role, &body).await
+    let scopes = scopes.map(|Extension(s)| s);
+    mcp_handler_inner(&state, &headers, &tenant_ctx, role, scopes.as_ref(), &body).await
 }
 
 /// OpenAPI schema anchor for `/api/v1/mcp` alias.
@@ -85,9 +88,10 @@ pub async fn mcp_handler_v1(
     headers: HeaderMap,
     tenant_ctx: TenantContext,
     auth: ApiOptionalAuth,
+    scopes: Option<Extension<McpAuthScopes>>,
     body: Bytes,
 ) -> Response {
-    mcp_handler(state, headers, tenant_ctx, auth, body).await
+    mcp_handler(state, headers, tenant_ctx, auth, scopes, body).await
 }
 
 #[utoipa::path(
@@ -97,6 +101,20 @@ pub async fn mcp_handler_v1(
     responses((status = 200, description = "OAuth Protected Resource Metadata (RFC 9728)"))
 )]
 pub async fn mcp_oauth_protected_resource(
+    state: State<AppState>,
+    headers: HeaderMap,
+) -> impl IntoResponse {
+    crate::mcp::auth::mcp_oauth_protected_resource(state, headers).await
+}
+
+/// Path-inserted PRM for resource `…/mcp` (RFC 9728 §3.1).
+#[utoipa::path(
+    get,
+    path = "/.well-known/oauth-protected-resource/mcp",
+    tag = "MCP",
+    responses((status = 200, description = "Path-inserted Protected Resource Metadata for /mcp"))
+)]
+pub async fn mcp_oauth_protected_resource_path(
     state: State<AppState>,
     headers: HeaderMap,
 ) -> impl IntoResponse {
@@ -121,6 +139,7 @@ async fn mcp_handler_inner(
     headers: &HeaderMap,
     tenant_ctx: &TenantContext,
     auth_role: Option<edgequake_auth::Role>,
+    auth_scopes: Option<&McpAuthScopes>,
     body: &[u8],
 ) -> Response {
     let parsed = match parse_mcp_body(body) {
@@ -133,7 +152,7 @@ async fn mcp_handler_inner(
     let outcome = match parsed {
         ParsedMcpBody::Notification { .. } => McpHandleOutcome::notification_accepted(),
         ParsedMcpBody::Request(request) => {
-            handle_mcp_request(state, headers, tenant_ctx, request, auth_role).await
+            handle_mcp_request(state, headers, tenant_ctx, request, auth_role, auth_scopes).await
         }
     };
 

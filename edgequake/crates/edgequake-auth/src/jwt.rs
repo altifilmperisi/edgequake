@@ -60,6 +60,10 @@ pub struct Claims {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub aud: Option<Vec<String>>,
 
+    /// OAuth 2.1 space-delimited scopes (MCP resource tokens).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scope: Option<String>,
+
     /// Tenant ID (for multi-tenancy).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tenant_id: Option<String>,
@@ -86,6 +90,7 @@ impl Claims {
             jti: Uuid::new_v4().to_string(),
             iss: None,
             aud: None,
+            scope: None,
             tenant_id: None,
             workspace_id: None,
             metadata: None,
@@ -102,6 +107,20 @@ impl Claims {
     pub fn with_audience(mut self, audience: Vec<String>) -> Self {
         self.aud = Some(audience);
         self
+    }
+
+    /// Set OAuth scope claim (space-delimited).
+    pub fn with_scope(mut self, scope: impl Into<String>) -> Self {
+        self.scope = Some(scope.into());
+        self
+    }
+
+    /// Parsed scope tokens from the `scope` claim.
+    pub fn scopes(&self) -> Vec<&str> {
+        self.scope
+            .as_deref()
+            .map(|s| s.split_whitespace().filter(|p| !p.is_empty()).collect())
+            .unwrap_or_default()
     }
 
     /// Set tenant ID.
@@ -171,12 +190,16 @@ impl JwtService {
         validation.leeway = 30;
 
         // SPEC-083 S-07: validate iss/aud only when configured (fail-closed when set).
+        // When audience is unset, disable aud checks so MCP resource-bound tokens
+        // (aud=/mcp) and web session tokens share the same signer; MCP gateway enforces aud.
         if let Some(ref issuer) = config.jwt_issuer {
             validation.set_issuer(&[issuer.as_str()]);
         }
         if let Some(ref audience) = config.jwt_audience {
             let aud: Vec<&str> = audience.iter().map(String::as_str).collect();
             validation.set_audience(&aud);
+        } else {
+            validation.validate_aud = false;
         }
 
         Self {

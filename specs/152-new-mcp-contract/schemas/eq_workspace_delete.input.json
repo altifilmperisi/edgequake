@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://edgequake.dev/schemas/eq-mcp-1.0/eq_workspace_delete.input.json",
+  "title": "eq_workspace_delete input",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["workspace_id", "confirm"],
+  "properties": {
+    "workspace_id": { "type": "string", "minLength": 1 },
+    "confirm": {
+      "type": "boolean",
+      "description": "MUST be true; false or omitted → eq/confirm_required"
+    }
+  }
+}

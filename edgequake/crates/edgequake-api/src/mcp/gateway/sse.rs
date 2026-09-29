@@ -24,7 +24,7 @@ pub fn wants_sse_response(headers: &HeaderMap, method: &str, params: Option<&Val
         return false;
     }
     let tool = params.and_then(|p| p.get("name")).and_then(|v| v.as_str());
-    if tool != Some("edgequake_retrieve") {
+    if !matches!(tool, Some("edgequake_retrieve") | Some("eq_retrieve")) {
         return false;
     }
     header_truthy(headers, HEADER_MCP_STREAM) || meta_stream_enabled(params)

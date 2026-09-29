@@ -105,6 +105,7 @@ pub mod mcp;
 pub mod middleware;
 pub mod model_catalog;
 pub mod multipart_upload;
+pub mod oauth;
 pub mod observability_middleware;
 pub mod openapi;
 pub mod openapi_annotation_sync;

@@ -3,7 +3,7 @@
 use axum::{extract::State, http::HeaderMap, Json};
 use serde::Serialize;
 
-use crate::mcp::config::McpPublicConfig;
+use crate::mcp::config::{McpPublicConfig, MCP_RESOURCE_SCOPES};
 use crate::state::AppState;
 
 #[derive(Debug, Serialize)]
@@ -21,15 +21,13 @@ pub fn protected_resource_metadata(headers: &HeaderMap) -> ProtectedResourceMeta
     ProtectedResourceMetadata {
         resource: cfg.resource_url.clone(),
         authorization_servers: vec![cfg.authorization_server.clone()],
-        scopes_supported: vec![
-            "edgequake:read".to_string(),
-            "edgequake:query".to_string(),
-            "openid".to_string(),
-            "profile".to_string(),
-        ],
+        scopes_supported: MCP_RESOURCE_SCOPES
+            .iter()
+            .map(|s| (*s).to_string())
+            .collect(),
         bearer_methods_supported: vec!["header"],
         resource_documentation: Some(
-            "https://github.com/edgequake/edgequake/blob/main/specs/028-edgequake-query-service/mcp/000-index.md"
+            "https://github.com/raphaelmansuy/edgequake/blob/main/specs/028-edgequake-query-service/mcp/000-index.md"
                 .to_string(),
         ),
     }

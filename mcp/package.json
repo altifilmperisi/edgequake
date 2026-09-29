@@ -1,7 +1,7 @@
 {
   "name": "@edgequake/mcp-server",
-  "version": "0.2.0",
-  "description": "MCP server for EdgeQuake Graph-RAG \u2014 use EdgeQuake as persistent agent memory",
+  "version": "0.3.0",
+  "description": "MCP stdio bridge for EdgeQuake Graph-RAG (EQ-MCP-1.0 / SPEC-152)",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -26,6 +26,7 @@
     "dev": "tsup --watch",
     "start": "node dist/index.js",
     "test": "vitest run",
+    "test:unit": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "vitest run --config vitest.e2e.config.ts",
     "lint": "tsc --noEmit",

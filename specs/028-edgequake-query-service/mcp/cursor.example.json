@@ -1,7 +1,11 @@
 {
   "mcpServers": {
+    "edgequake-demo": {
+      "comment": "Demo Streamable HTTP — OAuth PKCE (no embedded secret). Browser login once.",
+      "url": "https://demo.edgequake.com/mcp"
+    },
     "edgequake": {
-      "comment": "Option A: remote Streamable HTTP (preferred when OAuth/API gateway ready)",
+      "comment": "Option A: remote Streamable HTTP with API key (headless / Grok)",
       "url": "https://api.edgequake.example/mcp",
       "headers": {
         "Authorization": "Bearer ${EDGEQUAKE_API_KEY}",

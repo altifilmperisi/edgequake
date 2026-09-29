@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://edgequake.dev/schemas/eq-mcp-1.0/eq_document_list.input.json",
+  "title": "eq_document_list input",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "workspace_id": {
+      "type": "string",
+      "description": "Target workspace",
+      "x-mcp-header": "Workspace-Id"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["pending", "processing", "completed", "failed"]
+    },
+    "query": {
+      "type": "string",
+      "description": "Optional title/file_name filter; not a semantic RAG query"
+    },
+    "date_from": { "type": "string", "format": "date-time" },
+    "date_to": { "type": "string", "format": "date-time" },
+    "limit": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 50,
+      "default": 20
+    },
+    "cursor": { "type": "string" }
+  }
+}

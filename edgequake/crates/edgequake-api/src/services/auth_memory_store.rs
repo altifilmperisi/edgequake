@@ -10,6 +10,11 @@ use tokio::sync::RwLock;
 
 use crate::error::ApiError;
 use crate::handlers::auth::{ApiKeyRecord, RefreshTokenRecord, UserRecord};
+use crate::oauth::store::hash_refresh_token;
+use crate::oauth::types::{
+    OAuthAuthorizationCode, OAuthClientRegistration, OAuthRefreshGrant, OAuthRefreshStatus,
+    TakeRefreshOutcome,
+};
 use crate::services::oidc_flow::OidcPendingSession;
 
 #[derive(Default)]
@@ -20,6 +25,9 @@ struct AuthMemoryState {
     refresh_tokens: HashMap<String, RefreshTokenRecord>,
     api_keys: HashMap<String, ApiKeyRecord>,
     oidc_pending: HashMap<String, OidcPendingSession>,
+    oauth_clients: HashMap<String, OAuthClientRegistration>,
+    oauth_codes: HashMap<String, OAuthAuthorizationCode>,
+    oauth_refresh: HashMap<String, OAuthRefreshGrant>,
 }
 
 /// Process-local auth artifacts (test harness only — not KV).
@@ -224,4 +232,126 @@ pub(crate) async fn take_oidc_pending(
     csrf_token: &str,
 ) -> Result<Option<OidcPendingSession>, ApiError> {
     Ok(store.inner.write().await.oidc_pending.remove(csrf_token))
+}
+
+// ── MCP OAuth AS (ephemeral client / code / refresh) ─────────────────────────
+
+pub(crate) async fn store_oauth_client(
+    store: &AuthMemoryStore,
+    client: OAuthClientRegistration,
+) -> Result<(), ApiError> {
+    store
+        .inner
+        .write()
+        .await
+        .oauth_clients
+        .insert(client.client_id.clone(), client);
+    Ok(())
+}
+
+pub(crate) async fn get_oauth_client(
+    store: &AuthMemoryStore,
+    client_id: &str,
+) -> Result<Option<OAuthClientRegistration>, ApiError> {
+    Ok(store
+        .inner
+        .read()
+        .await
+        .oauth_clients
+        .get(client_id)
+        .cloned())
+}
+
+pub(crate) async fn store_oauth_code(
+    store: &AuthMemoryStore,
+    code: OAuthAuthorizationCode,
+) -> Result<(), ApiError> {
+    store
+        .inner
+        .write()
+        .await
+        .oauth_codes
+        .insert(code.code.clone(), code);
+    Ok(())
+}
+
+pub(crate) async fn take_oauth_code(
+    store: &AuthMemoryStore,
+    code: &str,
+) -> Result<Option<OAuthAuthorizationCode>, ApiError> {
+    Ok(store.inner.write().await.oauth_codes.remove(code))
+}
+
+pub(crate) async fn store_oauth_refresh(
+    store: &AuthMemoryStore,
+    mut grant: OAuthRefreshGrant,
+) -> Result<(), ApiError> {
+    let hash = hash_refresh_token(&grant.token);
+    grant.status = OAuthRefreshStatus::Active;
+    // Do not keep plaintext in the map.
+    grant.token.clear();
+    store.inner.write().await.oauth_refresh.insert(hash, grant);
+    Ok(())
+}
+
+pub(crate) async fn take_oauth_refresh(
+    store: &AuthMemoryStore,
+    token: &str,
+) -> Result<TakeRefreshOutcome, ApiError> {
+    let hash = hash_refresh_token(token);
+    let mut inner = store.inner.write().await;
+    let outcome = {
+        let Some(grant) = inner.oauth_refresh.get_mut(&hash) else {
+            return Ok(TakeRefreshOutcome::Invalid);
+        };
+        match grant.status {
+            OAuthRefreshStatus::Active => {
+                grant.status = OAuthRefreshStatus::Rotated;
+                let mut out = grant.clone();
+                out.token.clear();
+                TakeRefreshOutcome::Consumed(Box::new(out))
+            }
+            OAuthRefreshStatus::Rotated | OAuthRefreshStatus::Revoked => {
+                TakeRefreshOutcome::ReuseDetected {
+                    family_id: grant.family_id,
+                }
+            }
+        }
+    };
+    if let TakeRefreshOutcome::ReuseDetected { family_id } = outcome {
+        revoke_family_locked(&mut inner, family_id);
+        return Ok(TakeRefreshOutcome::ReuseDetected { family_id });
+    }
+    Ok(outcome)
+}
+
+pub(crate) async fn revoke_oauth_refresh(
+    store: &AuthMemoryStore,
+    token: &str,
+) -> Result<bool, ApiError> {
+    let hash = hash_refresh_token(token);
+    let mut inner = store.inner.write().await;
+    let Some(grant) = inner.oauth_refresh.get(&hash) else {
+        return Ok(false);
+    };
+    let family_id = grant.family_id;
+    revoke_family_locked(&mut inner, family_id);
+    Ok(true)
+}
+
+pub(crate) async fn revoke_oauth_refresh_family(
+    store: &AuthMemoryStore,
+    family_id: uuid::Uuid,
+) -> Result<(), ApiError> {
+    let mut inner = store.inner.write().await;
+    revoke_family_locked(&mut inner, family_id);
+    Ok(())
+}
+
+fn revoke_family_locked(inner: &mut AuthMemoryState, family_id: uuid::Uuid) {
+    for grant in inner.oauth_refresh.values_mut() {
+        if grant.family_id == family_id {
+            grant.status = OAuthRefreshStatus::Revoked;
+        }
+    }
 }

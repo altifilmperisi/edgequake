@@ -58,8 +58,22 @@ pub async fn list_documents(
     .await
 }
 
+/// Shared document list for REST + MCP catalog (SPEC-152 DRY).
+pub async fn list_documents_for_mcp(
+    storage: StorageRuntime,
+    pg_runtime: PostgresRuntime,
+    budget: ResourceBudgetConfig,
+    tasks: TaskRuntime,
+    tenant_ctx: TenantContext,
+    params: ListDocumentsRequest,
+) -> ApiResult<ListDocumentsResponse> {
+    let Json(resp) =
+        list_documents_inner(storage, pg_runtime, budget, tasks, tenant_ctx, params).await?;
+    Ok(resp)
+}
+
 #[allow(clippy::field_reassign_with_default)]
-async fn list_documents_inner(
+pub(crate) async fn list_documents_inner(
     storage: StorageRuntime,
     _pg_runtime: PostgresRuntime,
     budget: ResourceBudgetConfig,
@@ -411,7 +425,10 @@ async fn list_documents_inner(
     //
     // GH-400: bounded scan (LIMIT + no content detoast + SET LOCAL timeout).
     // Never fetch the full workspace body under the interactive read envelope.
+    #[cfg(feature = "postgres")]
     let mut relational_truncated = false;
+    #[cfg(not(feature = "postgres"))]
+    let relational_truncated = false;
     #[cfg(feature = "postgres")]
     let mut sql_status_counts: Option<StatusCounts> = None;
     #[cfg(feature = "postgres")]

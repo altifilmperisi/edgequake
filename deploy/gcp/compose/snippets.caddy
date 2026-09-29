@@ -6,6 +6,25 @@
 	handle /api/* {
 		reverse_proxy api:8080
 	}
+	# MCP Streamable HTTP + OAuth discovery (RFC 9728 / RFC 8414) — must not hit Next.js.
+	handle /mcp {
+		reverse_proxy api:8080
+	}
+	handle /.well-known/oauth-protected-resource* {
+		reverse_proxy api:8080
+	}
+	handle /.well-known/oauth-authorization-server* {
+		reverse_proxy api:8080
+	}
+	handle /.well-known/openid-configuration {
+		reverse_proxy api:8080
+	}
+	handle /.well-known/mcp/* {
+		reverse_proxy api:8080
+	}
+	handle /oauth/* {
+		reverse_proxy api:8080
+	}
 	handle /health {
 		reverse_proxy api:8080
 	}

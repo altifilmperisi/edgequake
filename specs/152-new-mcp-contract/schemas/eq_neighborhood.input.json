@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://edgequake.dev/schemas/eq-mcp-1.0/eq_neighborhood.input.json",
+  "title": "eq_neighborhood input",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["entity_id"],
+  "properties": {
+    "entity_id": { "type": "string", "minLength": 1 },
+    "max_hops": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 3,
+      "default": 1,
+      "description": "3 only allowed when budget=deep"
+    },
+    "edge_types": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "document_ids": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "include_artifacts": { "type": "boolean", "default": false },
+    "include_weak_edges": { "type": "boolean", "default": false },
+    "budget": {
+      "enum": ["cheap", "standard", "deep"],
+      "default": "standard"
+    },
+    "workspace_id": {
+      "type": "string",
+      "x-mcp-header": "Workspace-Id"
+    }
+  }
+}

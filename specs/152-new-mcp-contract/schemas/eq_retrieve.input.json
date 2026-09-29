@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://edgequake.dev/schemas/eq-mcp-1.0/eq_retrieve.input.json",
+  "title": "eq_retrieve input",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["query"],
+  "properties": {
+    "query": { "type": "string", "minLength": 1 },
+    "mode": {
+      "type": "string",
+      "enum": ["naive", "local", "global", "hybrid", "mix"],
+      "default": "mix"
+    },
+    "scope": {
+      "type": "string",
+      "enum": ["workspace", "documents"],
+      "default": "workspace"
+    },
+    "document_ids": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "document_pattern": { "type": "string" },
+    "budget": {
+      "enum": ["cheap", "standard", "deep"],
+      "default": "standard"
+    },
+    "limit": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 50,
+      "default": 8
+    },
+    "workspace_id": {
+      "type": "string",
+      "x-mcp-header": "Workspace-Id"
+    }
+  }
+}

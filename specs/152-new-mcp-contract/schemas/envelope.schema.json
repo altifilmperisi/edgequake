@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://edgequake.dev/schemas/eq-mcp-1.0/envelope.schema.json",
+  "title": "EQ-MCP-1.0 read envelope",
+  "type": "object",
+  "required": ["ok", "view", "budget_used", "truncation"],
+  "properties": {
+    "ok": { "type": "boolean" },
+    "view": { "type": "string" },
+    "budget_used": { "enum": ["cheap", "standard", "deep"] },
+    "hits": { "type": "array" },
+    "documents": { "type": "array" },
+    "items": { "type": "array" },
+    "chunks": { "type": "array" },
+    "entities": { "type": "array" },
+    "relationships": { "type": "array" },
+    "citations": { "type": "array" },
+    "path": { "type": "array" },
+    "retrieval_id": { "type": "string", "pattern": "^ret_" },
+    "expires_at": { "type": "string", "format": "date-time" },
+    "mode_used": { "type": "string" },
+    "mode_reason": { "type": "string" },
+    "cross_document": { "type": "boolean" },
+    "score_type": { "enum": ["unit_interval", "raw"] },
+    "documents_considered": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "next_cursor": { "type": ["string", "null"] },
+    "truncation": { "$ref": "#/$defs/truncation" },
+    "lineage_resources": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^eq://" }
+    },
+    "stats": { "type": "object" },
+    "error": { "$ref": "#/$defs/error" }
+  },
+  "$defs": {
+    "truncation": {
+      "type": "object",
+      "required": ["truncated"],
+      "additionalProperties": false,
+      "properties": {
+        "truncated": { "type": "boolean" },
+        "next_cursor": { "type": "string" },
+        "omitted_chunks": { "type": "integer", "minimum": 0 },
+        "omitted_entities": { "type": "integer", "minimum": 0 },
+        "omitted_relationships": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "error": {
+      "type": "object",
+      "required": ["code", "message"],
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "type": "string",
+          "enum": [
+            "eq/invalid_id",
+            "eq/not_found",
+            "eq/scope_required",
+            "eq/not_ready",
+            "eq/budget_exceeded",
+            "eq/truncated_invalid",
+            "eq/forbidden",
+            "eq/confirm_required"
+          ]
+        },
+        "message": { "type": "string" },
+        "task_id": { "type": "string" }
+      }
+    },
+    "budget": { "enum": ["cheap", "standard", "deep"] },
+    "hit": {
+      "type": "object",
+      "required": ["kind", "id", "score"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "enum": ["chunk", "document", "entity"] },
+        "id": { "type": "string" },
+        "document_id": { "type": "string" },
+        "title": { "type": "string" },
+        "snippet": { "type": "string", "maxLength": 240 },
+        "score": { "type": "number" }
+      }
+    }
+  }
+}

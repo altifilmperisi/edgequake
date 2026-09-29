@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://edgequake.dev/schemas/eq-mcp-1.0/eq_document_get.input.json",
+  "title": "eq_document_get input",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["document_id"],
+  "properties": {
+    "document_id": { "type": "string", "minLength": 1 },
+    "include": {
+      "type": "array",
+      "items": { "enum": ["metadata", "outline", "text"] },
+      "default": ["metadata"]
+    },
+    "workspace_id": {
+      "type": "string",
+      "x-mcp-header": "Workspace-Id"
+    }
+  }
+}

@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://edgequake.dev/schemas/eq-mcp-1.0/eq_entity_search.input.json",
+  "title": "eq_entity_search input",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["q"],
+  "properties": {
+    "q": { "type": "string", "minLength": 1 },
+    "type": {
+      "type": "string",
+      "enum": [
+        "Person",
+        "Organization",
+        "Concept",
+        "Method",
+        "System",
+        "Metric",
+        "Event",
+        "Artifact",
+        "Location"
+      ]
+    },
+    "document_ids": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "include_artifacts": { "type": "boolean", "default": false },
+    "limit": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 50,
+      "default": 10
+    },
+    "budget": {
+      "enum": ["cheap", "standard", "deep"],
+      "default": "standard"
+    },
+    "workspace_id": {
+      "type": "string",
+      "x-mcp-header": "Workspace-Id"
+    }
+  }
+}

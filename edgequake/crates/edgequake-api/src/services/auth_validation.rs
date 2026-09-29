@@ -1,7 +1,7 @@
 //! Central credential validation — SPEC-027 IMP-002 (DRY SSOT for middleware + handlers).
 
 use chrono::Utc;
-use edgequake_auth::Role;
+use edgequake_auth::{Claims, Role};
 
 use crate::handlers::auth::RequestAuthContext;
 use crate::state::AppState;
@@ -19,6 +19,22 @@ pub(crate) async fn validate_presented_token(
     state: &AppState,
     token: &str,
 ) -> Result<Option<AuthenticatedRequest>, crate::error::ApiError> {
+    if let Some(auth) = validate_master_or_stored_api_key(state, token).await? {
+        return Ok(Some(auth));
+    }
+
+    if let Ok(claims) = state.auth.jwt.verify_token(token) {
+        return Ok(Some(authenticated_from_claims(&claims)?));
+    }
+
+    Ok(None)
+}
+
+/// Master configured keys + persisted `eq_` API keys (no JWT).
+pub(crate) async fn validate_master_or_stored_api_key(
+    state: &AppState,
+    token: &str,
+) -> Result<Option<AuthenticatedRequest>, crate::error::ApiError> {
     if state.auth.config.api_keys.iter().any(|configured| {
         crate::services::identity_storage::constant_time_str_eq(configured, token)
     }) {
@@ -32,28 +48,31 @@ pub(crate) async fn validate_presented_token(
         }));
     }
 
-    if let Ok(claims) = state.auth.jwt.verify_token(token) {
-        return Ok(Some(AuthenticatedRequest {
-            auth: RequestAuthContext {
-                user_id: claims
-                    .user_id()
-                    .map_err(|_| crate::error::ApiError::unauthorized())?
-                    .to_string(),
-                role: claims
-                    .role()
-                    .map_err(|_| crate::error::ApiError::unauthorized())?,
-            },
-            jwt_tenant_id: claims.tenant_id.clone(),
-            jwt_workspace_id: claims.workspace_id.clone(),
-        }));
-    }
-
-    validate_stored_api_key(state, token).await.map(|auth| {
-        auth.map(|auth| AuthenticatedRequest {
+    Ok(validate_stored_api_key(state, token)
+        .await?
+        .map(|auth| AuthenticatedRequest {
             auth,
             jwt_tenant_id: None,
             jwt_workspace_id: None,
-        })
+        }))
+}
+
+/// Build authenticated context from verified JWT claims.
+pub(crate) fn authenticated_from_claims(
+    claims: &Claims,
+) -> Result<AuthenticatedRequest, crate::error::ApiError> {
+    Ok(AuthenticatedRequest {
+        auth: RequestAuthContext {
+            user_id: claims
+                .user_id()
+                .map_err(|_| crate::error::ApiError::unauthorized())?
+                .to_string(),
+            role: claims
+                .role()
+                .map_err(|_| crate::error::ApiError::unauthorized())?,
+        },
+        jwt_tenant_id: claims.tenant_id.clone(),
+        jwt_workspace_id: claims.workspace_id.clone(),
     })
 }
 

@@ -4,6 +4,7 @@ pub mod body;
 pub mod dispatch;
 pub mod json_rpc;
 pub mod meta;
+pub mod resources;
 pub mod sse;
 pub mod tool_validation;
 pub mod tools;
@@ -15,6 +16,8 @@ use axum::http::{HeaderMap, StatusCode};
 use edgequake_auth::Role;
 
 use crate::middleware::TenantContext;
+use crate::oauth::scopes::{required_scope_for_tool, MCP_SCOPE_READ};
+use crate::oauth::types::McpAuthScopes;
 use crate::state::AppState;
 
 use self::dispatch::dispatch_method;
@@ -62,6 +65,29 @@ impl McpHandleOutcome {
         }
     }
 
+    pub fn insufficient_scope(
+        id: serde_json::Value,
+        headers: &HeaderMap,
+        required_scope: &str,
+    ) -> Self {
+        let www = crate::mcp::auth::www_authenticate::www_authenticate_insufficient_scope(
+            headers,
+            required_scope,
+        );
+        Self::Json {
+            status: StatusCode::FORBIDDEN,
+            body: error_response(
+                id,
+                &json_rpc::GatewayError::transport(
+                    StatusCode::FORBIDDEN,
+                    -32003,
+                    format!("insufficient_scope: {required_scope}"),
+                ),
+            ),
+            www_authenticate: Some(www),
+        }
+    }
+
     pub fn notification_accepted() -> Self {
         Self::Accepted
     }
@@ -73,11 +99,16 @@ pub async fn handle_mcp_request(
     tenant_ctx: &TenantContext,
     request: json_rpc::JsonRpcRequest,
     auth_role: Option<Role>,
+    auth_scopes: Option<&McpAuthScopes>,
 ) -> McpHandleOutcome {
     let id = request.id.clone();
 
     if let Err(e) = run_transport_validation(state, headers, &request) {
         return McpHandleOutcome::error(id, e);
+    }
+
+    if let Some(deny) = enforce_method_scopes(headers, &request, auth_scopes) {
+        return deny;
     }
 
     let meta = extract_meta(request.params.as_ref());
@@ -99,6 +130,7 @@ pub async fn handle_mcp_request(
         meta: &meta,
         workspace_header,
         auth_role,
+        auth_scopes: auth_scopes.cloned(),
     };
 
     if wants_sse_response(headers, &request.method, request.params.as_ref()) {
@@ -110,7 +142,61 @@ pub async fn handle_mcp_request(
 
     match dispatch_method(&ctx, &request.method, request.params).await {
         Ok(result) => McpHandleOutcome::ok(id, result),
-        Err(e) => McpHandleOutcome::error(id, e),
+        Err(e) => match e {
+            GatewayError::Transport {
+                status: StatusCode::FORBIDDEN,
+                message,
+                ..
+            } if message.starts_with("insufficient_scope:") => {
+                let required = message
+                    .strip_prefix("insufficient_scope:")
+                    .unwrap_or(MCP_SCOPE_READ)
+                    .trim();
+                McpHandleOutcome::insufficient_scope(id, headers, required)
+            }
+            other => McpHandleOutcome::error(id, other),
+        },
+    }
+}
+
+fn enforce_method_scopes(
+    headers: &HeaderMap,
+    request: &json_rpc::JsonRpcRequest,
+    auth_scopes: Option<&McpAuthScopes>,
+) -> Option<McpHandleOutcome> {
+    let scopes = auth_scopes?;
+    match request.method.as_str() {
+        "tools/list" | "initialize" | "server/discover" | "ping" | "resources/list"
+        | "resources/read" => {
+            if scopes.allows(MCP_SCOPE_READ) {
+                None
+            } else {
+                Some(McpHandleOutcome::insufficient_scope(
+                    request.id.clone(),
+                    headers,
+                    MCP_SCOPE_READ,
+                ))
+            }
+        }
+        "tools/call" => {
+            let name = request
+                .params
+                .as_ref()
+                .and_then(|p| p.get("name"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let required = required_scope_for_tool(name).unwrap_or(MCP_SCOPE_READ);
+            if scopes.allows(required) {
+                None
+            } else {
+                Some(McpHandleOutcome::insufficient_scope(
+                    request.id.clone(),
+                    headers,
+                    required,
+                ))
+            }
+        }
+        _ => None,
     }
 }
 
@@ -169,7 +255,7 @@ mod tests {
             method: "tools/list".into(),
             params: None,
         };
-        let out = handle_mcp_request(&state, &headers, &tenant, req, None).await;
+        let out = handle_mcp_request(&state, &headers, &tenant, req, None, None).await;
         match out {
             McpHandleOutcome::Json { status, .. } => assert_eq!(status, StatusCode::OK),
             McpHandleOutcome::Accepted => panic!("unexpected notification"),
