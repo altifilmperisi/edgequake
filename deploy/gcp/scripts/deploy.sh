@@ -66,6 +66,11 @@ STACK_CERT_DIR="${COMPOSE_DIR}/certs" "${ROOT}/scripts/generate-tls.sh"
 export COMPOSE_PROJECT_NAME=edgequake
 COMPOSE=(docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_DIR}/docker-compose.yml")
 
+# 20G boot disk: drop unused layers before pull (dangling + untagged old pins).
+log "docker image prune (free space for pull)"
+docker image prune -af 2>&1 | tee -a "${LOG}" || true
+df -h / | tee -a "${LOG}" || true
+
 log "compose pull (EDGEQUAKE_VERSION=${EDGEQUAKE_VERSION})"
 "${COMPOSE[@]}" pull
 
