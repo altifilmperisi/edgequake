@@ -66,10 +66,18 @@ STACK_CERT_DIR="${COMPOSE_DIR}/certs" "${ROOT}/scripts/generate-tls.sh"
 export COMPOSE_PROJECT_NAME=edgequake
 COMPOSE=(docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_DIR}/docker-compose.yml")
 
-# 20G boot disk: drop unused layers before pull (dangling + untagged old pins).
-log "docker image prune (free space for pull)"
+# 20G boot disk: reclaim unused layers + build cache before pull.
+# Do not prune named volumes (postgres data lives on /mnt).
+log "docker reclaim (images + build cache + stopped containers)"
+docker container prune -f 2>&1 | tee -a "${LOG}" || true
+docker builder prune -af 2>&1 | tee -a "${LOG}" || true
 docker image prune -af 2>&1 | tee -a "${LOG}" || true
-df -h / | tee -a "${LOG}" || true
+# Drop leftover extract snapshots from failed pulls (containerd overlayfs).
+if command -v ctr >/dev/null 2>&1; then
+  ctr -n moby content prune --keep=false 2>&1 | tee -a "${LOG}" || true
+fi
+df -h / /var/lib/containerd 2>&1 | tee -a "${LOG}" || true
+df -i / 2>&1 | tee -a "${LOG}" || true
 
 log "compose pull (EDGEQUAKE_VERSION=${EDGEQUAKE_VERSION})"
 "${COMPOSE[@]}" pull
