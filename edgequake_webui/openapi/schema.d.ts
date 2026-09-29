@@ -21,6 +21,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/.well-known/oauth-authorization-server": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["oauth_authorization_server_metadata"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/.well-known/oauth-protected-resource": {
         parameters: {
             query?: never;
@@ -29,6 +45,39 @@ export interface paths {
             cookie?: never;
         };
         get: operations["mcp_oauth_protected_resource"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/.well-known/oauth-protected-resource/mcp": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Path-inserted PRM for resource `…/mcp` (RFC 9728 §3.1). */
+        get: operations["mcp_oauth_protected_resource_path"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/.well-known/openid-configuration": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["openid_configuration"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3493,6 +3542,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/oauth/authorize": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["oauth_authorize_get"];
+        put?: never;
+        post: operations["oauth_authorize_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/oauth/register": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["oauth_register_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/oauth/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["oauth_revoke_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/oauth/token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["oauth_token_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/ready": {
         parameters: {
             query?: never;
@@ -4490,6 +4603,28 @@ export interface components {
          * @enum {string}
          */
         ConnectionStatus: "connected" | "connecting" | "disconnected" | "error";
+        /**
+         * @example {
+         *       "approve": {},
+         *       "client_id": {},
+         *       "code_challenge": {},
+         *       "code_challenge_method": {},
+         *       "redirect_uri": {},
+         *       "resource": {},
+         *       "scope": {},
+         *       "state": {}
+         *     }
+         */
+        ConsentForm: {
+            approve?: string | null;
+            client_id: string;
+            code_challenge: string;
+            code_challenge_method: string;
+            redirect_uri: string;
+            resource: string;
+            scope: string;
+            state?: string | null;
+        };
         /**
          * @description Content payload tier for context retrieval.
          * @example {}
@@ -11502,6 +11637,22 @@ export interface components {
             token_type: string;
         };
         /**
+         * @example {
+         *       "client_name": {},
+         *       "grant_types": [],
+         *       "redirect_uris": [],
+         *       "response_types": [],
+         *       "token_endpoint_auth_method": {}
+         *     }
+         */
+        RegisterRequest: {
+            client_name?: string | null;
+            grant_types?: string[] | null;
+            redirect_uris: string[];
+            response_types?: string[] | null;
+            token_endpoint_auth_method?: string | null;
+        };
+        /**
          * @description Related entity info.
          * @example {
          *       "entity_id": {},
@@ -11962,6 +12113,18 @@ export interface components {
             key_id: string;
             /** @description Message. */
             message: string;
+        };
+        /**
+         * @example {
+         *       "client_id": {},
+         *       "token": {},
+         *       "token_type_hint": {}
+         *     }
+         */
+        RevokeForm: {
+            client_id?: string | null;
+            token: string;
+            token_type_hint?: string | null;
         };
         /**
          * @example {
@@ -13030,6 +13193,26 @@ export interface components {
             updated_at: string;
         };
         /**
+         * @example {
+         *       "client_id": {},
+         *       "code": {},
+         *       "code_verifier": {},
+         *       "grant_type": {},
+         *       "redirect_uri": {},
+         *       "refresh_token": {},
+         *       "resource": {}
+         *     }
+         */
+        TokenForm: {
+            client_id?: string | null;
+            code?: string | null;
+            code_verifier?: string | null;
+            grant_type: string;
+            redirect_uri?: string | null;
+            refresh_token?: string | null;
+            resource?: string | null;
+        };
+        /**
          * @description Track status response for batch grouping.
          * @example {
          *       "created_at": {},
@@ -13934,6 +14117,24 @@ export interface operations {
             };
         };
     };
+    oauth_authorization_server_metadata: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OAuth 2.0 Authorization Server Metadata (RFC 8414) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     mcp_oauth_protected_resource: {
         parameters: {
             query?: never;
@@ -13944,6 +14145,42 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description OAuth Protected Resource Metadata (RFC 9728) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mcp_oauth_protected_resource_path: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Path-inserted Protected Resource Metadata for /mcp */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    openid_configuration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OpenID Connect Discovery (alias of AS metadata) */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -20231,6 +20468,126 @@ export interface operations {
             };
             /** @description Failed to gather metrics */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    oauth_authorize_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Consent HTML when session cookie present */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Redirect to login or client redirect_uri */
+            302: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    oauth_authorize_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/x-www-form-urlencoded": components["schemas"]["ConsentForm"];
+            };
+        };
+        responses: {
+            /** @description Redirect with authorization code or error */
+            302: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    oauth_register_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RegisterRequest"];
+            };
+        };
+        responses: {
+            /** @description Dynamically registered OAuth client */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    oauth_revoke_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/x-www-form-urlencoded": components["schemas"]["RevokeForm"];
+            };
+        };
+        responses: {
+            /** @description Token revoked (RFC 7009; always 200) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    oauth_token_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/x-www-form-urlencoded": components["schemas"]["TokenForm"];
+            };
+        };
+        responses: {
+            /** @description Access token (+ refresh token) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description OAuth error (invalid_grant / invalid_request) */
+            400: {
                 headers: {
                     [name: string]: unknown;
                 };

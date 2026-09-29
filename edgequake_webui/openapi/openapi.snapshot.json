@@ -9,7 +9,7 @@
     "license": {
       "name": "Apache-2.0"
     },
-    "version": "0.28.2"
+    "version": "0.28.3"
   },
   "servers": [
     {
@@ -36,6 +36,19 @@
         }
       }
     },
+    "/.well-known/oauth-authorization-server": {
+      "get": {
+        "tags": [
+          "MCP"
+        ],
+        "operationId": "oauth_authorization_server_metadata",
+        "responses": {
+          "200": {
+            "description": "OAuth 2.0 Authorization Server Metadata (RFC 8414)"
+          }
+        }
+      }
+    },
     "/.well-known/oauth-protected-resource": {
       "get": {
         "tags": [
@@ -45,6 +58,33 @@
         "responses": {
           "200": {
             "description": "OAuth Protected Resource Metadata (RFC 9728)"
+          }
+        }
+      }
+    },
+    "/.well-known/oauth-protected-resource/mcp": {
+      "get": {
+        "tags": [
+          "MCP"
+        ],
+        "summary": "Path-inserted PRM for resource `…/mcp` (RFC 9728 §3.1).",
+        "operationId": "mcp_oauth_protected_resource_path",
+        "responses": {
+          "200": {
+            "description": "Path-inserted Protected Resource Metadata for /mcp"
+          }
+        }
+      }
+    },
+    "/.well-known/openid-configuration": {
+      "get": {
+        "tags": [
+          "MCP"
+        ],
+        "operationId": "openid_configuration",
+        "responses": {
+          "200": {
+            "description": "OpenID Connect Discovery (alias of AS metadata)"
           }
         }
       }
@@ -3098,8 +3138,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-job-type": "recover_stuck",
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
+        "x-edgequake-v2-job-type": "recover_stuck"
       }
     },
     "/api/v1/documents/reprocess": {
@@ -9861,6 +9901,115 @@
         "security": []
       }
     },
+    "/oauth/authorize": {
+      "get": {
+        "tags": [
+          "MCP"
+        ],
+        "operationId": "oauth_authorize_get",
+        "responses": {
+          "200": {
+            "description": "Consent HTML when session cookie present"
+          },
+          "302": {
+            "description": "Redirect to login or client redirect_uri"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "MCP"
+        ],
+        "operationId": "oauth_authorize_post",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/ConsentForm"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "302": {
+            "description": "Redirect with authorization code or error"
+          }
+        }
+      }
+    },
+    "/oauth/register": {
+      "post": {
+        "tags": [
+          "MCP"
+        ],
+        "operationId": "oauth_register_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Dynamically registered OAuth client"
+          }
+        }
+      }
+    },
+    "/oauth/revoke": {
+      "post": {
+        "tags": [
+          "MCP"
+        ],
+        "operationId": "oauth_revoke_post",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/RevokeForm"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Token revoked (RFC 7009; always 200)"
+          }
+        }
+      }
+    },
+    "/oauth/token": {
+      "post": {
+        "tags": [
+          "MCP"
+        ],
+        "operationId": "oauth_token_post",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/TokenForm"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Access token (+ refresh token)"
+          },
+          "400": {
+            "description": "OAuth error (invalid_grant / invalid_request)"
+          }
+        }
+      }
+    },
     "/ready": {
       "get": {
         "tags": [
@@ -9894,8 +10043,8 @@
             "description": "WebSocket upgrade failed"
           }
         },
-        "x-edgequake-transport": "websocket",
-        "x-edgequake-upgrade": "RFC6455"
+        "x-edgequake-upgrade": "RFC6455",
+        "x-edgequake-transport": "websocket"
       }
     },
     "/ws/progress/{track_id}": {
@@ -9926,8 +10075,8 @@
             "description": "Track not found for this workspace"
           }
         },
-        "x-edgequake-transport": "websocket",
-        "x-edgequake-upgrade": "RFC6455"
+        "x-edgequake-upgrade": "RFC6455",
+        "x-edgequake-transport": "websocket"
       }
     }
   },
@@ -11799,6 +11948,59 @@
           "error"
         ],
         "example": {}
+      },
+      "ConsentForm": {
+        "type": "object",
+        "required": [
+          "client_id",
+          "redirect_uri",
+          "scope",
+          "code_challenge",
+          "code_challenge_method",
+          "resource"
+        ],
+        "properties": {
+          "approve": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "client_id": {
+            "type": "string"
+          },
+          "code_challenge": {
+            "type": "string"
+          },
+          "code_challenge_method": {
+            "type": "string"
+          },
+          "redirect_uri": {
+            "type": "string"
+          },
+          "resource": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "string"
+          },
+          "state": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "example": {
+          "approve": {},
+          "client_id": {},
+          "code_challenge": {},
+          "code_challenge_method": {},
+          "redirect_uri": {},
+          "resource": {},
+          "scope": {},
+          "state": {}
+        }
       },
       "ContentGranularity": {
         "type": "string",
@@ -25315,6 +25517,57 @@
           "token_type": {}
         }
       },
+      "RegisterRequest": {
+        "type": "object",
+        "required": [
+          "redirect_uris"
+        ],
+        "properties": {
+          "client_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "grant_types": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "redirect_uris": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "response_types": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "token_endpoint_auth_method": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "example": {
+          "client_name": {},
+          "grant_types": [],
+          "redirect_uris": [],
+          "response_types": [],
+          "token_endpoint_auth_method": {}
+        }
+      },
       "RelatedEntityInfo": {
         "type": "object",
         "description": "Related entity info.",
@@ -26218,6 +26471,34 @@
         "example": {
           "key_id": {},
           "message": {}
+        }
+      },
+      "RevokeForm": {
+        "type": "object",
+        "required": [
+          "token"
+        ],
+        "properties": {
+          "client_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "token": {
+            "type": "string"
+          },
+          "token_type_hint": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "example": {
+          "client_id": {},
+          "token": {},
+          "token_type_hint": {}
         }
       },
       "SavedLlmDefaults": {
@@ -28370,6 +28651,62 @@
           "updated_at": {}
         }
       },
+      "TokenForm": {
+        "type": "object",
+        "required": [
+          "grant_type"
+        ],
+        "properties": {
+          "client_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "code_verifier": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "grant_type": {
+            "type": "string"
+          },
+          "redirect_uri": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "refresh_token": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "resource": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "example": {
+          "client_id": {},
+          "code": {},
+          "code_verifier": {},
+          "grant_type": {},
+          "redirect_uri": {},
+          "refresh_token": {},
+          "resource": {}
+        }
+      },
       "TrackStatusResponse": {
         "type": "object",
         "description": "Track status response for batch grouping.",
@@ -30428,7 +30765,7 @@
     "asyncapi": "2.6.0",
     "info": {
       "title": "EdgeQuake WebSocket Progress",
-      "version": "0.28.2",
+      "version": "0.28.3",
       "description": "Real-time pipeline and document processing progress over WebSocket (RFC 6455). SPEC-149: clients subscribe to owned track_ids on the global channel; events use a tagged {type,data} envelope."
     },
     "defaultContentType": "application/json",
