@@ -173,7 +173,7 @@ pub(crate) async fn validate_master_or_stored_api_key(
         }));
     }
 
-    Ok(validate_stored_api_key(state, token).await?)
+    validate_stored_api_key(state, token).await
 }
 
 /// Build authenticated context from verified JWT claims.

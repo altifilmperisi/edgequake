@@ -53,6 +53,7 @@ pub use crate::handlers::auth_types::{
         (status = 423, description = "Account locked")
     )
 )]
+#[allow(clippy::too_many_arguments)] // Axum extractor fan-in
 pub async fn login(
     State(auth): State<AuthRuntime>,
     State(storage): State<StorageRuntime>,
