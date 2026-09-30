@@ -8389,8 +8389,8 @@ export interface components {
              * @description Expires in seconds.
              */
             expires_in: number;
-            /** @description Refresh token. */
-            refresh_token: string;
+            /** @description Refresh token (omitted for browser/SPA when HttpOnly cookie is set — SPEC-154). */
+            refresh_token?: string | null;
             /** @description Token type (always "Bearer"). */
             token_type: string;
             /** @description User information. */
@@ -11608,20 +11608,21 @@ export interface components {
             v2_migration?: null | components["schemas"]["V2MigrationHint"];
         };
         /**
-         * @description Refresh token request.
+         * @description Refresh token request (body optional when `eq_refresh` cookie present — SPEC-154 Wave 5).
          * @example {
          *       "refresh_token": {}
          *     }
          */
         RefreshTokenRequest: {
-            /** @description Refresh token. */
-            refresh_token: string;
+            /** @description Refresh token (optional when HttpOnly cookie is sent). */
+            refresh_token?: string | null;
         };
         /**
          * @description Refresh token response.
          * @example {
          *       "access_token": {},
          *       "expires_in": {},
+         *       "refresh_token": {},
          *       "token_type": {}
          *     }
          */
@@ -11633,6 +11634,8 @@ export interface components {
              * @description Expires in seconds.
              */
             expires_in: number;
+            /** @description Rotated refresh token (SPEC-154 Wave 4). */
+            refresh_token?: string | null;
             /** @description Token type. */
             token_type: string;
         };

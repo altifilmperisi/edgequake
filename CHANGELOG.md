@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.28.4] - 2026-09-30
+
+### Security
+- SPEC-154 auth hardening gap-close: PG refresh-family rotation, WS Sec-WebSocket-Protocol JWT (no `?token=`), env API keys read+query (master break-glass only), durable jti on extractors, SPA omit refresh JSON, migration **162**.
+
 ## [0.28.2] — 2026-09-29
 
 Patch: dense-document KG persist no longer dies on SPEC-149 admission when a

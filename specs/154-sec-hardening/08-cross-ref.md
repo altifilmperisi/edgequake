@@ -53,24 +53,24 @@ Parent: [README](README.md)
 
 ## Document map
 
-| Doc | Role |
-|-----|------|
-| [README](README.md) | Entry, locked decisions, verification |
-| [00-why](00-why.md) | 5-WHY + causal ASCII |
-| [01-first-principles](01-first-principles.md) | LAW-154-* |
-| [02-surfaces](02-surfaces.md) | Code map |
-| [03-standards-crosswalk](03-standards-crosswalk.md) | Normative MET/GAP |
-| [04-findings](04-findings.md) | F-154-* |
-| [05-edge-cases](05-edge-cases.md) | EC-154-* |
-| [06-implementation-plan](06-implementation-plan.md) | Waves 0–6 |
-| [07-e2e-test-matrix](07-e2e-test-matrix.md) | Gates |
-| [lenses/LENS-product-owner](lenses/LENS-product-owner.md) | Commercial / compat |
-| [lenses/LENS-full-stack](lenses/LENS-full-stack.md) | Module design |
-| [lenses/LENS-database](lenses/LENS-database.md) | Schema / refresh / jti |
-| [lenses/LENS-ux-ui](lenses/LENS-ux-ui.md) | Journeys / consent |
-| [lenses/LENS-front](lenses/LENS-front.md) | WebUI storage / cookies |
-| [lenses/LENS-security](lenses/LENS-security.md) | Threat model |
-| [lenses/LENS-ai-engineer](lenses/LENS-ai-engineer.md) | Agent capabilities |
+| Doc                                                       | Role                                  |
+| -----------------------------------------------------------| ---------------------------------------|
+| [README](README.md)                                       | Entry, locked decisions, verification |
+| [00-why](00-why.md)                                       | 5-WHY + causal ASCII                  |
+| [01-first-principles](01-first-principles.md)             | LAW-154-*                             |
+| [02-surfaces](02-surfaces.md)                             | Code map                              |
+| [03-standards-crosswalk](03-standards-crosswalk.md)       | Normative MET/GAP                     |
+| [04-findings](04-findings.md)                             | F-154-*                               |
+| [05-edge-cases](05-edge-cases.md)                         | EC-154-*                              |
+| [06-implementation-plan](06-implementation-plan.md)       | Waves 0–6                             |
+| [07-e2e-test-matrix](07-e2e-test-matrix.md)               | Gates                                 |
+| [lenses/LENS-product-owner](lenses/LENS-product-owner.md) | Commercial / compat                   |
+| [lenses/LENS-full-stack](lenses/LENS-full-stack.md)       | Module design                         |
+| [lenses/LENS-database](lenses/LENS-database.md)           | Schema / refresh / jti                |
+| [lenses/LENS-ux-ui](lenses/LENS-ux-ui.md)                 | Journeys / consent                    |
+| [lenses/LENS-front](lenses/LENS-front.md)                 | WebUI storage / cookies               |
+| [lenses/LENS-security](lenses/LENS-security.md)           | Threat model                          |
+| [lenses/LENS-ai-engineer](lenses/LENS-ai-engineer.md)     | Agent capabilities                    |
 
 ## Wave status tracker
 

@@ -17,7 +17,7 @@ pub(crate) async fn revoke_jti_durable(
 ) -> Result<(), ApiError> {
     revoke_jti_parts(
         &state.auth.jwt,
-        state.pg_pool.as_ref(),
+        state.optional_pg_pool(),
         jti,
         expires_at,
         reason,
@@ -64,7 +64,7 @@ pub(crate) async fn revoke_jti_parts(
 
 /// True when jti is revoked in-process or in durable store.
 pub(crate) async fn is_jti_revoked_durable(state: &AppState, jti: &str) -> bool {
-    is_jti_revoked_parts(&state.auth.jwt, state.pg_pool.as_ref(), jti).await
+    is_jti_revoked_parts(&state.auth.jwt, state.optional_pg_pool(), jti).await
 }
 
 pub(crate) async fn is_jti_revoked_parts(
