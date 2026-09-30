@@ -59,6 +59,24 @@ vi.mock("@/lib/api/client-context", () => ({
 describe("ProgressWebSocket SPEC-149 / SPEC-154", () => {
   beforeEach(async () => {
     FakeWebSocket.instances = [];
+    // Vitest node env has no DOM CloseEvent (CI / release_gates).
+    if (typeof globalThis.CloseEvent === "undefined") {
+      class CloseEventPolyfill extends Event {
+        code: number;
+        reason: string;
+        wasClean: boolean;
+        constructor(
+          type: string,
+          init?: { code?: number; reason?: string; wasClean?: boolean },
+        ) {
+          super(type);
+          this.code = init?.code ?? 0;
+          this.reason = init?.reason ?? "";
+          this.wasClean = init?.wasClean ?? false;
+        }
+      }
+      vi.stubGlobal("CloseEvent", CloseEventPolyfill);
+    }
     vi.stubGlobal("WebSocket", FakeWebSocket as unknown as typeof WebSocket);
     const { getTokens } = await import("@/lib/api/client-context");
     vi.mocked(getTokens).mockReturnValue({
