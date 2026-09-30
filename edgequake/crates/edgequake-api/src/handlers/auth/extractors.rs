@@ -32,6 +32,11 @@ impl FromRequestParts<AppState> for ApiAuthenticated {
         parts: &mut Parts,
         state: &AppState,
     ) -> Result<Self, Self::Rejection> {
+        // SPEC-154: prefer context already bound by resource-server middleware
+        // (REST / MCP / WS) so MCP audience-bound JWTs are not reclassified.
+        if let Some(ctx) = parts.extensions.get::<RequestAuthContext>().cloned() {
+            return Ok(ApiAuthenticated(ctx));
+        }
         require_authenticated_request(&parts.headers, state)
             .await
             .map(ApiAuthenticated)
@@ -55,6 +60,12 @@ impl FromRequestParts<AppState> for ApiRequireAdmin {
         parts: &mut Parts,
         state: &AppState,
     ) -> Result<Self, Self::Rejection> {
+        if let Some(ctx) = parts.extensions.get::<RequestAuthContext>().cloned() {
+            if matches!(ctx.role, edgequake_auth::Role::Admin) {
+                return Ok(ApiRequireAdmin(ctx));
+            }
+            return Err(ApiError::forbidden_reason("Admin role required"));
+        }
         require_admin_request(&parts.headers, state)
             .await
             .map(ApiRequireAdmin)
@@ -80,6 +91,10 @@ impl FromRequestParts<AppState> for ApiOptionalAuth {
     ) -> Result<Self, Self::Rejection> {
         if !state.auth.config.auth_enabled {
             return Ok(ApiOptionalAuth(None));
+        }
+        // Prefer middleware-bound principal (MCP gateway / REST auth layers).
+        if let Some(ctx) = parts.extensions.get::<RequestAuthContext>().cloned() {
+            return Ok(ApiOptionalAuth(Some(ctx)));
         }
         authenticate_request_async(&parts.headers, state)
             .await

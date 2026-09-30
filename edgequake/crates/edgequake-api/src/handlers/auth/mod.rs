@@ -23,6 +23,7 @@
 mod api_keys;
 mod extractors;
 mod oidc;
+mod refresh_cookie;
 mod session;
 mod user_management;
 
@@ -117,9 +118,25 @@ impl UserRecord {
 pub(crate) struct RefreshTokenRecord {
     pub token: String,
     pub user_id: String,
+    /// Rotation family (SPEC-154 Wave 4). Same UUID across rotated successors.
+    #[serde(default = "uuid::Uuid::new_v4")]
+    pub family_id: uuid::Uuid,
+    /// `active` | `rotated` | `revoked`
+    #[serde(default = "default_refresh_status")]
+    pub status: String,
     pub created_at: chrono::DateTime<Utc>,
     pub expires_at: chrono::DateTime<Utc>,
     pub revoked: bool,
+}
+
+fn default_refresh_status() -> String {
+    "active".to_string()
+}
+
+impl RefreshTokenRecord {
+    pub(crate) fn is_active(&self) -> bool {
+        !self.revoked && self.status == "active"
+    }
 }
 
 /// Stored API key record.
@@ -425,7 +442,7 @@ mod tests {
             access_token: "token123".to_string(),
             token_type: "Bearer".to_string(),
             expires_in: 3600,
-            refresh_token: "refresh123".to_string(),
+            refresh_token: Some("refresh123".to_string()),
             user: UserInfo {
                 user_id: "user-1".to_string(),
                 username: "test".to_string(),
@@ -516,7 +533,7 @@ mod tests {
     fn test_refresh_token_request_deserialize() {
         let json = r#"{"refresh_token": "token-abc-123"}"#;
         let request: RefreshTokenRequest = serde_json::from_str(json).unwrap();
-        assert_eq!(request.refresh_token, "token-abc-123");
+        assert_eq!(request.refresh_token.as_deref(), Some("token-abc-123"));
     }
 
     #[test]

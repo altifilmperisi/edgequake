@@ -297,7 +297,9 @@ test.describe("SPEC-149 real-time updates", () => {
         .then(() => Promise.reject(new Error("WS route never matched"))),
     ]);
 
-    expect(routed.url).toContain(`token=${encodeURIComponent(FAKE_TOKEN)}`);
+    expect(routed.url).not.toContain("token=");
+    // SPEC-154: access token must not appear in the WS URL (protocol carries JWT).
+    expect(routed.url).not.toContain(FAKE_TOKEN);
 
     await expect(page.getByText("spec149.pdf").first()).toBeVisible({
       timeout: 20_000,

@@ -93,7 +93,10 @@ pub async fn oidc_callback(
             .map_err(|e| ApiError::Internal(format!("invalid success redirect: {e}")))?;
         url.query_pairs_mut()
             .append_pair("access_token", &login.access_token)
-            .append_pair("refresh_token", &login.refresh_token)
+            .append_pair(
+                "refresh_token",
+                login.refresh_token.as_deref().unwrap_or(""),
+            )
             .append_pair("token_type", &login.token_type)
             .append_pair("expires_in", &login.expires_in.to_string());
         return Ok(Redirect::to(url.as_str()).into_response());
@@ -220,6 +223,8 @@ async fn issue_login_tokens(
     let refresh_record = RefreshTokenRecord {
         token: refresh_token.clone(),
         user_id: record.user_id.clone(),
+        family_id: Uuid::new_v4(),
+        status: "active".to_string(),
         created_at: Utc::now(),
         expires_at: refresh_expiry,
         revoked: false,
@@ -250,7 +255,7 @@ async fn issue_login_tokens(
         access_token,
         token_type: "Bearer".to_string(),
         expires_in: expiry_seconds,
-        refresh_token,
+        refresh_token: Some(refresh_token),
         user: UserInfo::from(&*record),
     })
 }

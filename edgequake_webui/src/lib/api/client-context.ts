@@ -7,6 +7,9 @@
  * session state lives here. The request/response client and the streaming
  * client consume these helpers without owning the storage details.
  *
+ * SPEC-154 Wave 5: access token is memory-only; refresh lives in HttpOnly
+ * cookie (`eq_refresh`) set by the API — never localStorage.
+ *
  * @implements FEAT0772 - Session context injection for API client
  * @implements SPEC-018 - W3C traceparent correlation
  */
@@ -15,8 +18,8 @@ const TRACEPARENT_STORAGE_KEY = "edgequake_traceparent";
 
 // === Token management ==================================================
 
+/** In-memory access token only (SPEC-154 — no localStorage secrets). */
 let accessToken: string | null = null;
-let refreshToken: string | null = null;
 
 const AUTH_COOKIE = "edgequake_access_token";
 
@@ -35,12 +38,13 @@ function syncAuthCookie(access: string | null): void {
   }
 }
 
-export function setTokens(access: string, refresh: string): void {
+/** Store access token in memory. Refresh is HttpOnly cookie (ignore body refresh for storage). */
+export function setTokens(access: string, _refresh?: string | null): void {
   accessToken = access;
-  refreshToken = refresh;
   if (typeof window !== "undefined") {
-    localStorage.setItem("accessToken", access);
-    localStorage.setItem("refreshToken", refresh);
+    // Purge any pre-SPEC-154 secrets left in localStorage.
+    localStorage.removeItem("accessToken");
+    localStorage.removeItem("refreshToken");
     syncAuthCookie(access);
   }
 }
@@ -49,25 +53,26 @@ export function getTokens(): {
   accessToken: string | null;
   refreshToken: string | null;
 } {
-  if (typeof window !== "undefined" && !accessToken) {
-    accessToken = localStorage.getItem("accessToken");
-    refreshToken = localStorage.getItem("refreshToken");
-    // Keep middleware cookie in sync after hard refresh (X-27).
-    if (accessToken) {
-      syncAuthCookie(accessToken);
-    }
-  }
-  return { accessToken, refreshToken };
+  // Refresh is never readable from JS (HttpOnly). Return null for refresh.
+  return { accessToken, refreshToken: null };
 }
 
 export function clearTokens(): void {
   accessToken = null;
-  refreshToken = null;
   if (typeof window !== "undefined") {
     localStorage.removeItem("accessToken");
     localStorage.removeItem("refreshToken");
     syncAuthCookie(null);
   }
+}
+
+/** True when access/refresh secrets are absent from localStorage (SPEC-154 gate). */
+export function assertNoTokenLocalStorage(): boolean {
+  if (typeof window === "undefined") return true;
+  return (
+    localStorage.getItem("accessToken") === null &&
+    localStorage.getItem("refreshToken") === null
+  );
 }
 
 // === Tenant / workspace / user context ================================

@@ -3,7 +3,7 @@
 use axum::{extract::State, http::HeaderMap, Json};
 use serde::Serialize;
 
-use crate::mcp::config::{McpPublicConfig, MCP_RESOURCE_SCOPES};
+use crate::mcp::config::{mcp_resource_scopes_supported, McpPublicConfig};
 use crate::state::AppState;
 
 #[derive(Debug, Serialize)]
@@ -21,9 +21,9 @@ pub fn protected_resource_metadata(headers: &HeaderMap) -> ProtectedResourceMeta
     ProtectedResourceMetadata {
         resource: cfg.resource_url.clone(),
         authorization_servers: vec![cfg.authorization_server.clone()],
-        scopes_supported: MCP_RESOURCE_SCOPES
-            .iter()
-            .map(|s| (*s).to_string())
+        scopes_supported: mcp_resource_scopes_supported()
+            .into_iter()
+            .map(|s| s.to_string())
             .collect(),
         bearer_methods_supported: vec!["header"],
         resource_documentation: Some(

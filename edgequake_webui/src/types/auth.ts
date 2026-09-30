@@ -7,7 +7,8 @@ export interface LoginRequest {
 
 export interface LoginResponse {
   access_token: string;
-  refresh_token: string;
+  /** Omitted for SPA when HttpOnly cookie is set (SPEC-154). */
+  refresh_token?: string | null;
   token_type: string;
   expires_in: number;
   user: {

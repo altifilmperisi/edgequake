@@ -232,6 +232,25 @@ jobs:
           cargo test -p edgequake-storage --features postgres --test contract_spec120_legacy_vector_id_race -- --test-threads=1
           cargo test -p edgequake-api --features postgres --test e2e_spec136_durable_lid_retry -- --test-threads=1
 
+      - name: Run SPEC-154 security hardening e2e
+        working-directory: edgequake
+        env:
+          DATABASE_URL: postgresql://edgequake_test:test_password_123@localhost:5432/edgequake_test
+          EDGEQUAKE_REQUIRE_POSTGRES_TESTS: "1"
+        run: |
+          echo "Running SPEC-154 gap-close e2e gates..."
+          cargo test -p edgequake-api --features postgres \
+            --test e2e_spec154_web_refresh_rotation \
+            --test e2e_spec154_jti_durable \
+            --test e2e_spec154_ws_no_query_token \
+            --test e2e_spec154_api_key_scopes \
+            --test e2e_spec154_membership_bind_mcp \
+            --test e2e_spec154_audience_parity \
+            --test e2e_spec154_scope_predicate \
+            --test e2e_spec154_startup_auth_off_fatal \
+            --test e2e_spec154_anonymous_vs_mcp \
+            -- --test-threads=1
+
       - name: Run All Integration Tests (optional)
         if: github.event.inputs.run_all_tests == 'true'
         working-directory: edgequake

@@ -52,13 +52,22 @@ async fn persist_refresh_token_pg(
     let expires_at = record.expires_at;
     let revoked = record.revoked;
     let created_at = record.created_at;
+    let family_id = record.family_id;
+    let status = if record.revoked {
+        "revoked".to_string()
+    } else {
+        record.status.clone()
+    };
 
     with_optional_pg_rls(pool, security, scope, move |conn| {
         Box::pin(async move {
             sqlx::query(
                 r#"
-                INSERT INTO refresh_tokens (token_id, user_id, token_hash, expires_at, revoked, created_at)
-                VALUES ($1, $2, $3, $4, $5, $6)
+                INSERT INTO refresh_tokens (
+                    token_id, user_id, token_hash, expires_at, revoked, created_at,
+                    family_id, status
+                )
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
                 "#,
             )
             .bind(Uuid::new_v4())
@@ -67,6 +76,8 @@ async fn persist_refresh_token_pg(
             .bind(expires_at)
             .bind(revoked)
             .bind(created_at)
+            .bind(family_id)
+            .bind(status)
             .execute(&mut *conn)
             .await
             .map_err(|e| StorageError::Database(format!("refresh token PG insert: {e}")))?;
@@ -99,10 +110,12 @@ async fn load_refresh_token_pg(
                     bool,
                     chrono::DateTime<chrono::Utc>,
                     chrono::DateTime<chrono::Utc>,
+                    Option<Uuid>,
+                    Option<String>,
                 ),
             >(
                 r#"
-                SELECT token_id, user_id, revoked, created_at, expires_at
+                SELECT token_id, user_id, revoked, created_at, expires_at, family_id, status
                 FROM refresh_tokens
                 WHERE token_hash = $1
                 LIMIT 1
@@ -114,12 +127,23 @@ async fn load_refresh_token_pg(
             .map_err(|e| StorageError::Database(format!("refresh token PG load: {e}")))?;
 
             Ok(row.map(
-                |(_, user_id, revoked, created_at, expires_at)| RefreshTokenRecord {
-                    token: token_str,
-                    user_id: user_id.to_string(),
-                    created_at,
-                    expires_at,
-                    revoked,
+                |(_, user_id, revoked, created_at, expires_at, family_id, status)| {
+                    let status = status.unwrap_or_else(|| {
+                        if revoked {
+                            "revoked".to_string()
+                        } else {
+                            "active".to_string()
+                        }
+                    });
+                    RefreshTokenRecord {
+                        token: token_str,
+                        user_id: user_id.to_string(),
+                        family_id: family_id.unwrap_or_else(Uuid::new_v4),
+                        status,
+                        created_at,
+                        expires_at,
+                        revoked,
+                    }
                 },
             ))
         })
@@ -144,8 +168,11 @@ async fn revoke_refresh_token_pg(
             let result = sqlx::query(
                 r#"
                 UPDATE refresh_tokens
-                SET revoked = true, revoked_at = NOW()
-                WHERE token_hash = $1 AND revoked = false
+                SET revoked = true, revoked_at = NOW(), status = 'revoked'
+                WHERE family_id = (
+                    SELECT family_id FROM refresh_tokens WHERE token_hash = $1 LIMIT 1
+                )
+                AND status <> 'revoked'
                 "#,
             )
             .bind(token_hash)
@@ -159,7 +186,102 @@ async fn revoke_refresh_token_pg(
     .await
 }
 
-/// Persist refresh token — the session port when present; KV when it is absent.
+#[cfg(feature = "postgres")]
+async fn take_web_refresh_pg(
+    pool: &sqlx::PgPool,
+    security: &ApiSecurityConfig,
+    token: &str,
+) -> Result<crate::services::auth_memory_store::TakeWebRefreshOutcome, ApiError> {
+    use crate::services::auth_memory_store::TakeWebRefreshOutcome;
+    use crate::services::tenant_isolation::{with_optional_pg_rls, PgIsolationScope};
+    use edgequake_storage::StorageError;
+
+    let token_hash = refresh_token_lookup_hash(token);
+    let scope = Some(PgIsolationScope::default_identity(None));
+    let token_str = token.to_string();
+
+    with_optional_pg_rls(pool, security, scope, move |conn| {
+        Box::pin(async move {
+            let row = sqlx::query_as::<
+                _,
+                (
+                    Uuid,
+                    Uuid,
+                    bool,
+                    chrono::DateTime<chrono::Utc>,
+                    chrono::DateTime<chrono::Utc>,
+                    Option<Uuid>,
+                    Option<String>,
+                ),
+            >(
+                r#"
+                SELECT token_id, user_id, revoked, created_at, expires_at, family_id, status
+                FROM refresh_tokens
+                WHERE token_hash = $1
+                LIMIT 1
+                FOR UPDATE
+                "#,
+            )
+            .bind(&token_hash)
+            .fetch_optional(&mut *conn)
+            .await
+            .map_err(|e| StorageError::Database(format!("refresh take load: {e}")))?;
+
+            let Some((_, user_id, revoked, created_at, expires_at, family_id, status)) = row else {
+                return Ok(TakeWebRefreshOutcome::Invalid);
+            };
+            let family_id = family_id.unwrap_or_else(Uuid::new_v4);
+            let status = status.unwrap_or_else(|| {
+                if revoked {
+                    "revoked".to_string()
+                } else {
+                    "active".to_string()
+                }
+            });
+            if expires_at < chrono::Utc::now() {
+                return Ok(TakeWebRefreshOutcome::Invalid);
+            }
+            if !revoked && status == "active" {
+                sqlx::query(
+                    r#"
+                    UPDATE refresh_tokens
+                    SET revoked = true, revoked_at = NOW(), status = 'rotated'
+                    WHERE token_hash = $1 AND status = 'active'
+                    "#,
+                )
+                .bind(&token_hash)
+                .execute(&mut *conn)
+                .await
+                .map_err(|e| StorageError::Database(format!("refresh rotate: {e}")))?;
+                return Ok(TakeWebRefreshOutcome::Consumed(Box::new(RefreshTokenRecord {
+                    token: token_str,
+                    user_id: user_id.to_string(),
+                    family_id,
+                    status: "rotated".to_string(),
+                    created_at,
+                    expires_at,
+                    revoked: true,
+                })));
+            }
+            sqlx::query(
+                r#"
+                UPDATE refresh_tokens
+                SET revoked = true, revoked_at = NOW(), status = 'revoked'
+                WHERE family_id = $1 AND status <> 'revoked'
+                "#,
+            )
+            .bind(family_id)
+            .execute(&mut *conn)
+            .await
+            .map_err(|e| StorageError::Database(format!("refresh family revoke: {e}")))?;
+            Ok(TakeWebRefreshOutcome::ReuseDetected { family_id })
+        })
+    })
+    .await
+}
+
+/// Persist refresh token — PG SSOT when pool available (SPEC-154: family_id/status).
+/// SessionStore port is only used when there is no PG pool.
 pub(crate) async fn persist_refresh_token(
     storage: &StorageRuntime,
     pg_runtime: Option<&PostgresRuntime>,
@@ -167,9 +289,6 @@ pub(crate) async fn persist_refresh_token(
     sessions: Option<&dyn SessionStore>,
     record: &RefreshTokenRecord,
 ) -> Result<(), ApiError> {
-    if let Some(store) = sessions {
-        return persist_refresh_token_port(store, record).await;
-    }
     #[cfg(feature = "postgres")]
     {
         let pool = pg_runtime.and_then(|pg| pg.pool.as_ref());
@@ -177,13 +296,19 @@ pub(crate) async fn persist_refresh_token(
 
         if policy.pg_primary {
             if let Some(pool) = pool {
-                persist_refresh_token_pg(pool, security, record).await?;
+                return persist_refresh_token_pg(pool, security, record).await;
             }
-        } else {
-            persist_refresh_token_kv(storage, record).await?;
         }
+    }
 
-        Ok(())
+    if let Some(store) = sessions {
+        return persist_refresh_token_port(store, record).await;
+    }
+
+    #[cfg(feature = "postgres")]
+    {
+        let _ = (pg_runtime, security);
+        persist_refresh_token_kv(storage, record).await
     }
 
     #[cfg(not(feature = "postgres"))]
@@ -201,9 +326,6 @@ pub(crate) async fn load_refresh_token(
     sessions: Option<&dyn SessionStore>,
     token: &str,
 ) -> Result<Option<RefreshTokenRecord>, ApiError> {
-    if let Some(store) = sessions {
-        return load_refresh_token_port(store, token).await;
-    }
     #[cfg(feature = "postgres")]
     {
         let pool = pg_runtime.and_then(|pg| pg.pool.as_ref());
@@ -215,15 +337,17 @@ pub(crate) async fn load_refresh_token(
             }
             return Ok(None);
         }
+    }
 
-        load_refresh_token_kv(storage, token).await
+    if let Some(store) = sessions {
+        return load_refresh_token_port(store, token).await;
     }
 
     #[cfg(not(feature = "postgres"))]
     {
         let _ = (pg_runtime, security);
-        load_refresh_token_kv(storage, token).await
     }
+    load_refresh_token_kv(storage, token).await
 }
 
 /// Revoke refresh token; returns whether a record was updated.
@@ -234,9 +358,6 @@ pub(crate) async fn revoke_refresh_token(
     sessions: Option<&dyn SessionStore>,
     token: &str,
 ) -> Result<bool, ApiError> {
-    if let Some(store) = sessions {
-        return revoke_refresh_token_port(store, token).await;
-    }
     #[cfg(feature = "postgres")]
     {
         let pool = pg_runtime.and_then(|pg| pg.pool.as_ref());
@@ -248,15 +369,68 @@ pub(crate) async fn revoke_refresh_token(
             }
             return Ok(false);
         }
+    }
 
-        revoke_refresh_token_kv(storage, token).await
+    if let Some(store) = sessions {
+        return revoke_refresh_token_port(store, token).await;
     }
 
     #[cfg(not(feature = "postgres"))]
     {
         let _ = (pg_runtime, security);
-        revoke_refresh_token_kv(storage, token).await
     }
+    revoke_refresh_token_kv(storage, token).await
+}
+
+/// Consume an active web refresh (rotate); reuse of rotated/revoked revokes the family.
+///
+/// SPEC-154: when a PG pool is available, use `take_web_refresh_pg` (FOR UPDATE +
+/// family revoke). Do **not** approximate via SessionStore — that path loses family_id.
+pub(crate) async fn take_web_refresh(
+    storage: &StorageRuntime,
+    pg_runtime: Option<&PostgresRuntime>,
+    security: &ApiSecurityConfig,
+    sessions: Option<&dyn SessionStore>,
+    token: &str,
+) -> Result<crate::services::auth_memory_store::TakeWebRefreshOutcome, ApiError> {
+    use crate::services::auth_memory_store::TakeWebRefreshOutcome;
+
+    #[cfg(feature = "postgres")]
+    {
+        let pool = pg_runtime.and_then(|pg| pg.pool.as_ref());
+        let policy = IdentityPolicy::resolve(security, pool.is_some());
+
+        if policy.pg_primary {
+            if let Some(pool) = pool {
+                return take_web_refresh_pg(pool, security, token).await;
+            }
+            return Ok(TakeWebRefreshOutcome::Invalid);
+        }
+    }
+
+    // No PG: SessionStore approximate (tests without pool) or memory.
+    if let Some(store) = sessions {
+        let Some(record) = load_refresh_token_port(store, token).await? else {
+            return Ok(TakeWebRefreshOutcome::Invalid);
+        };
+        if record.expires_at < chrono::Utc::now() {
+            return Ok(TakeWebRefreshOutcome::Invalid);
+        }
+        if !record.is_active() {
+            let _ = revoke_refresh_token_port(store, token).await?;
+            return Ok(TakeWebRefreshOutcome::ReuseDetected {
+                family_id: record.family_id,
+            });
+        }
+        let _ = revoke_refresh_token_port(store, token).await?;
+        return Ok(TakeWebRefreshOutcome::Consumed(Box::new(record)));
+    }
+
+    #[cfg(not(feature = "postgres"))]
+    {
+        let _ = (pg_runtime, security);
+    }
+    crate::services::auth_memory_store::take_web_refresh(&storage.auth_memory, token).await
 }
 
 async fn persist_api_key_kv(
@@ -679,6 +853,12 @@ async fn load_refresh_token_port(
     Ok(found.map(|row| RefreshTokenRecord {
         token: token.to_string(),
         user_id: row.user_id.to_string(),
+        family_id: Uuid::new_v4(), // SessionStore port has no family yet; mint opaque id.
+        status: if row.revoked {
+            "revoked".to_string()
+        } else {
+            "active".to_string()
+        },
         created_at: row.created_at,
         expires_at: row.expires_at,
         revoked: row.revoked,

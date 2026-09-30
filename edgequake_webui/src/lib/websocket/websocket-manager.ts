@@ -14,24 +14,13 @@
  * @implements SPEC-149 - Credential-aware reset / reconnect
  */
 
-import { getTokens } from "@/lib/api/client-context";
 import { getRuntimeServerBaseUrl } from "@/lib/runtime-config";
 import { ProgressWebSocket } from "./progress-websocket";
+import { withAuthToken } from "./ws-auth";
+
+export { withAuthToken, websocketAuthProtocols, WS_AUTH_PROTOCOL } from "./ws-auth";
 
 let instance: ProgressWebSocket | null = null;
-
-/**
- * Append auth token for production WebSocket handshakes (GitHub #277).
- * Browsers cannot set Authorization on WebSocket; backend accepts `?token=`.
- */
-export function withAuthToken(url: string): string {
-  const { accessToken } = getTokens();
-  if (!accessToken) {
-    return url;
-  }
-  const separator = url.includes("?") ? "&" : "?";
-  return `${url}${separator}token=${encodeURIComponent(accessToken)}`;
-}
 
 /**
  * Resolve the WebSocket URL from the current runtime config + tokens.

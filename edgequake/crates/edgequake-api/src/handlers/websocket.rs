@@ -41,11 +41,31 @@ async fn authorize_ws_upgrade(
     query: &WsAuthQuery,
 ) -> Result<WsSession, StatusCode> {
     crate::middleware::ws_validate_origin(state, headers)?;
+    // SPEC-154 Wave 5 / EC-154-10: reject query-string credentials.
+    if query.token.is_some() {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
     let header_token = crate::middleware::extract_token_from_headers(headers);
-    let token = query.token.as_deref().or(header_token.as_deref());
-    crate::middleware::ws_validate_token(state, token)
+    crate::middleware::ws_validate_token_with_headers(state, header_token.as_deref(), headers)
         .await
         .ok_or(StatusCode::UNAUTHORIZED)
+}
+
+/// Echo `edgequake.bearer` when the client offered it (required by RFC 6455 / browsers).
+fn ws_with_auth_protocol(ws: WebSocketUpgrade, headers: &HeaderMap) -> WebSocketUpgrade {
+    let offered = headers
+        .get("sec-websocket-protocol")
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|raw| {
+            raw.split(',')
+                .map(str::trim)
+                .any(|p| p == crate::middleware::WS_AUTH_PROTOCOL)
+        });
+    if offered {
+        ws.protocols([crate::middleware::WS_AUTH_PROTOCOL])
+    } else {
+        ws
+    }
 }
 
 // Re-export DTOs from websocket_types for backwards compatibility
@@ -76,7 +96,8 @@ pub async fn ws_pipeline_progress(
         Err(status) => return status.into_response(),
     };
     info!("WebSocket connection requested for pipeline progress");
-    ws.on_upgrade(move |socket| handle_pipeline_socket(socket, state, session))
+    ws_with_auth_protocol(ws, &headers)
+        .on_upgrade(move |socket| handle_pipeline_socket(socket, state, session))
 }
 
 /// Handle the WebSocket connection for pipeline progress.
@@ -506,7 +527,8 @@ pub async fn ws_progress_by_track_id(
     }
 
     info!("WebSocket connection requested for track_id={}", track_id);
-    ws.on_upgrade(move |socket| handle_filtered_progress_socket(socket, state, track_id, session))
+    ws_with_auth_protocol(ws, &headers)
+        .on_upgrade(move |socket| handle_filtered_progress_socket(socket, state, track_id, session))
 }
 
 /// Handle the filtered WebSocket connection for PDF progress.

@@ -38,9 +38,10 @@ pub fn validate_startup_security(
         }
     }
 
+    // SPEC-154 Wave 6 / LAW-154-10: auth-off on non-local DB is fatal.
     if production_db && !auth.auth_enabled && !auth.dev_mode {
-        warnings.push(
-            "Authentication disabled with non-local DATABASE_URL — set EDGEQUAKE_DEV_MODE only on local dev"
+        return StartupSecurityOutcome::Fatal(
+            "Authentication disabled with non-local DATABASE_URL — enable auth or set EDGEQUAKE_DEV_MODE=true for local-only bypass"
                 .to_string(),
         );
     }
@@ -168,10 +169,8 @@ mod tests {
     }
 
     #[test]
-    fn remote_db_auth_off_strict_exits_message() {
-        // SPEC-083 S-09/S-10: remote DB + auth off is a warning; strict_startup
-        // promotes it to Fatal. Must not set dev_mode (that opts out of both
-        // the auth-off warning and the prod CORS fatal).
+    fn remote_db_auth_off_is_fatal_without_dev_mode() {
+        // SPEC-154 EC-154-12: non-local DB + auth off + !dev → Fatal (no strict_startup required).
         let auth = AuthConfig {
             auth_enabled: false,
             dev_mode: false,
@@ -179,8 +178,6 @@ mod tests {
             ..AuthConfig::default()
         };
         let security = ApiSecurityConfig {
-            strict_startup: true,
-            // Explicit CORS so we exercise the auth-off → strict path, not S-10 CORS fatal.
             cors_origins: Some(vec!["https://app.example.com".into()]),
             ..Default::default()
         };
@@ -192,8 +189,62 @@ mod tests {
         assert!(matches!(outcome, StartupSecurityOutcome::Fatal(_)));
         if let StartupSecurityOutcome::Fatal(msg) = outcome {
             assert!(
-                msg.contains("STRICT_STARTUP") && msg.contains("Authentication disabled"),
-                "expected strict auth-off fatal, got: {msg}"
+                msg.contains("Authentication disabled"),
+                "expected auth-off fatal, got: {msg}"
+            );
+        }
+    }
+
+    #[test]
+    fn remote_db_auth_off_ok_with_dev_mode() {
+        // SPEC-154 EC-154-22: DEV_MODE is the sole local bypass.
+        let auth = AuthConfig {
+            auth_enabled: false,
+            dev_mode: true,
+            jwt_secret: "secure-test-secret-spec027-long-enough".to_string(),
+            ..AuthConfig::default()
+        };
+        let security = ApiSecurityConfig {
+            cors_origins: Some(vec!["https://app.example.com".into()]),
+            ..Default::default()
+        };
+        let outcome = validate_startup_security(
+            Some("postgres://user:pass@db.example.com:5432/edgequake"),
+            &auth,
+            &security,
+        );
+        // Default JWT path may Warn for other reasons; must not Fatal on auth-off alone.
+        assert!(
+            !matches!(outcome, StartupSecurityOutcome::Fatal(_)),
+            "DEV_MODE must bypass auth-off fatal: {outcome:?}"
+        );
+    }
+
+    #[test]
+    fn remote_db_auth_off_strict_exits_message() {
+        // Kept for SPEC-083: strict_startup still promotes warnings; auth-off is now
+        // Fatal before warnings accumulate.
+        let auth = AuthConfig {
+            auth_enabled: false,
+            dev_mode: false,
+            jwt_secret: "secure-test-secret-spec027-long-enough".to_string(),
+            ..AuthConfig::default()
+        };
+        let security = ApiSecurityConfig {
+            strict_startup: true,
+            cors_origins: Some(vec!["https://app.example.com".into()]),
+            ..Default::default()
+        };
+        let outcome = validate_startup_security(
+            Some("postgres://user:pass@db.example.com:5432/edgequake"),
+            &auth,
+            &security,
+        );
+        assert!(matches!(outcome, StartupSecurityOutcome::Fatal(_)));
+        if let StartupSecurityOutcome::Fatal(msg) = outcome {
+            assert!(
+                msg.contains("Authentication disabled"),
+                "expected auth-off fatal, got: {msg}"
             );
         }
     }

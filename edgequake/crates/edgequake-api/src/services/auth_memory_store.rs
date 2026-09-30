@@ -136,16 +136,59 @@ pub(crate) async fn load_refresh_token(
     Ok(store.inner.read().await.refresh_tokens.get(token).cloned())
 }
 
+/// Outcome of consuming a web-session refresh token (SPEC-154 Wave 4).
+#[derive(Debug)]
+pub(crate) enum TakeWebRefreshOutcome {
+    Consumed(Box<RefreshTokenRecord>),
+    ReuseDetected {
+        #[allow(dead_code)]
+        family_id: uuid::Uuid,
+    },
+    Invalid,
+}
+
 pub(crate) async fn revoke_refresh_token(
     store: &AuthMemoryStore,
     token: &str,
 ) -> Result<bool, ApiError> {
     let mut state = store.inner.write().await;
-    if let Some(record) = state.refresh_tokens.get_mut(token) {
-        record.revoked = true;
-        return Ok(true);
+    let Some(record) = state.refresh_tokens.get(token).cloned() else {
+        return Ok(false);
+    };
+    revoke_family_web_locked(&mut state, record.family_id);
+    Ok(true)
+}
+
+/// Consume an active web refresh token (rotate); reuse revokes the family.
+pub(crate) async fn take_web_refresh(
+    store: &AuthMemoryStore,
+    token: &str,
+) -> Result<TakeWebRefreshOutcome, ApiError> {
+    let mut state = store.inner.write().await;
+    let Some(record) = state.refresh_tokens.get_mut(token) else {
+        return Ok(TakeWebRefreshOutcome::Invalid);
+    };
+    if record.expires_at < chrono::Utc::now() {
+        return Ok(TakeWebRefreshOutcome::Invalid);
     }
-    Ok(false)
+    if record.is_active() {
+        record.status = "rotated".to_string();
+        record.revoked = true;
+        let consumed = record.clone();
+        return Ok(TakeWebRefreshOutcome::Consumed(Box::new(consumed)));
+    }
+    let family_id = record.family_id;
+    revoke_family_web_locked(&mut state, family_id);
+    Ok(TakeWebRefreshOutcome::ReuseDetected { family_id })
+}
+
+fn revoke_family_web_locked(state: &mut AuthMemoryState, family_id: uuid::Uuid) {
+    for record in state.refresh_tokens.values_mut() {
+        if record.family_id == family_id {
+            record.status = "revoked".to_string();
+            record.revoked = true;
+        }
+    }
 }
 
 // ── API keys ────────────────────────────────────────────────────────────────

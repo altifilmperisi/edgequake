@@ -30,8 +30,9 @@ pub struct LoginResponse {
     pub token_type: String,
     /// Expires in seconds.
     pub expires_in: i64,
-    /// Refresh token.
-    pub refresh_token: String,
+    /// Refresh token (omitted for browser/SPA when HttpOnly cookie is set — SPEC-154).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub refresh_token: Option<String>,
     /// User information.
     pub user: UserInfo,
 }
@@ -86,11 +87,12 @@ impl From<&User> for UserInfo {
 // Token Management DTOs
 // ============================================================================
 
-/// Refresh token request.
-#[derive(Debug, Clone, Deserialize, ToSchema)]
+/// Refresh token request (body optional when `eq_refresh` cookie present — SPEC-154 Wave 5).
+#[derive(Debug, Clone, Default, Deserialize, ToSchema)]
 pub struct RefreshTokenRequest {
-    /// Refresh token.
-    pub refresh_token: String,
+    /// Refresh token (optional when HttpOnly cookie is sent).
+    #[serde(default)]
+    pub refresh_token: Option<String>,
 }
 
 /// Refresh token response.
@@ -102,6 +104,9 @@ pub struct RefreshTokenResponse {
     pub token_type: String,
     /// Expires in seconds.
     pub expires_in: i64,
+    /// Rotated refresh token (SPEC-154 Wave 4).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub refresh_token: Option<String>,
 }
 
 // ============================================================================
@@ -314,7 +319,7 @@ mod tests {
             access_token: "token123".to_string(),
             token_type: "Bearer".to_string(),
             expires_in: 3600,
-            refresh_token: "refresh456".to_string(),
+            refresh_token: Some("refresh456".to_string()),
             user: UserInfo {
                 user_id: "user1".to_string(),
                 username: "admin".to_string(),
@@ -354,7 +359,7 @@ mod tests {
     fn test_refresh_token_request_deserialization() {
         let json = r#"{"refresh_token": "rt_abc123"}"#;
         let req: RefreshTokenRequest = serde_json::from_str(json).unwrap();
-        assert_eq!(req.refresh_token, "rt_abc123");
+        assert_eq!(req.refresh_token.as_deref(), Some("rt_abc123"));
     }
 
     #[test]

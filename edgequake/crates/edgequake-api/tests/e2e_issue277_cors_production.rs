@@ -99,7 +99,7 @@ async fn issue_277_openapi_json_includes_cors_for_allowed_origin() {
 }
 
 #[tokio::test]
-async fn issue_277_websocket_auth_accepts_query_token() {
+async fn issue_277_websocket_auth_accepts_api_key_token_value() {
     let state = production_cors_state();
     let mut headers = axum::http::HeaderMap::new();
     headers.insert("origin", ALLOWED_ORIGIN.parse().unwrap());
@@ -109,7 +109,7 @@ async fn issue_277_websocket_auth_accepts_query_token() {
         edgequake_api::middleware::ws_validate_token(&state, Some(API_KEY))
             .await
             .is_some(),
-        "production mode must accept API key via ?token= query param"
+        "production mode must accept API key via Authorization / X-API-Key (SPEC-154)"
     );
 }
 
@@ -124,7 +124,7 @@ async fn issue_277_websocket_auth_accepts_bearer_token_value() {
         edgequake_api::middleware::ws_validate_token(&state, Some(API_KEY))
             .await
             .is_some(),
-        "same token validated whether from ?token= or Authorization bearer"
+        "same token validated via Authorization bearer header"
     );
 }
 

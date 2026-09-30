@@ -247,22 +247,25 @@ pub async fn protected_api_auth(
     }
 
     if let Some(token) = extract_api_key(&request) {
-        match crate::services::auth_validation::validate_presented_token(&state, &token).await {
-            Ok(Some(authenticated)) => {
+        // SPEC-154 Wave 1: REST accepts WebSession / ApiKey only (reject MCP aud).
+        match crate::services::auth_validation::decide(
+            &state,
+            &token,
+            crate::services::auth_validation::TokenProfile::WebSession,
+            request.headers(),
+        )
+        .await
+        {
+            Ok(Some(decision)) => {
                 if let Some(response) =
-                    apply_authenticated_context(&state, &mut request, authenticated)
+                    apply_authenticated_context(&state, &mut request, decision.authenticated)
                 {
                     return response;
                 }
-                #[cfg(feature = "postgres")]
-                {
-                    if state.security.strict_tenant_bind {
-                        if let Some(scope) = membership_bind_scope(&state, &request) {
-                            if let Some(response) = enforce_membership_bind(scope).await {
-                                return response;
-                            }
-                        }
-                    }
+                // SPEC-154: extract bind decision sync (do not hold &Request across await).
+                let bind = membership_bind_decision(&state, &request);
+                if let Some(response) = execute_membership_bind(bind).await {
+                    return response;
                 }
                 return next.run(request).await;
             }
@@ -345,9 +348,75 @@ pub(crate) fn apply_authenticated_context(
     None
 }
 
+/// After auth context is applied, decide membership bind without holding `&Request`
+/// across await (axum middleware futures must be `Send` — SPEC-154 Wave 2).
+pub(crate) enum MembershipBindDecision {
+    /// Strict bind off, or insufficient ids to check.
+    Skip,
+    /// Master API key break-glass (already audited).
+    MasterBypass,
+    /// Must verify against Postgres memberships.
+    #[cfg(feature = "postgres")]
+    Check(MembershipBindScope),
+}
+
+/// Synchronously classify membership bind for the current request.
+pub(crate) fn membership_bind_decision(
+    state: &crate::state::AppState,
+    request: &Request,
+) -> MembershipBindDecision {
+    if !state.security.strict_tenant_bind {
+        return MembershipBindDecision::Skip;
+    }
+
+    if let Some(auth) = request
+        .extensions()
+        .get::<crate::handlers::auth::RequestAuthContext>()
+    {
+        if auth.user_id == "master-api-key" {
+            audit_master_api_key_membership_bypass(state);
+            return MembershipBindDecision::MasterBypass;
+        }
+    }
+
+    #[cfg(feature = "postgres")]
+    {
+        if let Some(scope) = membership_bind_scope(state, request) {
+            return MembershipBindDecision::Check(scope);
+        }
+    }
+    MembershipBindDecision::Skip
+}
+
+/// Execute a previously classified membership bind decision.
+pub(crate) async fn execute_membership_bind(decision: MembershipBindDecision) -> Option<Response> {
+    match decision {
+        MembershipBindDecision::Skip | MembershipBindDecision::MasterBypass => None,
+        #[cfg(feature = "postgres")]
+        MembershipBindDecision::Check(scope) => enforce_membership_bind(scope).await,
+    }
+}
+
+fn audit_master_api_key_membership_bypass(state: &crate::state::AppState) {
+    tracing::warn!(
+        audit.event = "master_api_key_membership_bind_bypass",
+        "SPEC-154: master API key skipped membership bind (break-glass)"
+    );
+    crate::services::record_compliance_event(
+        state,
+        "system",
+        edgequake_audit::AuditEventType::Authorization,
+        "master_api_key_membership_bind_bypass",
+        edgequake_audit::AuditResult::Success,
+        None,
+        Some("master-api-key".to_string()),
+        None,
+    );
+}
+
 /// Resolved tenant/workspace membership scope for strict bind (SPEC-027 phase 34).
 #[cfg(feature = "postgres")]
-struct MembershipBindScope {
+pub(crate) struct MembershipBindScope {
     pool: sqlx::PgPool,
     security: crate::state::ApiSecurityConfig,
     user_id: uuid::Uuid,
@@ -364,27 +433,23 @@ fn membership_bind_scope(
     let pool = state.pg_pool.clone()?;
     let auth = request
         .extensions()
-        .get::<crate::handlers::auth::RequestAuthContext>();
-    let tenant_ctx = request.extensions().get::<TenantContext>();
+        .get::<crate::handlers::auth::RequestAuthContext>()?;
+    let tenant_ctx = request.extensions().get::<TenantContext>()?;
 
-    match (auth, tenant_ctx) {
-        (Some(auth), Some(ctx)) if auth.user_id != "master-api-key" => {
-            let tenant_id = resolve_tenant_uuid(ctx.tenant_id.as_deref());
-            let workspace_id = resolve_workspace_uuid(ctx.workspace_id.as_deref());
-            let user_id = uuid::Uuid::parse_str(&auth.user_id).ok();
-            match (tenant_id, workspace_id, user_id) {
-                (Some(tenant_id), Some(workspace_id), Some(user_id)) => Some(MembershipBindScope {
-                    pool,
-                    security: state.security.clone(),
-                    user_id,
-                    tenant_id,
-                    workspace_id,
-                }),
-                _ => None,
-            }
-        }
-        _ => None,
+    if auth.user_id == "master-api-key" {
+        return None;
     }
+
+    let tenant_id = resolve_tenant_uuid(tenant_ctx.tenant_id.as_deref())?;
+    let workspace_id = resolve_workspace_uuid(tenant_ctx.workspace_id.as_deref())?;
+    let user_id = uuid::Uuid::parse_str(&auth.user_id).ok()?;
+    Some(MembershipBindScope {
+        pool,
+        security: state.security.clone(),
+        user_id,
+        tenant_id,
+        workspace_id,
+    })
 }
 
 /// Verify membership asynchronously (owns scope — no request borrow).
@@ -413,6 +478,61 @@ async fn enforce_membership_bind(scope: MembershipBindScope) -> Option<Response>
         ),
         Err(e) => Some(e.into_response()),
     }
+}
+
+/// Membership bind for WebSocket (no full Request extensions yet).
+#[cfg(feature = "postgres")]
+pub(crate) async fn maybe_enforce_membership_bind_ids(
+    state: &crate::state::AppState,
+    user_id: &str,
+    tenant_id: Option<&str>,
+    workspace_id: Option<&str>,
+) -> bool {
+    if !state.security.strict_tenant_bind {
+        return true;
+    }
+    if user_id == "master-api-key" {
+        audit_master_api_key_membership_bypass(state);
+        return true;
+    }
+    let Some(pool) = state.pg_pool.clone() else {
+        return true;
+    };
+    let Some(tenant_id) = resolve_tenant_uuid(tenant_id) else {
+        return true;
+    };
+    let Some(workspace_id) = resolve_workspace_uuid(workspace_id) else {
+        return true;
+    };
+    let Ok(user_uuid) = uuid::Uuid::parse_str(user_id) else {
+        return false;
+    };
+    match crate::services::identity_storage::verify_membership_active(
+        &pool,
+        &state.security,
+        user_uuid,
+        tenant_id,
+        workspace_id,
+    )
+    .await
+    {
+        Ok(true) => true,
+        Ok(false) => false,
+        Err(_) => false,
+    }
+}
+
+#[cfg(not(feature = "postgres"))]
+pub(crate) async fn maybe_enforce_membership_bind_ids(
+    state: &crate::state::AppState,
+    user_id: &str,
+    _tenant_id: Option<&str>,
+    _workspace_id: Option<&str>,
+) -> bool {
+    if user_id == "master-api-key" && state.security.strict_tenant_bind {
+        audit_master_api_key_membership_bypass(state);
+    }
+    true
 }
 
 fn merge_claim_into_context(
@@ -503,26 +623,56 @@ pub async fn ws_validate_token(
     state: &crate::state::AppState,
     token: Option<&str>,
 ) -> Option<WsSession> {
+    ws_validate_token_with_headers(state, token, &axum::http::HeaderMap::new()).await
+}
+
+/// Validate WS credentials with request headers (SPEC-154 Wave 2 membership bind).
+pub async fn ws_validate_token_with_headers(
+    state: &crate::state::AppState,
+    token: Option<&str>,
+    headers: &axum::http::HeaderMap,
+) -> Option<WsSession> {
     if !state.auth.config.auth_enabled {
         return Some(WsSession::default());
     }
     let token = token.filter(|value| !value.is_empty())?;
-    match crate::services::auth_validation::validate_presented_token(state, token).await {
-        Ok(Some(auth)) => {
-            let workspace_id = auth.jwt_workspace_id.or_else(|| {
-                // EC-T2: API-key without workspace → bind default (fail closed vs global bus).
-                Some(default_workspace_uuid().to_string())
-            });
-            Some(WsSession {
-                tenant_id: auth
-                    .jwt_tenant_id
-                    .or_else(|| Some(default_tenant_uuid().to_string())),
-                workspace_id,
-                user_id: Some(auth.auth.user_id),
-            })
-        }
-        _ => None,
+    let decision = crate::services::auth_validation::decide(
+        state,
+        token,
+        crate::services::auth_validation::TokenProfile::WebSession,
+        headers,
+    )
+    .await
+    .ok()
+    .flatten()?;
+
+    let workspace_id = decision.authenticated.jwt_workspace_id.clone().or_else(|| {
+        // EC-T2: API-key without workspace → bind default (fail closed vs global bus).
+        Some(default_workspace_uuid().to_string())
+    });
+    let tenant_id = decision
+        .authenticated
+        .jwt_tenant_id
+        .clone()
+        .or_else(|| Some(default_tenant_uuid().to_string()));
+    let user_id = decision.authenticated.auth.user_id.clone();
+
+    if !maybe_enforce_membership_bind_ids(
+        state,
+        &user_id,
+        tenant_id.as_deref(),
+        workspace_id.as_deref(),
+    )
+    .await
+    {
+        return None;
     }
+
+    Some(WsSession {
+        tenant_id,
+        workspace_id,
+        user_id: Some(user_id),
+    })
 }
 
 fn is_public_request(state: &crate::state::AppState, method: &Method, path: &str) -> bool {
@@ -561,6 +711,11 @@ pub(crate) fn extract_api_key(request: &Request) -> Option<String> {
     extract_token_from_headers(request.headers())
 }
 
+/// Sentinel WebSocket subprotocol for browser JWT auth (SPEC-154).
+/// Clients send `Sec-WebSocket-Protocol: edgequake.bearer, <jwt>` and the server
+/// echoes `edgequake.bearer`. Prefer Authorization / X-API-Key when available.
+pub const WS_AUTH_PROTOCOL: &str = "edgequake.bearer";
+
 /// Extract bearer JWT or API key from HTTP headers (shared by REST + WebSocket upgrade).
 pub(crate) fn extract_token_from_headers(headers: &axum::http::HeaderMap) -> Option<String> {
     if let Some(auth_header) = headers.get("authorization") {
@@ -577,6 +732,39 @@ pub(crate) fn extract_token_from_headers(headers: &axum::http::HeaderMap) -> Opt
         }
     }
 
+    extract_token_from_ws_protocol(headers)
+}
+
+/// Parse JWT/API key from `Sec-WebSocket-Protocol` (browser WebSocket cannot set Authorization).
+///
+/// Accepted shapes:
+/// - `edgequake.bearer, <token>` (preferred)
+/// - `edgequake.bearer.<token>` (single-value form)
+pub(crate) fn extract_token_from_ws_protocol(headers: &axum::http::HeaderMap) -> Option<String> {
+    let raw = headers.get("sec-websocket-protocol")?.to_str().ok()?;
+    let parts: Vec<&str> = raw
+        .split(',')
+        .map(str::trim)
+        .filter(|p| !p.is_empty())
+        .collect();
+
+    if let Some(idx) = parts.iter().position(|p| *p == WS_AUTH_PROTOCOL) {
+        if let Some(token) = parts.get(idx + 1) {
+            let t = token.trim();
+            if !t.is_empty() && t != WS_AUTH_PROTOCOL {
+                return Some(t.to_string());
+            }
+        }
+    }
+
+    let prefix = format!("{WS_AUTH_PROTOCOL}.");
+    for p in parts {
+        if let Some(token) = p.strip_prefix(&prefix) {
+            if !token.is_empty() {
+                return Some(token.to_string());
+            }
+        }
+    }
     None
 }
 

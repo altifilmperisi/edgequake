@@ -82,11 +82,15 @@ async fn connect_ws(
     ),
     tokio_tungstenite::tungstenite::Error,
 > {
-    let mut url = format!("ws://{addr}/ws/pipeline/progress");
-    if let Some(token) = token {
-        url.push_str(&format!("?token={}", urlencoding::encode(token)));
-    }
+    let url = format!("ws://{addr}/ws/pipeline/progress");
     let mut request = url.into_client_request().expect("request");
+    if let Some(token) = token {
+        // SPEC-154 Wave 5: Authorization header only (no ?token=).
+        request.headers_mut().insert(
+            "Authorization",
+            format!("Bearer {token}").parse().unwrap(),
+        );
+    }
     if let Some(origin) = origin {
         request
             .headers_mut()

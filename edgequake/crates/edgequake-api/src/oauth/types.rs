@@ -7,17 +7,30 @@ use uuid::Uuid;
 /// Scopes granted for the current MCP request (request extension).
 #[derive(Debug, Clone)]
 pub struct McpAuthScopes {
-    /// Granted scopes. Empty means full access (API key / master key).
+    /// Granted scopes (OAuth resource scopes).
     pub scopes: Vec<String>,
     /// True when the credential was an API key (skip audience checks).
     pub is_api_key: bool,
+    /// Master / break-glass key — unrestricted MCP tools (SPEC-154 LAW-154-5).
+    pub break_glass: bool,
 }
 
 impl McpAuthScopes {
+    /// Master / auth-disabled break-glass (full MCP surface).
     pub fn api_key_full() -> Self {
         Self {
             scopes: Vec::new(),
             is_api_key: true,
+            break_glass: true,
+        }
+    }
+
+    /// Scoped API key (least privilege).
+    pub fn from_api_key_scopes(scopes: Vec<String>) -> Self {
+        Self {
+            scopes,
+            is_api_key: true,
+            break_glass: false,
         }
     }
 
@@ -31,15 +44,15 @@ impl McpAuthScopes {
         Self {
             scopes,
             is_api_key: false,
+            break_glass: false,
         }
     }
 
     pub fn allows(&self, required: &str) -> bool {
-        // API keys (and auth-disabled mode) grant full MCP surface.
-        if self.is_api_key {
+        if self.break_glass {
             return true;
         }
-        // OAuth JWTs must carry an explicit scope claim.
+        // OAuth JWTs and scoped API keys: empty never allows (LAW-154-4 / LAW-154-5).
         self.scopes.iter().any(|s| s == required || s == "*")
     }
 }

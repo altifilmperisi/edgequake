@@ -14,7 +14,7 @@ import {
   handleErrorResponse,
   NetworkError,
 } from "@/lib/api/client";
-import { getTokens, setTokens } from "@/lib/api/client-context";
+import { setTokens } from "@/lib/api/client-context";
 import { uploadTimeoutMs } from "./upload-timeout";
 
 export type MultipartUploadPhase = "transfer" | "admit";
@@ -39,14 +39,13 @@ function resolveUrl(endpoint: string): string {
 }
 
 async function tryRefreshToken(): Promise<boolean> {
-  const { refreshToken: refresh } = getTokens();
-  if (!refresh) return false;
-
+  // SPEC-154: refresh rides HttpOnly cookie — do not require JS refresh secret.
   try {
     const response = await fetch(`${getRuntimeApiBaseUrl()}/auth/refresh`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ refresh_token: refresh }),
+      credentials: "include",
+      body: JSON.stringify({}),
     });
     if (!response.ok) {
       clearTokens();
@@ -55,9 +54,9 @@ async function tryRefreshToken(): Promise<boolean> {
     }
     const data = (await response.json()) as {
       access_token: string;
-      refresh_token: string;
+      refresh_token?: string;
     };
-    setTokens(data.access_token, data.refresh_token);
+    setTokens(data.access_token, data.refresh_token ?? null);
     return true;
   } catch {
     clearTokens();

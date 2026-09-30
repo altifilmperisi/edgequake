@@ -11,6 +11,7 @@ pub mod audit;
 pub mod auth_bootstrap;
 pub mod auth_memory_store;
 pub mod auth_validation;
+pub mod jti_denylist;
 pub mod cancel_facade;
 pub mod cancel_retract;
 #[cfg(feature = "postgres")]

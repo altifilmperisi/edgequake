@@ -87,7 +87,7 @@ impl Default for AuthConfig {
     fn default() -> Self {
         Self {
             jwt_secret: DEFAULT_INSECURE_JWT_SECRET.to_string(),
-            jwt_expiry: Duration::from_secs(24 * 60 * 60), // 24 hours
+            jwt_expiry: Duration::from_secs(900), // SPEC-154 Wave 4: 15m access TTL
             refresh_token_expiry: Duration::from_secs(30 * 24 * 60 * 60), // 30 days
             api_key_prefix: "sk_".to_string(),
             api_key_length: 32,
@@ -173,10 +173,23 @@ impl AuthConfig {
         let jwt_secret =
             std::env::var("JWT_SECRET").unwrap_or_else(|_| DEFAULT_INSECURE_JWT_SECRET.to_string());
 
-        let jwt_expiry_hours: u64 = std::env::var("JWT_EXPIRY_HOURS")
-            .ok()
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(24);
+        // SPEC-154 Wave 4: prefer seconds; fall back to hours (default 900s / 15m).
+        let jwt_expiry = if let Ok(secs) = std::env::var("JWT_EXPIRY_SECONDS") {
+            secs.parse::<u64>()
+                .ok()
+                .map(Duration::from_secs)
+                .unwrap_or_else(|| Duration::from_secs(900))
+        } else {
+            let jwt_expiry_hours: u64 = std::env::var("JWT_EXPIRY_HOURS")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(0);
+            if jwt_expiry_hours == 0 {
+                Duration::from_secs(900)
+            } else {
+                Duration::from_secs(jwt_expiry_hours * 60 * 60)
+            }
+        };
 
         let refresh_expiry_days: u64 = std::env::var("REFRESH_TOKEN_EXPIRY_DAYS")
             .ok()
@@ -245,7 +258,7 @@ impl AuthConfig {
 
         Self {
             jwt_secret,
-            jwt_expiry: Duration::from_secs(jwt_expiry_hours * 60 * 60),
+            jwt_expiry,
             refresh_token_expiry: Duration::from_secs(refresh_expiry_days * 24 * 60 * 60),
             api_key_prefix,
             max_login_attempts,
@@ -322,7 +335,7 @@ mod tests {
     #[test]
     fn test_default_config() {
         let config = AuthConfig::default();
-        assert_eq!(config.jwt_expiry, Duration::from_secs(24 * 60 * 60));
+        assert_eq!(config.jwt_expiry, Duration::from_secs(900));
         assert_eq!(config.api_key_prefix, "sk_");
         assert_eq!(config.max_login_attempts, 5);
         assert!(config.auth_enabled);

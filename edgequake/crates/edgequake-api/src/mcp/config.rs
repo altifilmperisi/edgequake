@@ -2,8 +2,21 @@
 
 use axum::http::HeaderMap;
 
+use crate::mcp::project::profile::{mcp_profile, McpProfile};
+use crate::oauth::scopes::{MCP_SCOPE_QUERY, MCP_SCOPE_READ, MCP_SCOPE_WRITE};
+
 /// Resource scopes advertised on Protected Resource Metadata and 401 challenges.
-pub const MCP_RESOURCE_SCOPES: &[&str] = &["edgequake:read", "edgequake:query"];
+/// Write is included only when MCP memory profile enables write tools (SPEC-154).
+pub fn mcp_resource_scopes_supported() -> Vec<&'static str> {
+    let mut scopes = vec![MCP_SCOPE_READ, MCP_SCOPE_QUERY];
+    if mcp_profile() == McpProfile::Memory {
+        scopes.push(MCP_SCOPE_WRITE);
+    }
+    scopes
+}
+
+/// Backward-compatible constant for call sites that need a static slice of read+query.
+pub const MCP_RESOURCE_SCOPES: &[&str] = &[MCP_SCOPE_READ, MCP_SCOPE_QUERY];
 
 /// Public MCP resource configuration derived from env or request Host.
 #[derive(Debug, Clone)]
@@ -59,8 +72,8 @@ impl McpPublicConfig {
     }
 
     /// Space-separated scopes for `WWW-Authenticate` challenge.
-    pub fn challenge_scope() -> &'static str {
-        "edgequake:read edgequake:query"
+    pub fn challenge_scope() -> String {
+        mcp_resource_scopes_supported().join(" ")
     }
 }
 

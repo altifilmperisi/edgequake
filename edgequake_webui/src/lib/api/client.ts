@@ -274,6 +274,10 @@ export function buildHeaders(customHeaders?: HeadersInit, body?: unknown): Heade
     headers.set("X-Workspace-ID", workspaceId);
   }
   headers.set("X-User-ID", userId || getOrCreateUserId());
+  // SPEC-154: identify SPA so login/refresh omit refresh_token JSON (cookie SSOT).
+  if (!headers.has("X-Edgequake-Client")) {
+    headers.set("X-Edgequake-Client", "webui");
+  }
 
   return headers;
 }
@@ -380,6 +384,7 @@ export async function apiClient<T>(
   const signal = resolveFetchSignal(timeoutMs, userSignal);
   const config: RequestInit = {
     ...fetchOptions,
+    credentials: fetchOptions.credentials ?? "include",
     signal,
     headers: buildHeaders(fetchOptions.headers, fetchOptions.body),
   };
@@ -430,16 +435,14 @@ export async function apiClient<T>(
   }
 }
 
-/** Token refresh — used by the main client on 401. */
+/** Token refresh — used by the main client on 401 (SPEC-154: HttpOnly cookie). */
 async function tryRefreshToken(): Promise<boolean> {
-  const { refreshToken: refresh } = getTokens();
-  if (!refresh) return false;
-
   try {
     const response = await fetch(`${getRuntimeApiBaseUrl()}/auth/refresh`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ refresh_token: refresh }),
+      credentials: "include",
+      body: JSON.stringify({}),
     });
 
     if (!response.ok) {
@@ -450,9 +453,9 @@ async function tryRefreshToken(): Promise<boolean> {
 
     const data = (await response.json()) as {
       access_token: string;
-      refresh_token: string;
+      refresh_token?: string;
     };
-    setTokens(data.access_token, data.refresh_token);
+    setTokens(data.access_token, data.refresh_token ?? null);
     return true;
   } catch {
     clearTokens();

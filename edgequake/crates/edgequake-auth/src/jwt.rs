@@ -22,7 +22,7 @@ use std::sync::{Arc, RwLock};
 
 use chrono::{Duration, Utc};
 use jsonwebtoken::{
-    dangerous, decode, encode, DecodingKey, EncodingKey, Header, TokenData, Validation,
+    dangerous, decode, encode, Algorithm, DecodingKey, EncodingKey, Header, TokenData, Validation,
 };
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -181,7 +181,8 @@ impl JwtService {
         let encoding_key = EncodingKey::from_secret(config.jwt_secret.as_bytes());
         let decoding_key = DecodingKey::from_secret(config.jwt_secret.as_bytes());
 
-        let mut validation = Validation::default();
+        // SPEC-154 LAW-154-2: pin HS256 explicitly (reject alg:none / confusion).
+        let mut validation = Validation::new(Algorithm::HS256);
         validation.validate_exp = true;
         validation.validate_nbf = true;
         // WHY: 30-second leeway accommodates clock skew between distributed servers.

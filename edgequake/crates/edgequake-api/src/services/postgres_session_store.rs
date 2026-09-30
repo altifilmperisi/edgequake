@@ -21,11 +21,11 @@ impl SessionStore for PostgresSessionStore {
     async fn put_refresh_token(&self, token: &RefreshToken) -> AccessResult<()> {
         sqlx::query(
             "INSERT INTO refresh_tokens \
-                 (token_id,user_id,token_hash,expires_at,revoked,created_at) \
-             VALUES ($1,$2,$3,$4,$5,$6) \
+                 (token_id,user_id,token_hash,expires_at,revoked,created_at,family_id,status) \
+             VALUES ($1,$2,$3,$4,$5,$6,COALESCE($7, gen_random_uuid()),$8) \
              ON CONFLICT (token_id) DO UPDATE SET \
                  token_hash=EXCLUDED.token_hash, expires_at=EXCLUDED.expires_at, \
-                 revoked=EXCLUDED.revoked",
+                 revoked=EXCLUDED.revoked, status=EXCLUDED.status",
         )
         .bind(token.token_id)
         .bind(token.user_id)
@@ -33,6 +33,8 @@ impl SessionStore for PostgresSessionStore {
         .bind(token.expires_at)
         .bind(token.revoked)
         .bind(token.created_at)
+        .bind(Option::<Uuid>::None)
+        .bind(if token.revoked { "revoked" } else { "active" })
         .execute(&self.pool)
         .await
         .map_err(database_error)?;

@@ -69,7 +69,8 @@ pub async fn create_api_key(
 
     let scopes = request
         .scopes
-        .unwrap_or_else(|| vec!["read".to_string(), "write".to_string()]);
+        .map(|s| crate::oauth::scopes::normalize_api_key_scopes(&s))
+        .unwrap_or_else(crate::oauth::scopes::default_api_key_scopes);
 
     let record = ApiKeyRecord {
         key_id: key_id.clone(),

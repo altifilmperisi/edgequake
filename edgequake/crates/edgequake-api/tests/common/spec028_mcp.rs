@@ -35,6 +35,8 @@ pub fn auth_enabled_mcp_state() -> AppState {
     let mut state = AppState::test_state();
     state.auth.config.auth_enabled = true;
     state.auth.config.dev_mode = false;
+    // SPEC-154: break-glass is master_api_key only (not EDGEQUAKE_API_KEYS).
+    state.auth.config.master_api_key = Some("master-mcp-test-key".to_string());
     state.auth.config.api_keys = vec!["master-mcp-test-key".to_string()];
     state
 }
@@ -61,6 +63,18 @@ pub fn issue_mcp_jwt(state: &AppState, role: Role, scope: &str) -> String {
         .jwt
         .generate_token_with_claims(claims)
         .expect("sign mcp test jwt")
+}
+
+/// Issue a web-session JWT (no MCP aud / scope) — SPEC-154 EC-154-02.
+pub fn issue_web_session_jwt(state: &AppState, role: Role) -> String {
+    use edgequake_auth::Claims;
+
+    let claims = Claims::new(Uuid::new_v4(), role, 3600);
+    state
+        .auth
+        .jwt
+        .generate_token_with_claims(claims)
+        .expect("sign web session jwt")
 }
 
 pub fn mcp_post_bearer(uri: &str, token: &str, body: Value) -> Request<Body> {

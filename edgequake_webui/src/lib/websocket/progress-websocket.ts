@@ -13,6 +13,7 @@ import type {
   WebSocketProgressMessage,
 } from "@/types/ingestion";
 import { normalizeProgressEvent } from "./progress-event-normalizer";
+import { websocketAuthProtocols } from "./ws-auth";
 
 export interface ProgressWebSocketOptions {
   /** Resolve the WS URL on every connect (LAW-149-1). */
@@ -139,7 +140,10 @@ export class ProgressWebSocket {
 
     try {
       const url = this.options.urlResolver();
-      this.ws = new WebSocket(url);
+      const protocols = websocketAuthProtocols();
+      this.ws = protocols
+        ? new WebSocket(url, protocols)
+        : new WebSocket(url);
       this.setupEventHandlers(gen);
     } catch (error) {
       this.handleError(error as Error);

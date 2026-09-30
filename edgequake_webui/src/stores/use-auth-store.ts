@@ -10,7 +10,7 @@
  *
  * @enforces BR0501 - Protected routes require authentication
  * @enforces BR0502 - Expired tokens trigger logout
- * @enforces BR0505 - Tokens stored securely in localStorage
+ * @enforces BR0505 - Access token memory-only; refresh via HttpOnly cookie (SPEC-154)
  *
  * @see {@link docs/use_cases.md} UC0501, UC0505
  */
@@ -56,8 +56,8 @@ export const useAuthStore = create<AuthStore>()(
       login: (response: LoginResponse) => {
         const expiresAt = Date.now() + response.expires_in * 1000;
 
-        // Store tokens in localStorage via client
-        setTokens(response.access_token, response.refresh_token);
+        // Memory access token; refresh is HttpOnly cookie from API Set-Cookie.
+        setTokens(response.access_token, response.refresh_token ?? null);
 
         // SPEC-087: sync X-User-ID with JWT principal (avoid anon_* mint drift)
         const authUserId =
@@ -71,7 +71,7 @@ export const useAuthStore = create<AuthStore>()(
           isAuthenticated: true,
           user: response.user,
           accessToken: response.access_token,
-          refreshToken: response.refresh_token,
+          refreshToken: null,
           expiresAt,
         });
       },
@@ -96,12 +96,12 @@ export const useAuthStore = create<AuthStore>()(
       },
 
       initializeFromStorage: () => {
-        const { accessToken, refreshToken } = getTokens();
-        if (accessToken && refreshToken) {
+        const { accessToken } = getTokens();
+        if (accessToken) {
           set({
             isAuthenticated: true,
             accessToken,
-            refreshToken,
+            refreshToken: null,
           });
         }
       },

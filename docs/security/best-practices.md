@@ -123,7 +123,7 @@ iptables -A INPUT -p tcp --dport 5432 -j DROP
 
 ## Authentication
 
-EdgeQuake v0.23.0 uses a **fail-closed** auth model when enabled. Local dev (`make dev`, Docker quickstart) may set `EDGEQUAKE_DEV_MODE=true` for an open API — **never use that in production**.
+EdgeQuake uses a **fail-closed** auth model when enabled. Local dev (`make dev`, Docker quickstart) may set `EDGEQUAKE_DEV_MODE=true` for an open API — **never use that in production**.
 
 | Mode | When | What callers need |
 | ---- | ---- | ----------------- |
@@ -131,7 +131,15 @@ EdgeQuake v0.23.0 uses a **fail-closed** auth model when enabled. Local dev (`ma
 | Production | `EDGEQUAKE_AUTH_ENABLED=true` | Valid **JWT** (WebUI login) or **API key** |
 | Bootstrap | First admin, no users yet | `EDGEQUAKE_MASTER_API_KEY` or bootstrap env vars |
 
-Full setup: [Runtime auth hardening](/docs/operations/runtime-auth-hardening/).
+**SPEC-154 (security hardening)**:
+
+- Access JWT default TTL is **900s (15 minutes)**.
+- Web refresh tokens use HttpOnly cookie `eq_refresh` (Path=`/api/v1/auth`); SPA login/refresh omits `refresh_token` from JSON when `Sec-Fetch-*` or `X-Edgequake-Client: webui` is present.
+- `EDGEQUAKE_MASTER_API_KEY` is break-glass (full MCP scopes + membership bind bypass, compliance-audited). `EDGEQUAKE_API_KEYS` are **read+query only** — not write break-glass.
+- WebSocket: pass JWT via `Authorization: Bearer` or `Sec-WebSocket-Protocol: edgequake.bearer, <jwt>`. Query `?token=` is **rejected**.
+- Auth disabled + non-local `DATABASE_URL` without `EDGEQUAKE_DEV_MODE` is a **Fatal** startup error.
+
+Full setup: [Runtime auth hardening](/docs/operations/runtime-auth-hardening/). Spec pack: [`specs/154-sec-hardening/`](../../specs/154-sec-hardening/).
 
 ### JWT (interactive users)
 
@@ -145,7 +153,7 @@ curl -H "Authorization: Bearer eyJ..." \
      http://localhost:8080/api/v1/documents
 ```
 
-Refresh tokens rotate via `/api/v1/auth/refresh`. Store JWTs in memory or secure client storage — not in URLs or logs.
+Refresh tokens rotate via `/api/v1/auth/refresh` (cookie or body). Keep access tokens in memory — not in `localStorage`, URLs, or logs. Residual: Next middleware may mirror access token in a non-HttpOnly cookie for SSR; prefer not to expose JWT to `document.cookie` long-term.
 
 ### API key authentication
 

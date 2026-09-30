@@ -6,7 +6,11 @@
 
 use axum::{
     extract::State,
-    http::{header::AUTHORIZATION, HeaderMap, StatusCode},
+    http::{
+        header::{AUTHORIZATION, SET_COOKIE},
+        HeaderMap, StatusCode,
+    },
+    response::{IntoResponse, Response},
     Json,
 };
 use chrono::{Duration, Utc};
@@ -24,6 +28,11 @@ use crate::state::{
     StorageRuntime,
 };
 
+use super::refresh_cookie::{
+    clear_refresh_cookie_header, cookie_secure_from_headers, resolve_refresh_token,
+    refresh_token_for_json_body,
+    set_refresh_cookie_header,
+};
 use super::{
     find_user_by_login, get_record_by_id, get_user_by_id, RefreshTokenRecord, RequestAuthContext,
 };
@@ -52,8 +61,9 @@ pub async fn login(
     State(security): State<ApiSecurityConfig>,
     State(compliance): State<ComplianceRuntime>,
     State(stores): State<OperationalStores>,
+    headers: HeaderMap,
     Json(request): Json<LoginRequest>,
-) -> Result<Json<LoginResponse>, ApiError> {
+) -> Result<Response, ApiError> {
     info!("Login attempt for user: {}", request.username);
 
     let user =
@@ -157,6 +167,8 @@ pub async fn login(
     let refresh_record = RefreshTokenRecord {
         token: refresh_token.clone(),
         user_id: record.user_id.clone(),
+        family_id: Uuid::new_v4(),
+        status: "active".to_string(),
         created_at: Utc::now(),
         expires_at: refresh_expiry,
         revoked: false,
@@ -186,13 +198,17 @@ pub async fn login(
         None,
     );
 
-    Ok(Json(LoginResponse {
-        access_token,
-        token_type: "Bearer".to_string(),
-        expires_in,
-        refresh_token,
-        user: UserInfo::from(&record),
-    }))
+    Ok(with_refresh_cookie(
+        LoginResponse {
+            access_token,
+            token_type: "Bearer".to_string(),
+            expires_in,
+            refresh_token: refresh_token_for_json_body(&headers, &refresh_token),
+            user: UserInfo::from(&record),
+        },
+        &refresh_token,
+        cookie_secure_from_headers(&headers),
+    ))
 }
 
 /// Refresh access token.
@@ -214,33 +230,40 @@ pub async fn refresh_token(
     State(pg_runtime): State<PostgresRuntime>,
     State(security): State<ApiSecurityConfig>,
     State(stores): State<OperationalStores>,
+    headers: HeaderMap,
     Json(request): Json<RefreshTokenRequest>,
-) -> Result<Json<RefreshTokenResponse>, ApiError> {
-    let record = crate::services::session_storage::load_refresh_token(
+) -> Result<Response, ApiError> {
+    use crate::services::auth_memory_store::TakeWebRefreshOutcome;
+
+    let presented = resolve_refresh_token(request.refresh_token.as_deref(), &headers)
+        .ok_or_else(|| ApiError::auth_unauthorized("refresh", "token_missing", None))?;
+
+    let outcome = crate::services::session_storage::take_web_refresh(
         &storage,
         Some(&pg_runtime),
         &security,
         stores.sessions.as_deref(),
-        &request.refresh_token,
+        &presented,
     )
-    .await?
-    .ok_or_else(|| ApiError::auth_unauthorized("refresh", "token_not_found", None))?;
+    .await?;
 
-    if record.revoked {
-        return Err(ApiError::auth_unauthorized(
-            "refresh",
-            "token_revoked",
-            None,
-        ));
-    }
-
-    if record.expires_at < Utc::now() {
-        return Err(ApiError::auth_unauthorized(
-            "refresh",
-            "token_expired",
-            None,
-        ));
-    }
+    let record = match outcome {
+        TakeWebRefreshOutcome::Consumed(r) => *r,
+        TakeWebRefreshOutcome::Invalid => {
+            return Err(ApiError::auth_unauthorized(
+                "refresh",
+                "token_invalid",
+                None,
+            ));
+        }
+        TakeWebRefreshOutcome::ReuseDetected { family_id: _ } => {
+            return Err(ApiError::auth_unauthorized(
+                "refresh",
+                "token_reuse",
+                None,
+            ));
+        }
+    };
 
     let user = get_user_by_id(
         &storage,
@@ -259,6 +282,27 @@ pub async fn refresh_token(
     let user_uuid = Uuid::parse_str(&user.user_id)
         .map_err(|_| ApiError::Internal("Invalid user ID format".to_string()))?;
 
+    // SPEC-154 Wave 4: rotate — issue successor in the same family.
+    let new_refresh = Uuid::new_v4().to_string();
+    let refresh_expiry = Utc::now() + Duration::days(30);
+    let refresh_record = RefreshTokenRecord {
+        token: new_refresh.clone(),
+        user_id: record.user_id.clone(),
+        family_id: record.family_id,
+        status: "active".to_string(),
+        created_at: Utc::now(),
+        expires_at: refresh_expiry,
+        revoked: false,
+    };
+    crate::services::session_storage::persist_refresh_token(
+        &storage,
+        Some(&pg_runtime),
+        &security,
+        stores.sessions.as_deref(),
+        &refresh_record,
+    )
+    .await?;
+
     let expires_in = auth.jwt.expiry_duration().as_secs() as i64;
     let claims =
         crate::services::identity_storage::access_token_claims(user_uuid, user.role, expires_in);
@@ -267,11 +311,16 @@ pub async fn refresh_token(
         .generate_token_with_claims(claims)
         .map_err(|e| ApiError::Internal(format!("Token generation error: {}", e)))?;
 
-    Ok(Json(RefreshTokenResponse {
-        access_token,
-        token_type: "Bearer".to_string(),
-        expires_in,
-    }))
+    Ok(with_refresh_cookie(
+        RefreshTokenResponse {
+            access_token,
+            token_type: "Bearer".to_string(),
+            expires_in,
+            refresh_token: refresh_token_for_json_body(&headers, &new_refresh),
+        },
+        &new_refresh,
+        cookie_secure_from_headers(&headers),
+    ))
 }
 
 /// Logout endpoint (revoke refresh token).
@@ -297,34 +346,52 @@ pub async fn logout(
     State(stores): State<OperationalStores>,
     headers: HeaderMap,
     Json(request): Json<RefreshTokenRequest>,
-) -> Result<StatusCode, ApiError> {
-    let user_id = crate::services::session_storage::load_refresh_token(
-        &storage,
-        Some(&pg_runtime),
-        &security,
-        stores.sessions.as_deref(),
-        &request.refresh_token,
-    )
-    .await?
-    .map(|record| record.user_id);
+) -> Result<Response, ApiError> {
+    let presented = resolve_refresh_token(request.refresh_token.as_deref(), &headers);
 
-    let _ = crate::services::session_storage::revoke_refresh_token(
-        &storage,
-        Some(&pg_runtime),
-        &security,
-        stores.sessions.as_deref(),
-        &request.refresh_token,
-    )
-    .await?;
+    let user_id = if let Some(ref token) = presented {
+        crate::services::session_storage::load_refresh_token(
+            &storage,
+            Some(&pg_runtime),
+            &security,
+            stores.sessions.as_deref(),
+            token,
+        )
+        .await?
+        .map(|record| record.user_id)
+    } else {
+        None
+    };
 
-    // SPEC-083 S-07: denylist access-token jti when Bearer is presented at logout.
+    if let Some(ref token) = presented {
+        let _ = crate::services::session_storage::revoke_refresh_token(
+            &storage,
+            Some(&pg_runtime),
+            &security,
+            stores.sessions.as_deref(),
+            token,
+        )
+        .await?;
+    }
+
+    // SPEC-083 / SPEC-154: durable denylist access-token jti when Bearer is presented.
     if let Some(header) = headers.get(AUTHORIZATION).and_then(|v| v.to_str().ok()) {
         if let Some(token) = header.strip_prefix("Bearer ") {
-            if let Ok(claims) = auth.jwt.verify_token(token) {
-                auth.jwt.revoke_jti(&claims.jti);
-            } else if let Ok(claims) = auth.jwt.decode_unverified(token) {
-                // Still denylist even if already expired — prevent refresh race reuse.
-                auth.jwt.revoke_jti(&claims.jti);
+            let claims = auth
+                .jwt
+                .verify_token(token)
+                .or_else(|_| auth.jwt.decode_unverified(token));
+            if let Ok(claims) = claims {
+                let expires_at =
+                    crate::services::jti_denylist::exp_claim_to_utc(claims.exp);
+                let _ = crate::services::jti_denylist::revoke_jti_parts(
+                    &auth.jwt,
+                    pg_runtime.optional_pg_pool(),
+                    &claims.jti,
+                    expires_at,
+                    "logout",
+                )
+                .await;
             }
         }
     }
@@ -340,7 +407,24 @@ pub async fn logout(
         None,
     );
 
-    Ok(StatusCode::NO_CONTENT)
+    let secure = cookie_secure_from_headers(&headers);
+    let mut response = StatusCode::NO_CONTENT.into_response();
+    response
+        .headers_mut()
+        .insert(SET_COOKIE, clear_refresh_cookie_header(secure));
+    Ok(response)
+}
+
+fn with_refresh_cookie<T: serde::Serialize>(
+    body: T,
+    refresh_token: &str,
+    secure: bool,
+) -> Response {
+    let mut response = Json(body).into_response();
+    response
+        .headers_mut()
+        .insert(SET_COOKIE, set_refresh_cookie_header(refresh_token, secure));
+    response
 }
 
 /// Get current user information.

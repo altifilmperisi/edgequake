@@ -8,7 +8,7 @@ use crate::middleware::TenantContext;
 
 use super::json_rpc::GatewayError;
 
-/// Auth claims beat tool-supplied workspace (EC-MCP-30).
+/// Auth claims beat tool-supplied workspace (EC-MCP-30 / EC-154-30).
 pub fn enforce_workspace_claim(
     tenant_ctx: &TenantContext,
     arguments: &Value,
@@ -18,31 +18,32 @@ pub fn enforce_workspace_claim(
         return Ok(());
     }
 
-    let Some(ctx_ws) = tenant_ctx
-        .workspace_id
-        .as_deref()
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-    else {
-        return Ok(());
-    };
-
-    let Some(arg_ws) = arguments
+    let arg_ws = arguments
         .get("workspace_id")
         .and_then(|v| v.as_str())
         .map(str::trim)
-        .filter(|s| !s.is_empty())
-    else {
+        .filter(|s| !s.is_empty());
+
+    let Some(arg_ws) = arg_ws else {
         return Ok(());
     };
 
-    if ctx_ws != arg_ws {
-        return Err(GatewayError::Api(ApiError::forbidden_reason(format!(
-            "workspace_id '{arg_ws}' does not match authenticated workspace claim '{ctx_ws}'"
-        ))));
-    }
+    let ctx_ws = tenant_ctx
+        .workspace_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
 
-    Ok(())
+    match ctx_ws {
+        Some(ctx) if ctx == arg_ws => Ok(()),
+        Some(ctx) => Err(GatewayError::Api(ApiError::forbidden_reason(format!(
+            "workspace_id '{arg_ws}' does not match authenticated workspace claim '{ctx}'"
+        )))),
+        // EC-154-30: authenticated but unbound — any tool workspace_id is foreign.
+        None => Err(GatewayError::Api(ApiError::forbidden_reason(format!(
+            "workspace_id '{arg_ws}' is forbidden without an authenticated workspace claim"
+        )))),
+    }
 }
 
 #[cfg(test)]
@@ -70,6 +71,20 @@ mod tests {
         assert!(enforce_workspace_claim(
             &ctx,
             &json!({ "workspace_id": "ws-b" }),
+            Some(Role::User),
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn ec_154_30_rejects_tool_workspace_without_claim() {
+        let ctx = TenantContext {
+            workspace_id: None,
+            ..Default::default()
+        };
+        assert!(enforce_workspace_claim(
+            &ctx,
+            &json!({ "workspace_id": "ws-foreign" }),
             Some(Role::User),
         )
         .is_err());
