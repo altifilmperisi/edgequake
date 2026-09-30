@@ -86,10 +86,9 @@ async fn connect_ws(
     let mut request = url.into_client_request().expect("request");
     if let Some(token) = token {
         // SPEC-154 Wave 5: Authorization header only (no ?token=).
-        request.headers_mut().insert(
-            "Authorization",
-            format!("Bearer {token}").parse().unwrap(),
-        );
+        request
+            .headers_mut()
+            .insert("Authorization", format!("Bearer {token}").parse().unwrap());
     }
     if let Some(origin) = origin {
         request

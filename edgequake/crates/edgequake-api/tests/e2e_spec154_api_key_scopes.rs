@@ -37,11 +37,8 @@ fn build_app(state: AppState) -> axum::Router {
 
 #[test]
 fn normalize_legacy_read_write() {
-    let n = normalize_api_key_scopes(&[
-        "read".to_string(),
-        "write".to_string(),
-        "query".to_string(),
-    ]);
+    let n =
+        normalize_api_key_scopes(&["read".to_string(), "write".to_string(), "query".to_string()]);
     assert!(n.contains(&MCP_SCOPE_READ.to_string()));
     assert!(n.contains(&MCP_SCOPE_QUERY.to_string()));
     assert!(n.contains(&MCP_SCOPE_WRITE.to_string()));

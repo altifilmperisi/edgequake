@@ -29,9 +29,8 @@ use crate::state::{
 };
 
 use super::refresh_cookie::{
-    clear_refresh_cookie_header, cookie_secure_from_headers, resolve_refresh_token,
-    refresh_token_for_json_body,
-    set_refresh_cookie_header,
+    clear_refresh_cookie_header, cookie_secure_from_headers, refresh_token_for_json_body,
+    resolve_refresh_token, set_refresh_cookie_header,
 };
 use super::{
     find_user_by_login, get_record_by_id, get_user_by_id, RefreshTokenRecord, RequestAuthContext,
@@ -257,11 +256,7 @@ pub async fn refresh_token(
             ));
         }
         TakeWebRefreshOutcome::ReuseDetected { family_id: _ } => {
-            return Err(ApiError::auth_unauthorized(
-                "refresh",
-                "token_reuse",
-                None,
-            ));
+            return Err(ApiError::auth_unauthorized("refresh", "token_reuse", None));
         }
     };
 
@@ -382,8 +377,7 @@ pub async fn logout(
                 .verify_token(token)
                 .or_else(|_| auth.jwt.decode_unverified(token));
             if let Ok(claims) = claims {
-                let expires_at =
-                    crate::services::jti_denylist::exp_claim_to_utc(claims.exp);
+                let expires_at = crate::services::jti_denylist::exp_claim_to_utc(claims.exp);
                 let _ = crate::services::jti_denylist::revoke_jti_parts(
                     &auth.jwt,
                     pg_runtime.optional_pg_pool(),

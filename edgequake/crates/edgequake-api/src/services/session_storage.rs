@@ -253,15 +253,17 @@ async fn take_web_refresh_pg(
                 .execute(&mut *conn)
                 .await
                 .map_err(|e| StorageError::Database(format!("refresh rotate: {e}")))?;
-                return Ok(TakeWebRefreshOutcome::Consumed(Box::new(RefreshTokenRecord {
-                    token: token_str,
-                    user_id: user_id.to_string(),
-                    family_id,
-                    status: "rotated".to_string(),
-                    created_at,
-                    expires_at,
-                    revoked: true,
-                })));
+                return Ok(TakeWebRefreshOutcome::Consumed(Box::new(
+                    RefreshTokenRecord {
+                        token: token_str,
+                        user_id: user_id.to_string(),
+                        family_id,
+                        status: "rotated".to_string(),
+                        created_at,
+                        expires_at,
+                        revoked: true,
+                    },
+                )));
             }
             sqlx::query(
                 r#"

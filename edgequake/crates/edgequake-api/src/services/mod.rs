@@ -11,7 +11,6 @@ pub mod audit;
 pub mod auth_bootstrap;
 pub mod auth_memory_store;
 pub mod auth_validation;
-pub mod jti_denylist;
 pub mod cancel_facade;
 pub mod cancel_retract;
 #[cfg(feature = "postgres")]
@@ -60,6 +59,7 @@ pub mod injection_relational;
 pub mod interrupted_restart;
 pub mod isolation_context;
 pub mod job_registry;
+pub mod jti_denylist;
 pub mod knowledge_rebuild;
 pub mod large_document_profile;
 pub mod list_pagination;

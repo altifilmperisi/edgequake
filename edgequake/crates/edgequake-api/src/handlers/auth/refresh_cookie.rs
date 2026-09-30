@@ -16,7 +16,8 @@ pub(crate) fn set_refresh_cookie_header(token: &str, secure: bool) -> HeaderValu
     if secure {
         value.push_str("; Secure");
     }
-    HeaderValue::from_str(&value).unwrap_or_else(|_| HeaderValue::from_static("eq_refresh=; Max-Age=0"))
+    HeaderValue::from_str(&value)
+        .unwrap_or_else(|_| HeaderValue::from_static("eq_refresh=; Max-Age=0"))
 }
 
 /// Clear the refresh cookie.
@@ -27,7 +28,8 @@ pub(crate) fn clear_refresh_cookie_header(secure: bool) -> HeaderValue {
     if secure {
         value.push_str("; Secure");
     }
-    HeaderValue::from_str(&value).unwrap_or_else(|_| HeaderValue::from_static("eq_refresh=; Max-Age=0"))
+    HeaderValue::from_str(&value)
+        .unwrap_or_else(|_| HeaderValue::from_static("eq_refresh=; Max-Age=0"))
 }
 
 /// Prefer body refresh token; fall back to `eq_refresh` cookie.
@@ -57,10 +59,7 @@ pub(crate) fn omit_refresh_in_json_body(headers: &HeaderMap) -> bool {
 }
 
 /// Body field for refresh when not omitted for SPA.
-pub(crate) fn refresh_token_for_json_body(
-    headers: &HeaderMap,
-    token: &str,
-) -> Option<String> {
+pub(crate) fn refresh_token_for_json_body(headers: &HeaderMap, token: &str) -> Option<String> {
     if omit_refresh_in_json_body(headers) {
         None
     } else {

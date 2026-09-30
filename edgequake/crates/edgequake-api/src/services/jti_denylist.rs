@@ -106,7 +106,5 @@ pub(crate) async fn is_jti_revoked_parts(
 
 /// Convert JWT `exp` claim (unix seconds) to UTC datetime.
 pub(crate) fn exp_claim_to_utc(exp: i64) -> DateTime<Utc> {
-    Utc.timestamp_opt(exp, 0)
-        .single()
-        .unwrap_or_else(Utc::now)
+    Utc.timestamp_opt(exp, 0).single().unwrap_or_else(Utc::now)
 }

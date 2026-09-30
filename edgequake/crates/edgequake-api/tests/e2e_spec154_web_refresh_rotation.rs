@@ -144,9 +144,7 @@ async fn assert_rotate_and_reuse_revokes_family(app: &axum::Router, username: &s
                 .method("POST")
                 .uri("/api/v1/auth/refresh")
                 .header(header::CONTENT_TYPE, "application/json")
-                .body(Body::from(
-                    json!({ "refresh_token": refresh1 }).to_string(),
-                ))
+                .body(Body::from(json!({ "refresh_token": refresh1 }).to_string()))
                 .unwrap(),
         )
         .await
@@ -166,9 +164,7 @@ async fn assert_rotate_and_reuse_revokes_family(app: &axum::Router, username: &s
                 .method("POST")
                 .uri("/api/v1/auth/refresh")
                 .header(header::CONTENT_TYPE, "application/json")
-                .body(Body::from(
-                    json!({ "refresh_token": refresh1 }).to_string(),
-                ))
+                .body(Body::from(json!({ "refresh_token": refresh1 }).to_string()))
                 .unwrap(),
         )
         .await
@@ -182,9 +178,7 @@ async fn assert_rotate_and_reuse_revokes_family(app: &axum::Router, username: &s
                 .method("POST")
                 .uri("/api/v1/auth/refresh")
                 .header(header::CONTENT_TYPE, "application/json")
-                .body(Body::from(
-                    json!({ "refresh_token": refresh2 }).to_string(),
-                ))
+                .body(Body::from(json!({ "refresh_token": refresh2 }).to_string()))
                 .unwrap(),
         )
         .await
@@ -206,9 +200,7 @@ async fn assert_concurrent_refresh_one_winner(app: &axum::Router, username: &str
             .method("POST")
             .uri("/api/v1/auth/refresh")
             .header(header::CONTENT_TYPE, "application/json")
-            .body(Body::from(
-                json!({ "refresh_token": refresh }).to_string(),
-            ))
+            .body(Body::from(json!({ "refresh_token": refresh }).to_string()))
             .unwrap()
     };
 

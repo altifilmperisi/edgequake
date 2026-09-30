@@ -160,9 +160,8 @@ pub(crate) async fn validate_master_or_stored_api_key(
     if state.auth.config.api_keys.iter().any(|configured| {
         crate::services::identity_storage::constant_time_str_eq(configured, token)
     }) {
-        let scopes = McpAuthScopes::from_api_key_scopes(
-            crate::oauth::scopes::default_api_key_scopes(),
-        );
+        let scopes =
+            McpAuthScopes::from_api_key_scopes(crate::oauth::scopes::default_api_key_scopes());
         return Ok(Some(AuthenticatedRequest {
             auth: RequestAuthContext {
                 user_id: "static-api-key".to_string(),
@@ -248,8 +247,7 @@ pub(crate) async fn validate_stored_api_key(
             continue;
         }
 
-        let normalized =
-            crate::oauth::scopes::normalize_api_key_scopes(&record.scopes);
+        let normalized = crate::oauth::scopes::normalize_api_key_scopes(&record.scopes);
         let role = if record.scopes.iter().any(|s| s == "admin" || s == "*")
             || normalized.iter().any(|s| s == "*")
         {

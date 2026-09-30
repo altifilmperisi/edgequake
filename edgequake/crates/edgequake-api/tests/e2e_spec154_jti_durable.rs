@@ -62,7 +62,9 @@ async fn ec_154_09_logout_jti_rejected_on_second_appstate() {
     let pool = match connect_and_bootstrap().await {
         Some(p) => p,
         None => {
-            eprintln!("SKIP ec_154_09_logout_jti_rejected_on_second_appstate: DATABASE_URL not set");
+            eprintln!(
+                "SKIP ec_154_09_logout_jti_rejected_on_second_appstate: DATABASE_URL not set"
+            );
             return;
         }
     };
@@ -130,9 +132,7 @@ async fn ec_154_09_logout_jti_rejected_on_second_appstate() {
                 .uri("/api/v1/auth/logout")
                 .header(header::CONTENT_TYPE, "application/json")
                 .header(header::AUTHORIZATION, format!("Bearer {access}"))
-                .body(Body::from(
-                    json!({ "refresh_token": refresh }).to_string(),
-                ))
+                .body(Body::from(json!({ "refresh_token": refresh }).to_string()))
                 .unwrap(),
         )
         .await
