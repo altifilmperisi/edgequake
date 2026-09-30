@@ -2,8 +2,13 @@
 
 Parent: [README](README.md) · Laws: [01-first-principles](01-first-principles.md) · Findings: [04-findings](04-findings.md)
 
-**This Wave 0 pack is documents only.** Waves 1–6 are the code plan. Each wave
-lists: goal, primary module, fail-first tests, ECs closed, DoD.
+**Status (product ≥ 0.28.4 / honesty in 0.28.5):** Waves 0–6 **Done** in code +
+named Rust e2e (postgres-integration) + WebUI vitest in `release_gates.sh`.
+Sign-off tracker: [08-cross-ref](08-cross-ref.md). Residuals: non-HttpOnly
+access cookie, EC-154-23 log redaction, Playwright soft-skip.
+
+This document remains the historical wave plan. Each wave lists: goal, primary
+module, fail-first tests, ECs closed, DoD.
 
 Principles: **DRY** (one decision, one bind, one refresh), **SOLID** (verifier ≠
 resource policy ≠ storage), **First Principles** (fail closed, audience =

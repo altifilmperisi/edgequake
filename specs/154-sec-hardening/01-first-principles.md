@@ -30,7 +30,7 @@ Parent: [README](README.md) · WHY: [00-why](00-why.md) · Next: [02-surfaces](0
 | **LAW-154-6** | Membership bind is universal — when `strict_tenant_bind`, the same `enforce_membership_bind` runs for REST, MCP, and WS (master key audited exception). |
 | **LAW-154-7** | One refresh algorithm — web session refresh uses hash-at-rest, rotate-on-use, family revoke on reuse (same semantics as MCP `eqr_*`). |
 | **LAW-154-8** | Revocation is durable — access-token `jti` denylist lives in PostgreSQL with TTL ≈ remaining `exp`; every replica consults it. |
-| **LAW-154-9** | Secrets never in URLs or JS-readable storage — no `?token=` on WS; refresh in HttpOnly Secure cookie; SPA access token memory-only. |
+| **LAW-154-9** | Secrets never in URLs or localStorage — no `?token=` on WS; refresh in HttpOnly Secure cookie; SPA access token memory-only. **Caveat:** Next middleware may mirror access JWT in a non-HttpOnly `edgequake_access_token` cookie (Secure on HTTPS) — residual until HttpOnly session. |
 | **LAW-154-10** | Auth-off on non-local DB is fatal — same class as default JWT secret and open CORS; only `EDGEQUAKE_DEV_MODE` bypasses locally. |
 | **LAW-154-11** | CI is proof — every EC-154 has a named test; green suite is the DoD for each wave. |
 | **LAW-154-12** | Single identity store — MCP OAuth and Web auth share users/memberships; no second principal database. |

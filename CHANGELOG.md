@@ -4,10 +4,88 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-## [0.28.4] - 2026-09-30
+## [0.28.5] — 2026-10-01
+
+Patch: release honesty + CD hygiene after the messy `v0.28.4` retag cycle.
+**No schema change** (still **162**). Operators on 0.28.4 only need new images
+for pin sync / release_gates vitest; auth behavior is unchanged. Upgrade:
+[`docs/operations/upgrade-to-0.28.5.md`](docs/operations/upgrade-to-0.28.5.md).
+
+**Deps (crates.io):** unchanged (`edgequake-llm` **0.10.8**, `edgequake-pdf2md`
+**0.9.11**, `edgeparse-core` **0.2.5**; `edgequake-sdk` **0.4.0**).
+
+**SPEC-001 Acc:** attested from existing
+[`publish/latest`](specs/001-benchmark/e2e/artifacts/publish/latest/)
+(`valid: true`, medical-mid, `2026-08-15T11:02:18Z`) — no fresh n=200 run;
+**PDF geometry not re-scored**.
+
+### Fixed
+- **Release gates** — SPEC-154 WebUI vitest (`auth-storage-spec154`,
+  `progress-websocket`) runs via `pnpm exec vitest` in
+  `scripts/release_gates.sh` (Playwright `auth-storage` soft-skip demoted to
+  manual).
+- **SPEC-027 contract** — allow MCP AS `/oauth/*` routes (SPEC-152) and
+  legitimate `auth_memory_store` callers in `oauth/store` + session handler.
+- **Docs / pins** — CHANGELOG backfill for 0.28.3; expand 0.28.4; upgrade
+  guides through 0.28.5; binding pins in `release-and-cd` / `AGENTS.md` /
+  security best-practices.
+- **SPEC-154 honesty** — surfaces + parity matrix match post-Wave-6 code;
+  LAW-154-9 caveats residual non-HttpOnly access cookie; EC-154-23 residual.
+- **Trivy** — ignore unfixed bookworm OpenSSL DTLS CVE-2026-84782 (API is
+  TCP/TLS only; same class as prior CVE-2026-14456 ignore).
+
+## [0.28.4] — 2026-09-30
+
+Patch: **SPEC-154** auth hardening gap-close (production refresh family,
+WebSocket protocol JWT, scoped env API keys, durable jti on extractors, SPA
+cookie refresh). Schema train moves **160 → 162** (`jwt_jti_denylist`, refresh
+`family_id` / status). Operators must run `edgequake migrate` (or compose /
+Helm migrate Job) before relying on durable revoke / family rotation.
+Upgrade: [`docs/operations/upgrade-to-0.28.4.md`](docs/operations/upgrade-to-0.28.4.md).
+
+**Deps (crates.io):** unchanged (`edgequake-llm` **0.10.8**, `edgequake-pdf2md`
+**0.9.11**, `edgeparse-core` **0.2.5**; `edgequake-sdk` **0.4.0**).
+
+**SPEC-001 Acc:** attested from existing
+[`publish/latest`](specs/001-benchmark/e2e/artifacts/publish/latest/)
+(`valid: true`, medical-mid, `2026-08-15T11:02:18Z`) — no fresh n=200 run;
+**PDF geometry not re-scored**.
 
 ### Security
-- SPEC-154 auth hardening gap-close: PG refresh-family rotation, WS Sec-WebSocket-Protocol JWT (no `?token=`), env API keys read+query (master break-glass only), durable jti on extractors, SPA omit refresh JSON, migration **162**.
+- **SPEC-154** — PG `take_web_refresh_pg` family rotate (not SessionStore
+  approximate); WS reject `?token=`, accept `Sec-WebSocket-Protocol:
+  edgequake.bearer`; env `EDGEQUAKE_API_KEYS` = read+query (master break-glass
+  only); durable jti on `validate_presented_token`; SPA omit `refresh_token`
+  JSON when browser / `X-Edgequake-Client: webui`; HttpOnly `eq_refresh`;
+  auth-off Fatal on non-local DB; access JWT default TTL **900s**; migration
+  **162**.
+
+### Fixed
+- Multipart upload client cookie-only refresh (credentials include).
+- Compliance audit on master API-key membership bypass.
+
+## [0.28.3] — 2026-09-29
+
+Patch: **SPEC-152** EQ-MCP-1.0 AgentView + OAuth AS surface, plus release /
+GCP pull hygiene. **Schema stays at 160** (no new migration vs 0.28.2).
+Upgrade: [`docs/operations/upgrade-to-0.28.3.md`](docs/operations/upgrade-to-0.28.3.md).
+
+**Deps (crates.io):** unchanged (`edgequake-llm` **0.10.8**, `edgequake-pdf2md`
+**0.9.11**, `edgeparse-core` **0.2.5**; `edgequake-sdk` **0.4.0**).
+
+**SPEC-001 Acc:** attested from existing
+[`publish/latest`](specs/001-benchmark/e2e/artifacts/publish/latest/)
+(`valid: true`, medical-mid, `2026-08-15T11:02:18Z`) — no fresh n=200 run;
+**PDF geometry not re-scored**.
+
+### Added
+- **SPEC-152 — EQ-MCP-1.0** — AgentView retrieval contract + OAuth authorization
+  server wiring for MCP clients. Spec:
+  [`specs/152-new-mcp-contract/`](specs/152-new-mcp-contract/).
+
+### Fixed
+- GCP deploy: prune unused images / reclaim build cache before compose pull.
+- Release: Cargo.lock + OpenAPI snapshot sync for the 0.28.3 pin.
 
 ## [0.28.2] — 2026-09-29
 

@@ -23,9 +23,11 @@ LAW-154-11: CI is proof. Unwired tests are documentation, not gates.
 | `e2e_spec154_api_key_scopes` | 3 | 05, 06 | Read-only key write tool 403; master write + audit |
 | `e2e_spec154_web_refresh_rotation` | 4 | 08, 24 | Rotate issues new refresh; reuse → 401 family revoke; race loser fails |
 | `e2e_spec154_jti_durable` | 4 | 09 | After logout, second AppState/process rejects access JWT |
-| `e2e_spec154_ws_no_query_token` | 5 | 10, 11 | `?token=` → 401; Bearer header → 101 |
+| `e2e_spec154_ws_no_query_token` | 5 | 10, 11 | `?token=` → 401; Bearer / Sec-WebSocket-Protocol → 101 |
 | `e2e_spec154_startup_auth_off_fatal` | 6 | 12, 22 | Non-local URL + auth off + !dev → Fatal; DEV_MODE local OK |
-| WebUI Playwright `auth-storage.spec.ts` | 5 | 11 (UX) | No access/refresh in localStorage after login; cookie refresh works |
+| `e2e_spec154_anonymous_vs_mcp` | 6 | 21 | Guest chat OK; MCP write without creds → 401 |
+| WebUI vitest `auth-storage-spec154` + `progress-websocket` | 5 | 10–11 (UX) | **CI / release_gates** — no localStorage secrets; `withAuthToken` omits `?token=` |
+| Playwright `auth-storage.spec.ts` | 5 | UX manual | Soft-skip without `E2E_AUTH_*`; **not** a CI gate (LAW-154-11) |
 
 Suggested location: `edgequake/crates/edgequake-api/tests/e2e_spec154_*.rs` mirroring
 SPEC-098 naming.

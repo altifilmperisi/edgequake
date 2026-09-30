@@ -1,7 +1,8 @@
 # SPEC-154 — Authentication & MCP Security Hardening
 
-> **Status:** Waves 0–6 implemented (code + e2e gates)  
-> **Product pin:** EdgeQuake v0.28.3+  
+> **Status:** Waves 0–6 implemented (code + e2e gates); honesty pass in v0.28.5  
+> **Product pin:** EdgeQuake v0.28.5  
+
 > **Scope:** Verify REST and MCP authentication against MCP Authorization 2026-07-28,
 > OAuth 2.1, RFC 9728/8707/9207, RFC 8725/9068, and OWASP API2:2023; close
 > parity gaps so every surface applies the **same** security level.  
@@ -51,9 +52,10 @@
    Closes F-154-05.
 7. **Revocation is durable** — `jti` denylist is PostgreSQL with TTL, not an
    in-process `HashSet` (LAW-154-8). Closes F-154-05.
-8. **Secrets never in URLs or JS-readable storage** — No `?token=`; refresh in
-   HttpOnly Secure cookie; access token memory-only in SPA (LAW-154-9).
-   Closes F-154-06.
+8. **Secrets never in URLs or localStorage** — No `?token=`; refresh in
+   HttpOnly Secure cookie; SPA access token memory-only (LAW-154-9). Residual:
+   non-HttpOnly `edgequake_access_token` for Next middleware. Closes F-154-06
+   except that residual.
 9. **Auth-off on non-local DB is fatal** — Matches JWT-secret and CORS startup
    gates; `EDGEQUAKE_DEV_MODE` is the only local bypass (LAW-154-10).
    Closes F-154-07.

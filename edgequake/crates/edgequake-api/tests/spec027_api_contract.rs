@@ -1402,6 +1402,9 @@ fn spec027_auth_memory_store_callers_only_phase55() {
         "src/state/memory.rs",
         "src/state/postgres.rs",
         "src/state/storage_runtime.rs",
+        // SPEC-152 MCP AS + SPEC-154 web refresh outcome type
+        "src/oauth/store.rs",
+        "src/handlers/auth/session.rs",
     ];
 
     let mut offenders = Vec::new();
@@ -1488,7 +1491,14 @@ fn spec027_oauth2_oidc_builtin_wiring_phase54() {
         if line.contains(".route(") {
             let lower = line.to_lowercase();
             if lower.contains("oauth") && !lower.contains("oidc") {
-                panic!("unexpected oauth route (non-oidc): {line}");
+                // SPEC-152 MCP Authorization Server (EQ-MCP-1.0) — intentional
+                let mcp_as = lower.contains("/oauth/authorize")
+                    || lower.contains("/oauth/token")
+                    || lower.contains("/oauth/revoke")
+                    || lower.contains("/oauth/register");
+                if !mcp_as {
+                    panic!("unexpected oauth route (non-oidc): {line}");
+                }
             }
         }
     }

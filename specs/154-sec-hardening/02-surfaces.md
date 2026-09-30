@@ -2,6 +2,9 @@
 
 Parent: [README](README.md) · Laws: [01-first-principles](01-first-principles.md) · Next: [03-standards-crosswalk](03-standards-crosswalk.md)
 
+> **Post-Wave 6 (product ≥ 0.28.4):** This map describes **current** code, not
+> the pre-fix inventory. Residuals are labeled below.
+
 ## Surface inventory
 
 ```text
@@ -22,40 +25,37 @@ Parent: [README](README.md) · Laws: [01-first-principles](01-first-principles.m
                 +--------+--------+
                          |
                          v
-              auth_validation + JwtService
+              auth_validation.decide + JwtService
                          |
                          v
-              Postgres identity / sessions / oauth_*
+              Postgres identity / sessions / oauth_* / jwt_jti_denylist
 ```
 
 ## File → responsibility
 
 | Path | Responsibility | Auth concern |
 |------|----------------|--------------|
-| `edgequake/crates/edgequake-auth/src/jwt.rs` | Sign/verify HS256 JWT; process-local `jti` denylist | F-154-01, F-154-05 |
+| `edgequake/crates/edgequake-auth/src/jwt.rs` | Sign/verify HS256 JWT; process-local `jti` cache | F-154-01, F-154-05 |
 | `edgequake/crates/edgequake-auth/src/password.rs` | Argon2id hash/verify; strength | Retained |
-| `edgequake/crates/edgequake-auth/src/config.rs` | `auth_enabled`, `dev_mode`, `allow_anonymous`, TTLs | F-154-07 |
+| `edgequake/crates/edgequake-auth/src/config.rs` | `auth_enabled`, `dev_mode`, `allow_anonymous`, TTLs (default access **900s**) | F-154-07 |
 | `edgequake/crates/edgequake-auth/src/rbac.rs` | Role → Permission | Retained |
-| `edgequake-api/src/services/auth_validation.rs` | Master key, stored `eq_` key, JWT → `AuthenticatedRequest` | Wave 1 SSOT base |
-| `edgequake-api/src/services/identity_storage.rs` | `access_token_claims` (tenant/workspace, no aud/scope) | F-154-01 |
+| `edgequake-api/src/services/auth_validation.rs` | `decide` + profiles; master/env/stored key; durable jti on extractors | Wave 1 SSOT |
+| `edgequake-api/src/services/identity_storage.rs` | Token claims mint; PG identity SSOT | F-154-01 |
+| `edgequake-api/src/services/session_storage.rs` | `take_web_refresh` prefers PG family rotate | F-154-05 |
 | `edgequake-api/src/services/login_lockout.rs` | Failed attempts → lock | Retained |
-| `edgequake-api/src/middleware.rs` | `protected_api_auth`, membership bind, rate limit, WS validate | F-154-04, F-154-06 |
-| `edgequake-api/src/mcp/auth/gateway_auth.rs` | MCP Bearer; aud gate; API key full | F-154-01…03 |
-| `edgequake-api/src/mcp/auth/protected_resource.rs` | RFC 9728 PRM | Retained |
+| `edgequake-api/src/middleware.rs` | REST auth; membership bind; WS protocol JWT; master bypass audit | F-154-04, F-154-06 |
+| `edgequake-api/src/mcp/auth/gateway_auth.rs` | MCP Bearer; aud gate; scoped keys | F-154-01…03 |
+| `edgequake-api/src/mcp/auth/protected_resource.rs` | RFC 9728 PRM (write when Memory profile) | Retained / Wave 3 |
 | `edgequake-api/src/mcp/auth/www_authenticate.rs` | 401/403 challenges | Retained |
-| `edgequake-api/src/mcp/config.rs` | `MCP_RESOURCE_SCOPES` = read, query | F-154-03 |
-| `edgequake-api/src/mcp/gateway/mod.rs` | Scope enforce via `allows` | F-154-02 |
-| `edgequake-api/src/oauth/types.rs` | `McpAuthScopes::{allows,api_key_full}` | F-154-02, F-154-03 |
-| `edgequake-api/src/oauth/scopes.rs` | `scopes_cover` (empty = allow) + tool map | F-154-02 |
-| `edgequake-api/src/oauth/token.rs` | Issue MCP ATTs; ACCESS_TTL=900; rotate refresh | Retained (web must match) |
+| `edgequake-api/src/oauth/types.rs` | `McpAuthScopes::{allows,api_key_full,from_api_key_scopes}` | F-154-02, F-154-03 |
+| `edgequake-api/src/oauth/scopes.rs` | `scopes_cover` (**empty = deny**) + tool map | F-154-02 |
+| `edgequake-api/src/oauth/token.rs` | Issue MCP ATTs; ACCESS_TTL=900; rotate refresh | Retained (web matched) |
 | `edgequake-api/src/oauth/store.rs` | Hash refresh; family revoke | Retained |
-| `edgequake-api/src/oauth/authorize.rs` | PKCE S256 only | Retained |
-| `edgequake-api/src/oauth/cimd.rs` | CIMD + loopback redirect rules | Retained |
-| `edgequake-api/src/handlers/auth/session.rs` | Login / refresh / logout | F-154-05 |
-| `edgequake-api/src/handlers/websocket.rs` | `?token=` + header | F-154-06 |
-| `edgequake-api/src/startup_security.rs` | Fatal default secret; warn auth-off | F-154-07 |
-| `edgequake-api/src/routes.rs` | Mount MCP layers: rate limit + gateway auth | Retained topology |
-| `edgequake_webui/src/stores/use-auth-store.ts` | Persist tokens in localStorage | F-154-06 |
+| `edgequake-api/src/handlers/auth/session.rs` | Login / refresh / logout; SPA omit refresh JSON; HttpOnly `eq_refresh` | F-154-05 |
+| `edgequake-api/src/handlers/websocket.rs` | Reject `?token=`; accept Authorization / `Sec-WebSocket-Protocol` | F-154-06 |
+| `edgequake-api/src/startup_security.rs` | Fatal default secret; **Fatal** auth-off on non-local DB | F-154-07 |
+| `edgequake_webui/src/stores/use-auth-store.ts` | Access token **in memory**; no localStorage secrets | F-154-06 |
+| `edgequake_webui/src/lib/websocket/ws-auth.ts` | `withAuthToken` no-op on URL; protocol `edgequake.bearer` | F-154-06 |
 
 ## Credential paths today
 
@@ -65,12 +65,13 @@ Parent: [README](README.md) · Laws: [01-first-principles](01-first-principles.m
   extract Bearer | X-API-Key
        |
        v
-  validate_presented_token
-       |-- master / env API keys --> Admin, no tenant claim
-       |-- stored eq_*           --> User|Admin from scopes contains "admin"
-       |-- JWT verify_token      --> Claims (aud optional)
+  decide(profile=web_session|api_key)
+       |-- master_api_key     --> break_glass Admin + compliance audit on bind skip
+       |-- EDGEQUAKE_API_KEYS --> read+query (not break-glass)
+       |-- stored eq_*        --> from_api_key_scopes
+       |-- JWT                --> aud profile gate; durable jti
        v
-  apply_authenticated_context (claim vs header merge)
+  apply_authenticated_context
        |
        v
   [postgres] enforce_membership_bind if strict_tenant_bind
@@ -82,18 +83,16 @@ Parent: [README](README.md) · Laws: [01-first-principles](01-first-principles.m
 ### MCP (`mcp_gateway_auth`)
 
 ```text
-  if !auth_enabled --> insert api_key_full(); next
+  if !auth_enabled --> Fatal at startup when non-local DB (!dev_mode)
        |
   extract token
        |
-       +-- master/stored key --> apply_authenticated_context; api_key_full(); next
-       |                        (NO membership bind)
+       +-- master/stored/env key --> scoped allows(); membership bind under strict
        |
-       +-- JWT verify_token
+       +-- JWT decide(mcp_resource)
        |     aud must contain McpPublicConfig.resource_url
-       |     else 401 + WWW-Authenticate
-       |     scopes from scope claim
-       |     apply_authenticated_context; insert scopes; next
+       |     scopes_cover empty = deny
+       |     membership bind under strict
        |
        +-- else 401 + WWW-Authenticate
 ```
@@ -103,20 +102,27 @@ Parent: [README](README.md) · Laws: [01-first-principles](01-first-principles.m
 ```text
   origin allow-list
        |
-  token = query.token OR Authorization / X-API-Key
+       +-- ?token= --> 401 (hard reject)
        |
-  ws_validate_token --> WsSession (default tenant/workspace for keys)
+  token = Authorization | X-API-Key | Sec-WebSocket-Protocol edgequake.bearer
        |
-  (NO membership bind, NO scope profile)
+  decide + membership bind under strict
 ```
 
 ## Token mint paths
 
 | Issuer | Function | Claims | TTL |
 |--------|----------|--------|-----|
-| Web login | `access_token_claims` + `generate_token_with_claims` | sub, role, tenant, workspace; **no aud/scope** | `jwt_expiry` default **24h** |
-| MCP token endpoint | `issue_tokens` in `oauth/token.rs` | aud=resource, scope, iss, tenant, workspace | **900s** access; refresh **30d** rotating |
-| API key create | Persisted Argon2 hash + scopes list | Opaque `eq_…` | Optional `expires_at` |
+| Web login | `access_token_claims` + mint | sub, role, tenant, workspace; SPA omits refresh JSON | Access **900s**; HttpOnly `eq_refresh` |
+| MCP token endpoint | `issue_tokens` | aud=resource, scope, iss, tenant, workspace | **900s** access; refresh **30d** rotating |
+| API key create | Argon2 hash + scopes | Opaque `eq_…` | Optional `expires_at` |
+
+## Residual surface
+
+| Item | Status |
+|------|--------|
+| Non-HttpOnly `edgequake_access_token` cookie (Next middleware) | **Residual** — XSS-readable; Secure on HTTPS; HttpOnly session later |
+| Playwright `auth-storage.spec.ts` | Manual / soft-skip without `E2E_AUTH_*`; **CI gate = vitest** |
 
 ## Public paths (REST)
 
@@ -127,25 +133,7 @@ From `is_public_request` in `middleware.rs`:
 - `/setup/status`, `/setup/initialize`
 - Documentation (`/swagger-ui`, `/api-docs`)
 - `POST /users` when registration allowed
-- Note: `POST /mcp` is listed in the public-path helper for the **REST** middleware
-  tree; the MCP router applies `mcp_gateway_auth` separately. Do not treat this
-  dual mount as “MCP is public.”
+- Note: `POST /mcp` may appear in the REST public-path helper; the MCP router
+  applies `mcp_gateway_auth` separately. Do not treat MCP as public.
 
-## Desired end state (Waves 1–6)
-
-```text
-                 +------------------------+
-                 |  CredentialDecision    |
-                 |  profile + principal   |
-                 |  + scopes + membership |
-                 +-----------+------------+
-                             |
-            +----------------+----------------+
-            |                |                |
-            v                v                v
-     REST profile      MCP profile      WS profile
-     reject mcp aud    require mcp aud   header/ticket
-     role RBAC         tool scopes       bind membership
-```
-
-Cross-ref: [04-findings](04-findings.md) · [06-implementation-plan](06-implementation-plan.md).
+Cross-ref: [04-findings](04-findings.md) · [06-implementation-plan](06-implementation-plan.md) · [08-cross-ref](08-cross-ref.md).

@@ -29,7 +29,7 @@ Existing SPEC-028 EC-MCP-* remain in force; this register adds cross-surface cas
 | EC-154-20 | Scope `*` on OAuth JWT | Treated as full MCP scopes **only if** explicitly issued by AS (deny by default mint) | F-154-02 | 1 | scope contract |
 | EC-154-21 | `allow_anonymous=true` with auth_enabled | Guest paths only where SPEC-087 allows; never MCP write | F-154-07 | 6 | chat + MCP |
 | EC-154-22 | Auth disabled + DEV_MODE local | MCP/REST open; documented | F-154-07 | 6 | startup warn OK |
-| EC-154-23 | Refresh token plaintext logged | Must not appear in tracing fields | hygiene | 4–5 | log redaction assert |
+| EC-154-23 | Refresh token plaintext logged | Must not appear in tracing fields | hygiene | 4–5 | **Residual** — no named CI gate yet; ops hygiene |
 | EC-154-24 | Concurrent refresh races (two tabs) | Exactly one succeeds; loser treated as reuse → family revoke | F-154-05 | 4 | refresh race test |
 | EC-154-25 | CIMD client_id HTTPS fetch timeout / SSRF | Timeout + allow-list hosts; no file:// | retained | — | `cimd` unit |
 | EC-154-26 | http redirect_uri non-loopback | Reject | retained | — | `cimd::validate_redirect_uri` |

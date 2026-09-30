@@ -85,20 +85,25 @@ Status legend: **MET** · **GAP** · **PARTIAL** · **OOS** (out of scope / resi
 
 ## Parity matrix (the product bar)
 
+Post-Wave 6 / product ≥ **0.28.4** — Target column achieved except labeled residuals.
+
 ```text
   Control                    REST today   MCP today   Target (post Wave 6)
   -------                    ----------   ---------   --------------------
   Signature verify           yes          yes         yes
   exp / nbf                  yes          yes         yes
-  aud capability             optional     required    bidirectional
-  scope least privilege      role RBAC    JWT yes;    both + scoped keys
-                                          keys no
-  membership bind (strict)   yes          no          yes all surfaces
-  refresh rotation           no           yes         yes
-  durable jti revoke         no           no          yes
-  no token in URL            yes          yes         yes (fix WS)
-  no localStorage secrets    no           n/a         yes (cookie refresh)
-  auth-off non-local fatal   warn         warn        fatal
+  aud capability             bidirectional bidirectional bidirectional
+  scope least privilege      role+keys    JWT+scoped  both + scoped keys
+                             + decide     keys
+  membership bind (strict)   yes          yes         yes all surfaces
+  refresh rotation           yes (PG)     yes         yes
+  durable jti revoke         yes          yes         yes
+  no token in URL            yes          yes         yes (WS ?token= reject)
+  no localStorage secrets    yes*         n/a         yes (cookie refresh)
+  auth-off non-local fatal   fatal        fatal       fatal
 ```
+
+\* Access JWT may still be mirrored in a **non-HttpOnly** `edgequake_access_token`
+cookie for Next middleware (PARTIAL / residual). Refresh is HttpOnly `eq_refresh`.
 
 Cross-ref: [04-findings](04-findings.md) · [08-cross-ref](08-cross-ref.md).

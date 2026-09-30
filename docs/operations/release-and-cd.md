@@ -4,9 +4,9 @@ title: "Release & CD Cycle"
 
 # Release & CD Cycle
 
-> **Product: v0.28.2** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+> **Product: v0.28.5** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
 >
-> Upgrade: [upgrade-to-0.28.2.md](upgrade-to-0.28.2.md) (SPEC-149 multi-batch persist under 10k; schema still 160). Prior: [upgrade-to-0.28.1.md](upgrade-to-0.28.1.md), [upgrade-to-0.28.0.md](upgrade-to-0.28.0.md).
+> Upgrade: [upgrade-to-0.28.5.md](upgrade-to-0.28.5.md) (docs/CI honesty; schema still **162**). Prior: [upgrade-to-0.28.4.md](upgrade-to-0.28.4.md) (SPEC-154; schema **162**), [upgrade-to-0.28.3.md](upgrade-to-0.28.3.md), [upgrade-to-0.28.2.md](upgrade-to-0.28.2.md).
 >
 > **SPEC-001 Acc (this cut):** attested existing [`publish/latest`](../../specs/001-benchmark/e2e/artifacts/publish/latest/) (`valid: true`, medical-mid, `2026-08-15T11:02:18Z`) — no fresh n=200 run; **PDF geometry not re-scored**.
 >

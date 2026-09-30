@@ -90,8 +90,13 @@ chmod +x "$ROOT/specs/018-observability/e2e/run_observability_proof.sh"
 echo "== WebUI typecheck (src only; e2e via Playwright) =="
 (cd "$WEBUI" && bunx tsc --noEmit -p tsconfig.release.json)
 
-echo "== WebUI unit tests (observability + runtime-config) =="
-(cd "$WEBUI" && bun test src/lib/api/__tests__/observability-client.test.ts src/lib/__tests__/runtime-config.test.ts)
+echo "== WebUI unit tests (observability + runtime-config via bun; SPEC-154 via vitest) =="
+(cd "$WEBUI" && bun test \
+  src/lib/api/__tests__/observability-client.test.ts \
+  src/lib/__tests__/runtime-config.test.ts)
+(cd "$WEBUI" && pnpm exec vitest run \
+  src/lib/api/__tests__/auth-storage-spec154.test.ts \
+  src/lib/websocket/__tests__/progress-websocket.test.ts)
 
 echo "== Docker API context (cargo manifest + COPY/dockerignore) =="
 chmod +x "$ROOT/scripts/check_docker_api_context.sh"
