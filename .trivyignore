@@ -3,3 +3,12 @@
 # cc-debian12 ships OpenSSL 3.0.x, which the vendor marks not affected.
 # Advisory: https://openssl-library.org/news/secadv/20260813.txt
 CVE-2026-14456
+
+# OpenSSL DTLS handshake retransmission heap disclosure / DoS.
+# Distroless cc-debian12 ships bookworm libssl3 3.0.x; Debian has no
+# bookworm fix yet (OpenSSL 3.0 public fixes ended; premium-only 3.0.23).
+# EdgeQuake API serves HTTPS/TLS over TCP — no DTLS listener.
+# Track until bookworm DSA or runtime moves to distroless/cc-debian13.
+# Advisory: https://openssl-library.org/news/secadv/20260929.txt
+# Tracker: https://security-tracker.debian.org/tracker/CVE-2026-84782
+CVE-2026-84782
