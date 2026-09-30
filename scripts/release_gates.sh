@@ -94,7 +94,7 @@ echo "== WebUI unit tests (observability + runtime-config via bun; SPEC-154 via 
 (cd "$WEBUI" && bun test \
   src/lib/api/__tests__/observability-client.test.ts \
   src/lib/__tests__/runtime-config.test.ts)
-(cd "$WEBUI" && pnpm exec vitest run \
+(cd "$WEBUI" && bunx vitest run \
   src/lib/api/__tests__/auth-storage-spec154.test.ts \
   src/lib/websocket/__tests__/progress-websocket.test.ts)
 

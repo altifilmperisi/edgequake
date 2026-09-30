@@ -21,7 +21,7 @@ for pin sync / release_gates vitest; auth behavior is unchanged. Upgrade:
 
 ### Fixed
 - **Release gates** — SPEC-154 WebUI vitest (`auth-storage-spec154`,
-  `progress-websocket`) runs via `pnpm exec vitest` in
+  `progress-websocket`) runs via `bunx vitest` in
   `scripts/release_gates.sh` (Playwright `auth-storage` soft-skip demoted to
   manual).
 - **SPEC-027 contract** — allow MCP AS `/oauth/*` routes (SPEC-152) and
