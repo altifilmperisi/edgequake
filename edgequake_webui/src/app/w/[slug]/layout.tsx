@@ -4,43 +4,26 @@ import { DynamicBreadcrumb } from '@/components/layout/dynamic-breadcrumb';
 import { Header } from '@/components/layout/header';
 import { Sidebar } from '@/components/layout/sidebar';
 import { SkipLink } from '@/components/shared/skip-link';
-import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts';
 
 /**
  * Layout for workspace deeplink routes.
- * 
- * @implements SPEC-032: Focus 6 - Deeplinks to workspace
- * @iteration OODA 61 - Removed TenantGuard wrapper to fix race condition
- * 
- * Uses same layout as dashboard for consistent UX.
- * 
- * Note: TenantGuard was removed because deeplink pages handle their own
- * workspace resolution and loading/error states. Having TenantGuard here
- * caused a race condition where it would show "Create Workspace" before
- * the deeplink page could set the workspace context.
+ *
+ * SPEC-155: shortcuts live only in KeyboardShortcutsProvider (no duplicate mount).
+ * Full AuthGuard parity is W7; this wave only removes the double keydown listener.
  */
 export default function WorkspaceDeeplinkLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  // Enable global keyboard shortcuts
-  useKeyboardShortcuts();
-
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
+    <div className="flex h-dvh max-h-dvh min-h-0 overflow-clip bg-background">
       <SkipLink />
       <Sidebar />
-      <div className="flex flex-1 flex-col overflow-hidden">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-clip">
         <Header />
-        {/* Breadcrumb: null at depth ≤ 1 (no empty band); bar at depth ≥ 2 */}
         <DynamicBreadcrumb />
-        {/* Main content area - no TenantGuard (pages handle their own context) */}
-        <main 
-          id="main-content" 
-          className="flex-1 min-h-0 overflow-hidden" 
-          tabIndex={-1}
-        >
+        <main id="main-content" className="min-h-0 flex-1 overflow-hidden" tabIndex={-1}>
           {children}
         </main>
       </div>

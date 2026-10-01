@@ -154,7 +154,7 @@ const ConversationItem = memo(function ConversationItem({
         ) : (
           <>
             <p className="text-xs font-medium truncate leading-tight">{conversation.title}</p>
-            <p className="text-[10px] text-muted-foreground leading-tight mt-0.5">
+            <p className="text-xs text-muted-foreground leading-tight mt-0.5">
               {conversation.messages.length} {t("query.messages", "messages")} · {formattedDate}
             </p>
           </>
@@ -291,7 +291,7 @@ export function ConversationHistoryPanel({ className }: ConversationHistoryPanel
         <div className="mt-3 flex flex-col items-center gap-1.5">
           <MessageSquare className="h-3.5 w-3.5 text-muted-foreground" />
           <span
-            className="text-[10px] text-muted-foreground font-medium"
+            className="text-xs text-muted-foreground font-medium"
             style={{ writingMode: "vertical-rl", textOrientation: "mixed" }}
           >
             {t("query.history.title", "History")}

@@ -16,6 +16,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import { useQueryInterface } from "@/hooks/use-query-interface";
 import { ImagePlus, Plus, Send, StopCircle, X } from "lucide-react";
+import { useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { ChatMessage } from "./chat-message";
 import { ConversationHistoryPanelV2 } from "./conversation-history-panel-v2";
@@ -26,8 +27,13 @@ import { QueryModeSelector } from "./query-mode-selector";
 import { QueryScopeBar } from "./query-scope-bar";
 import { QuerySettingsSheet } from "./query-settings-sheet";
 
+/** Safari fires compositionend before confirming Enter; guard that race. */
+const IME_RACE_MS = 50;
+
 export function QueryInterface() {
   const { t } = useTranslation();
+  const composingRef = useRef(false);
+  const compositionEndedAtRef = useRef(0);
   const {
     input,
     streamingState,
@@ -64,10 +70,10 @@ export function QueryInterface() {
         >
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             <MobileHistoryPanel />
-            <h1 className="text-base sm:text-lg font-semibold tracking-tight truncate">
+            <h1 className="shrink-0 text-base sm:text-lg font-semibold tracking-tight">
               {t("query.title", "Query")}
             </h1>
-            <span className="text-xs text-muted-foreground hidden md:inline">
+            <span className="hidden min-w-0 truncate whitespace-nowrap text-xs text-muted-foreground xl:inline">
               {querySettings.mode === "bypass"
                 ? t("query.chatSubtitle", "General chat — no knowledge graph retrieval")
                 : t("query.subtitle", "Ask questions about your knowledge graph")}
@@ -246,11 +252,28 @@ export function QueryInterface() {
                 placeholder={t("query.placeholder", "Ask a question...")}
                 className="min-h-[56px] max-h-[200px] resize-none pr-24 py-4 text-base query-input focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:border-primary transition-all duration-200"
                 rows={1}
+                onCompositionStart={() => {
+                  composingRef.current = true;
+                }}
+                onCompositionEnd={() => {
+                  composingRef.current = false;
+                  compositionEndedAtRef.current = performance.now();
+                }}
                 onKeyDown={(event) => {
-                  if (event.key === "Enter" && !event.shiftKey) {
+                  if (event.key !== "Enter" || event.shiftKey) return;
+                  const native = event.nativeEvent;
+                  const ime =
+                    native.isComposing ||
+                    // eslint-disable-next-line @typescript-eslint/no-deprecated -- IME keyCode 229
+                    native.keyCode === 229 ||
+                    composingRef.current ||
+                    performance.now() - compositionEndedAtRef.current < IME_RACE_MS;
+                  if (ime) {
                     event.preventDefault();
-                    void handleSubmit();
+                    return;
                   }
+                  event.preventDefault();
+                  void handleSubmit();
                 }}
                 disabled={isLoading}
                 aria-label={t("query.placeholder", "Ask a question")}

@@ -8,8 +8,8 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -28,6 +28,14 @@
   --color-border: var(--border);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
+  --color-danger: var(--destructive);
+  --color-danger-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
@@ -86,6 +94,39 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.86 0 0);
   --sidebar-ring: oklch(0.4 0 0);
+  /* SPEC-155 semantic status (LAW-155-1) — AA text pairs */
+  --success: oklch(0.55 0.14 145);
+  --success-foreground: oklch(0.99 0 0);
+  --warning: oklch(0.75 0.15 85);
+  --warning-foreground: oklch(0.25 0.05 85);
+  --info: oklch(0.55 0.12 240);
+  --info-foreground: oklch(0.99 0 0);
+  /* Graph Studio canvas tokens */
+  --graph-canvas-bg: oklch(0.985 0 0);
+  --graph-edge: oklch(0.55 0.02 260);
+  --graph-label-fg: oklch(0.25 0 0);
+  --graph-label-bg: oklch(1 0 0 / 0.85);
+  --graph-focus: oklch(0.55 0.18 250);
+  --graph-dim: oklch(0.7 0 0 / 0.35);
+  --graph-hull-stroke: oklch(0.55 0.08 250 / 0.6);
+  --graph-hull-fill: oklch(0.7 0.08 250 / 0.12);
+  --graph-community-0: oklch(0.55 0.14 250);
+  --graph-community-1: oklch(0.6 0.14 145);
+  --graph-community-2: oklch(0.65 0.16 40);
+  --graph-community-3: oklch(0.55 0.14 300);
+  --graph-community-4: oklch(0.7 0.14 90);
+  --graph-community-5: oklch(0.5 0.1 200);
+  --graph-community-6: oklch(0.55 0.16 20);
+  --graph-community-7: oklch(0.6 0.1 180);
+  --graph-community-8: oklch(0.45 0.08 280);
+  --graph-community-9: oklch(0.65 0.12 330);
+  /* z-index scale */
+  --z-base: 0;
+  --z-sticky: 20;
+  --z-dropdown: 40;
+  --z-modal: 50;
+  --z-toast: 60;
+  --z-skip: 9999;
 }
 
 .dark {
@@ -121,6 +162,30 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
+  --success: oklch(0.7 0.15 145);
+  --success-foreground: oklch(0.15 0.03 145);
+  --warning: oklch(0.8 0.14 85);
+  --warning-foreground: oklch(0.2 0.05 85);
+  --info: oklch(0.7 0.12 240);
+  --info-foreground: oklch(0.15 0.04 240);
+  --graph-canvas-bg: oklch(0.16 0 0);
+  --graph-edge: oklch(0.65 0.02 260);
+  --graph-label-fg: oklch(0.92 0 0);
+  --graph-label-bg: oklch(0.2 0 0 / 0.9);
+  --graph-focus: oklch(0.7 0.16 250);
+  --graph-dim: oklch(0.4 0 0 / 0.35);
+  --graph-hull-stroke: oklch(0.7 0.08 250 / 0.5);
+  --graph-hull-fill: oklch(0.5 0.08 250 / 0.15);
+  --graph-community-0: oklch(0.7 0.14 250);
+  --graph-community-1: oklch(0.72 0.14 145);
+  --graph-community-2: oklch(0.75 0.14 40);
+  --graph-community-3: oklch(0.7 0.14 300);
+  --graph-community-4: oklch(0.8 0.12 90);
+  --graph-community-5: oklch(0.65 0.1 200);
+  --graph-community-6: oklch(0.7 0.14 20);
+  --graph-community-7: oklch(0.72 0.1 180);
+  --graph-community-8: oklch(0.6 0.08 280);
+  --graph-community-9: oklch(0.75 0.1 330);
 }
 
 @layer base {
@@ -1426,6 +1491,15 @@ mark.highlight-citation {
 }
 .animate-loading-bar {
   animation: loading-bar 1.8s ease-in-out infinite;
+}
+
+/* SPEC-155: shared graph chrome overlay surface (toolbar cards, ego, legend) */
+.graph-overlay-surface {
+  border-radius: var(--radius-lg, 0.5rem);
+  border: 1px solid color-mix(in oklch, var(--border) 60%, transparent);
+  background: color-mix(in oklch, var(--card) 90%, transparent);
+  box-shadow: 0 4px 12px oklch(0 0 0 / 0.08);
+  backdrop-filter: blur(8px);
 }
 
 /* Ensure proper stacking for line numbers */

@@ -17,7 +17,19 @@ import {
 } from '@/lib/layout/breadcrumb-document-label';
 import { useTenantStore } from '@/stores/use-tenant-store';
 import { useQuery } from '@tanstack/react-query';
-import { ChevronRight, FileText, Home, MessageSquare, Network, Settings, Terminal } from 'lucide-react';
+import {
+  BookOpen,
+  Building2,
+  ChevronRight,
+  FileText,
+  GitBranch,
+  Home,
+  MessageSquare,
+  Network,
+  Settings,
+  Terminal,
+  Wallet,
+} from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import React from 'react';
@@ -33,6 +45,10 @@ const pathConfig: Record<string, PathConfig> = {
   'graph': { label: 'Knowledge Graph', icon: Network, description: 'Visualize entities and relationships' },
   'documents': { label: 'Documents', icon: FileText, description: 'Manage your documents' },
   'query': { label: 'Query', icon: MessageSquare, description: 'Ask questions' },
+  'pipeline': { label: 'Pipeline', icon: GitBranch, description: 'Ingestion pipeline' },
+  'costs': { label: 'Costs', icon: Wallet, description: 'Usage and spend' },
+  'knowledge': { label: 'Knowledge', icon: BookOpen, description: 'Knowledge injections' },
+  'workspace': { label: 'Workspace', icon: Building2, description: 'Workspace settings' },
   'api-explorer': { label: 'API Explorer', icon: Terminal, description: 'Test API endpoints' },
   'settings': { label: 'Settings', icon: Settings, description: 'Configure preferences' },
 };
@@ -149,7 +165,7 @@ export function DynamicBreadcrumb({ customSegments }: DynamicBreadcrumbProps) {
               </span>
               {item.guid ? (
                 <span
-                  className="shrink-0 font-mono text-[10px] font-normal text-muted-foreground"
+                  className="shrink-0 font-mono text-xs font-normal text-muted-foreground"
                   data-testid="breadcrumb-doc-guid"
                   data-full-guid={item.guid}
                   title={item.guid}

@@ -18,11 +18,24 @@ import {
   canonicalizeEntityTypeHex,
   isValidEntityTypeHex,
   resolveEntityTypeColor,
+  resolveEntityTypeShape,
+  type EntityTypeShape,
 } from '@/lib/graph/entity-type-colors';
 import { cn } from '@/lib/utils';
 import { RotateCcw } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+
+const SHAPE_CLASS: Record<EntityTypeShape, string> = {
+  circle: 'rounded-full',
+  square: 'rounded-sm',
+  diamond: 'rounded-sm rotate-45 scale-90',
+  triangle: 'rounded-sm',
+  hexagon: 'rounded-md',
+  star: 'rounded-full ring-1 ring-offset-1',
+  pentagon: 'rounded-md',
+  cross: 'rounded-none',
+};
 
 export interface EntityTypeColorSwatchProps {
   entityType: string;
@@ -52,6 +65,7 @@ export function EntityTypeColorSwatch({
   const [open, setOpen] = useState(false);
   const [hexDraft, setHexDraft] = useState(color);
   const key = entityType.toUpperCase();
+  const shape = resolveEntityTypeShape(entityType);
   const defaultHex =
     ENTITY_TYPE_COLORS[key] ?? ENTITY_TYPE_COLORS.DEFAULT;
   const isCustom =
@@ -82,12 +96,14 @@ export function EntityTypeColorSwatch({
           data-entity-type={key}
           disabled={disabled}
           className={cn(
-            'w-3.5 h-3.5 rounded-full shrink-0 ring-2 ring-background shadow-sm',
+            'w-3.5 h-3.5 shrink-0 ring-2 ring-background shadow-sm',
+            SHAPE_CLASS[shape],
             'focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50',
             disabled && 'opacity-50 cursor-not-allowed',
             className,
           )}
           style={{ backgroundColor: color }}
+          data-shape={shape}
           aria-label={t(
             'graph.colors.editSwatch',
             'Edit color for {{type}}',
@@ -134,7 +150,7 @@ export function EntityTypeColorSwatch({
             aria-invalid={hexDraft.length > 0 && !isValidEntityTypeHex(hexDraft)}
           />
         </div>
-        <p className="text-[10px] text-muted-foreground">
+        <p className="text-xs text-muted-foreground">
           {t(
             'graph.colors.defaultHint',
             'Default: {{hex}}',

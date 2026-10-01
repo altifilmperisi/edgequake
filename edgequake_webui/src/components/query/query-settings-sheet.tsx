@@ -133,7 +133,13 @@ export function QuerySettingsSheet({
     <Sheet>
       <SheetTrigger asChild>
         {trigger || (
-          <Button variant="ghost" size="icon" disabled={disabled} data-testid="query-settings-trigger">
+          <Button
+            variant="ghost"
+            size="icon"
+            disabled={disabled}
+            aria-label={t("query.settings.title", "Query settings")}
+            data-testid="query-settings-trigger"
+          >
             <Settings2 className="h-4 w-4" />
           </Button>
         )}

@@ -71,7 +71,7 @@ export default defineConfig({
     {
       name: "chromium",
       use: { ...devices["Desktop Chrome"] },
-      grepInvert: [/@audit/, /@load/, /@debug/],
+      grepInvert: [/@audit/, /@load/, /@debug/, /@spec155/, /@a11y/, /@visual/],
     },
     {
       name: "audit",
@@ -91,6 +91,56 @@ export default defineConfig({
       name: "debug",
       use: { ...devices["Desktop Chrome"] },
       grep: /@debug/,
+      workers: 1,
+    },
+    // SPEC-155: mocked-API visual / a11y projects (LAW-155-14)
+    {
+      name: "mock-api",
+      use: {
+        ...devices["Desktop Chrome"],
+        launchOptions: {
+          args: [
+            "--use-gl=angle",
+            "--use-angle=swiftshader-webgl",
+            "--enable-webgl",
+            "--ignore-gpu-blocklist",
+          ],
+        },
+      },
+      grep: /@spec155/,
+      workers: 1,
+      timeout: 180_000,
+    },
+    {
+      name: "a11y",
+      use: { ...devices["Desktop Chrome"] },
+      grep: /@a11y/,
+      workers: 1,
+      timeout: 120_000,
+    },
+    {
+      name: "visual",
+      use: { ...devices["Desktop Chrome"] },
+      grep: /@visual/,
+      workers: 1,
+      timeout: 180_000,
+    },
+    {
+      name: "reduced-motion",
+      use: {
+        ...devices["Desktop Chrome"],
+        contextOptions: { reducedMotion: "reduce" },
+      },
+      grep: /@reduced-motion/,
+      workers: 1,
+    },
+    {
+      name: "forced-colors",
+      use: {
+        ...devices["Desktop Chrome"],
+        contextOptions: { forcedColors: "active" },
+      },
+      grep: /@forced-colors/,
       workers: 1,
     },
   ],

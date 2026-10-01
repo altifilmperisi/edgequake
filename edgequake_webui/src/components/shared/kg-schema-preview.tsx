@@ -54,7 +54,7 @@ export function KgSchemaPreview({
         <h5 className="text-xs font-medium">
           {t('kgSchema.previewHeading', 'Visual schema')}
         </h5>
-        <span className="text-[10px] text-muted-foreground tabular-nums">
+        <span className="text-xs text-muted-foreground tabular-nums">
           {entityTypes.length}/{relationTypes.length}/{relationEdges.length}
         </span>
       </div>
@@ -82,7 +82,7 @@ export function KgSchemaPreview({
             {entities.map((type) => (
               <span
                 key={type}
-                className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-mono"
+                className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-mono"
                 style={{
                   borderColor: resolveEntityTypeColor(type, colors),
                   backgroundColor: `${resolveEntityTypeColor(type, colors)}22`,
@@ -98,7 +98,7 @@ export function KgSchemaPreview({
               </span>
             ))}
             {moreEntities > 0 && (
-              <span className="text-[10px] text-muted-foreground self-center">
+              <span className="text-xs text-muted-foreground self-center">
                 +{moreEntities}
               </span>
             )}
@@ -109,8 +109,8 @@ export function KgSchemaPreview({
               className={cn(
                 'font-mono text-muted-foreground',
                 layout === 'sidebar'
-                  ? 'space-y-1.5 text-[10px] leading-snug'
-                  : 'space-y-1 text-[10px]',
+                  ? 'space-y-1.5 text-xs leading-snug'
+                  : 'space-y-1 text-xs',
                 layout === 'band' &&
                   'sm:flex sm:flex-wrap sm:gap-x-3 sm:gap-y-1 sm:space-y-0',
               )}
@@ -131,7 +131,7 @@ export function KgSchemaPreview({
             </ul>
           ) : (
             <p
-              className="text-[10px] text-muted-foreground italic"
+              className="text-xs text-muted-foreground italic"
               data-testid="kg-schema-preview-no-edges"
             >
               {relationTypes.length > 0

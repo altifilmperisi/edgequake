@@ -138,8 +138,21 @@ pub async fn search_nodes(
     // Collect node IDs for edge lookup
     let mut node_ids: HashSet<String> = matching_nodes.iter().map(|(n, _)| n.id.clone()).collect();
 
-    // Optionally include neighbors (SPEC-027 IMP-015: batch degree lookup for expansions)
-    let mut all_nodes = matching_nodes;
+    // Resolve degree SSOT for matches, then optionally expand neighbors.
+    let match_ids: Vec<String> = matching_nodes.iter().map(|(n, _)| n.id.clone()).collect();
+    let match_degrees =
+        crate::handlers::graph::degrees_breakdown_batch(&storage.graph_storage, &match_ids).await;
+    let mut all_nodes: Vec<(edgequake_storage::GraphNode, DegreeBreakdown)> = matching_nodes
+        .into_iter()
+        .map(|(node, total)| {
+            let degree = match_degrees
+                .get(&node.id)
+                .copied()
+                .unwrap_or_else(|| DegreeBreakdown::from_total(total));
+            (node, degree)
+        })
+        .collect();
+
     if params.include_neighbors && !all_nodes.is_empty() {
         // Clone the node IDs to iterate on (avoid borrow conflict)
         let initial_node_ids: Vec<String> = all_nodes
@@ -172,20 +185,15 @@ pub async fn search_nodes(
             .iter()
             .map(|neighbor| neighbor.id.clone())
             .collect();
-        let degree_map: std::collections::HashMap<String, usize> = if expanded_ids.is_empty() {
-            std::collections::HashMap::new()
-        } else {
-            storage
-                .graph_storage
-                .node_degrees_batch(&expanded_ids)
-                .await
-                .unwrap_or_default()
-                .into_iter()
-                .collect()
-        };
+        let degree_map =
+            crate::handlers::graph::degrees_breakdown_batch(&storage.graph_storage, &expanded_ids)
+                .await;
 
         for neighbor in expanded_neighbors {
-            let degree = degree_map.get(&neighbor.id).copied().unwrap_or(0);
+            let degree = degree_map
+                .get(&neighbor.id)
+                .copied()
+                .unwrap_or_else(|| DegreeBreakdown::from_total(0));
             all_nodes.push((neighbor, degree));
         }
     }
@@ -214,35 +222,12 @@ pub async fn search_nodes(
     // Convert to response format
     let nodes_response: Vec<GraphNodeResponse> = all_nodes
         .into_iter()
-        .map(|(node, degree)| {
-            let entity_type = node
-                .properties
-                .get("entity_type")
-                .and_then(|v| v.as_str())
-                .unwrap_or("UNKNOWN")
-                .to_string();
-
-            let description = node
-                .properties
-                .get("description")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
-
-            GraphNodeResponse {
-                id: node.id.clone(),
-                label: crate::handlers::graph::graph_node_label(&node),
-                node_type: entity_type,
-                description,
-                degree,
-                properties: serde_json::to_value(&node.properties).unwrap_or_default(),
-            }
-        })
+        .map(|(node, degree)| crate::handlers::graph::graph_node_response(&node, degree))
         .collect();
 
     let edges_response: Vec<GraphEdgeResponse> = edges
         .into_iter()
-        .map(GraphEdgeResponse::from_storage_edge)
+        .map(crate::handlers::graph::edge_response)
         .collect();
 
     Ok(Json(SearchNodesResponse {

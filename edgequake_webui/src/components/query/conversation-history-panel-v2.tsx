@@ -256,7 +256,7 @@ const ConversationItem = memo(function ConversationItem({
                 <Pin className="h-2.5 w-2.5 text-amber-500 shrink-0" />
               )}
             </div>
-            <p className="text-[10px] text-muted-foreground leading-tight mt-0.5">
+            <p className="text-xs text-muted-foreground leading-tight mt-0.5">
               {conversation.message_count}{" "}
               {t("query.messages", "messages")} · {formattedDate}
             </p>
@@ -442,7 +442,7 @@ function FilterBar({ onClose }: FilterBarProps) {
       <div className="flex flex-wrap gap-1.5">
         <Badge
           variant={filters.pinned === true ? "default" : "outline"}
-          className="cursor-pointer text-[10px] px-2 py-0.5"
+          className="cursor-pointer text-xs px-2 py-0.5"
           onClick={() =>
             setFilters({ pinned: filters.pinned === true ? null : true })
           }
@@ -452,7 +452,7 @@ function FilterBar({ onClose }: FilterBarProps) {
         </Badge>
         <Badge
           variant={filters.archived ? "default" : "outline"}
-          className="cursor-pointer text-[10px] px-2 py-0.5"
+          className="cursor-pointer text-xs px-2 py-0.5"
           onClick={() => setFilters({ archived: !filters.archived })}
         >
           <Archive className="h-2.5 w-2.5 mr-1" />
@@ -693,7 +693,7 @@ export function ConversationHistoryPanelV2({ className }: ConversationHistoryPan
         <div className="mt-3 flex flex-col items-center gap-1.5">
           <MessageSquare className="h-3.5 w-3.5 text-muted-foreground" />
           <span
-            className="text-[10px] text-muted-foreground font-medium"
+            className="text-xs text-muted-foreground font-medium"
             style={{ writingMode: "vertical-rl", textOrientation: "mixed" }}
           >
             {t("query.history.title", "History")}

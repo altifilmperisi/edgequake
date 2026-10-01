@@ -219,7 +219,7 @@ export const DocumentTableSection = memo(function DocumentTableSection({
         {/* Column header row — physically outside the scroll container */}
         {showTable && (
           <div className="border border-border border-b-0 rounded-t-lg bg-muted/40 overflow-hidden shadow-sm">
-            <table className="w-full table-fixed caption-bottom text-sm" role="presentation">
+            <table className="w-full table-fixed caption-bottom text-sm">
               <TableColGroup showCostColumn={showCostColumn} />
               <TableHeader>
                 <TableRow className="hover:bg-transparent">

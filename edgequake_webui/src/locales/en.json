@@ -54,7 +54,8 @@
     "workspace": "Workspace",
     "costs": "Costs",
     "apiExplorer": "API Explorer",
-    "settings": "Settings"
+    "settings": "Settings",
+    "home": "Dashboard"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -102,7 +103,15 @@
     "query": "Query",
     "settings": "Settings",
     "language": "Language",
-    "apiVersion": "API v{{version}}"
+    "apiVersion": "API v{{version}}",
+    "apiBusy": "Busy",
+    "apiBusyHint": "API is busy — document counts may lag",
+    "apiOfflineHint": "Cannot connect to EdgeQuake API",
+    "apiCheckingHint": "Checking connection...",
+    "toggleTheme": "Toggle theme",
+    "userMenu": "User menu",
+    "logout": "Logout",
+    "signIn": "Sign In"
   },
   "documents": {
     "title": "Documents",
@@ -546,7 +555,40 @@
       "typeList": "Entity type visibility controls",
       "entities": "entities",
       "clickToHide": "Click to hide",
-      "clickToShow": "Click to show"
+      "clickToShow": "Click to show",
+      "communities": "Communities",
+      "communitiesLoading": "Loading communities…",
+      "communitiesEmpty": "No communities available"
+    },
+    "table": {
+      "title": "Graph as table",
+      "nodes": "Nodes",
+      "edges": "Edges",
+      "edgesForSelection": "Edges (selection)",
+      "label": "Label",
+      "type": "Type",
+      "degree": "Degree",
+      "community": "Community",
+      "source": "Source",
+      "relation": "Relation",
+      "target": "Target",
+      "emptyNodes": "No nodes loaded",
+      "emptyEdges": "No edges"
+    },
+    "ego": {
+      "depth": "Ego depth",
+      "hint": "Keep only nodes within N hops of the selected node bright; dim the rest",
+      "selectFirst": "Select a node to enable ego focus",
+      "title": "Neighbourhood",
+      "hops_one": "{{count}} hop",
+      "hops_other": "{{count}} hops",
+      "summary_one": "{{count}} node in reach",
+      "summary_other": "{{count}} nodes in reach",
+      "selectPrompt": "Click a node to focus on its neighbourhood",
+      "highlightOff": "Neighbour highlighting is off.",
+      "enable": "Turn on",
+      "clear": "Clear selection",
+      "fit": "Fit neighbourhood in view"
     },
     "nodeTypes": {
       "person": "Person",
@@ -580,6 +622,8 @@
     "placeholder": "Ask a question...",
     "submit": "Send",
     "failed": "Query failed",
+    "showOnGraph": "Show on graph",
+    "showOnGraphHint": "Highlight answer entities on the knowledge graph",
     "startConversation": "Start a conversation",
     "startConversationSubtitle": "Ask questions about your knowledge graph",
     "modes": {
@@ -631,6 +675,10 @@
   },
   "pipeline": {
     "title": "Pipeline Status",
+    "allWorkspaces": "All Workspaces",
+    "noWorkspace": "No workspace selected",
+    "backToDocuments": "Back to Documents",
+    "advancedDetails": "Advanced Details",
     "idle": "Pipeline is idle",
     "busy": "Working",
     "workingCount": "Working · {{count}}",
@@ -1106,5 +1154,32 @@
       "finance": "Finance",
       "custom": "Custom"
     }
+  },
+  "connection": {
+    "online": "Connected",
+    "checking": "Checking…",
+    "degraded": "Degraded",
+    "offline": "Offline"
+  },
+  "costs": {
+    "title": "Cost Dashboard",
+    "subtitle": "Monitor LLM costs and usage across your workspace",
+    "period": {
+      "7d": "Last 7 days",
+      "30d": "Last 30 days",
+      "90d": "Last 90 days",
+      "all": "All time"
+    }
+  },
+  "command": {
+    "placeholder": "Search pages and actions…",
+    "empty": "No results",
+    "navigate": "Navigate",
+    "actions": "Actions",
+    "shortcuts": "Keyboard shortcuts"
+  },
+  "theme": {
+    "light": "Light theme",
+    "dark": "Dark theme"
   }
 }

@@ -241,7 +241,7 @@ export function ServerLlmConfigCard() {
                   <div>
                     <span className="text-sm font-medium">Server first (recommended)</span>
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      Settings saved here override <code className="text-[10px]">EDGEQUAKE_*</code> env vars.
+                      Settings saved here override <code className="text-xs">EDGEQUAKE_*</code> env vars.
                     </p>
                   </div>
                 </label>
@@ -289,7 +289,7 @@ export function ServerLlmConfigCard() {
               <div className="space-y-2">
                 <Label>Vision / PDF</Label>
                 <LLMModelSelector value={vision} onChange={setVision} filterVision />
-                <p className="text-[11px] text-muted-foreground">
+                <p className="text-xs text-muted-foreground">
                   Leave unset to inherit from LLM server defaults.
                 </p>
               </div>
@@ -361,7 +361,7 @@ export function ServerLlmConfigCard() {
             </div>
 
             {data?.note && (
-              <p className="text-[10px] text-muted-foreground">{data.note}</p>
+              <p className="text-xs text-muted-foreground">{data.note}</p>
             )}
           </>
         )}

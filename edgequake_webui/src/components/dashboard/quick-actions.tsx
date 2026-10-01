@@ -73,7 +73,7 @@ export function QuickActions() {
                 </div>
                 <div className="text-center">
                   <p className="text-sm font-medium">{t(action.labelKey)}</p>
-                  <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-2">
+                  <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
                     {t(action.descriptionKey)}
                   </p>
                 </div>

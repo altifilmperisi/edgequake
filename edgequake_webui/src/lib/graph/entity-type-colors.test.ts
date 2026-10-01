@@ -76,6 +76,25 @@ describe('resolveEntityTypeColor', () => {
   });
 });
 
+describe('resolveEntityTypeShape (SPEC-155 colour-blind)', () => {
+  it('returns stable known shapes', async () => {
+    const { resolveEntityTypeShape } = await import('./entity-type-colors');
+    expect(resolveEntityTypeShape('PERSON')).toBe('circle');
+    expect(resolveEntityTypeShape('ORGANIZATION')).toBe('square');
+    expect(resolveEntityTypeShape('LOCATION')).toBe('diamond');
+  });
+
+  it('hashes unknown types into a distinct shape (not always circle)', async () => {
+    const { resolveEntityTypeShape } = await import('./entity-type-colors');
+    const a = resolveEntityTypeShape('ZZZ_UNKNOWN_ALPHA');
+    const b = resolveEntityTypeShape('ZZZ_UNKNOWN_BETA');
+    expect(a).toBeTruthy();
+    expect(b).toBeTruthy();
+    // Same key is stable
+    expect(resolveEntityTypeShape('ZZZ_UNKNOWN_ALPHA')).toBe(a);
+  });
+});
+
 describe('mergeEntityTypeColorMap / stripDefaultOverrides', () => {
   it('merges, caps, and strips defaults', () => {
     const merged = mergeEntityTypeColorMap({

@@ -4,6 +4,65 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **SPEC-155 UX/UI (W5–W9 slices)** — Graph Studio community colouring + legend
+  from `/graph/communities`, accessible Graph-as-table (`?view=table`), ego depth
+  slider, colour-blind entity-type shapes; answer-on-graph store + “Show on graph”
+  deep link; ConnectionIndicator in header; PageShell/PageHeader on costs /
+  settings / pipeline; query IME `isComposing` guard; documents `?id=` deep link;
+  locale-parity + perf-budget stubs in `release_gates.sh`; mock-api Playwright
+  harness under `edgequake_webui/e2e/spec155/`.
+- **SPEC-155 Graph chrome polish** — flex overlay stacks (no hard-coded offsets),
+  mobile/tablet overflow toolbar, bottom-sheet panels, 12px type floor,
+  shared `.graph-overlay-surface`, hide canvas chrome on empty graph.
+- **SPEC-155 whole-app UI review** — live-inspected every screen: query header,
+  workspace config badges, i18n plurals, documents column widths, app-wide 12px
+  type floor, AA contrast (status badges, pipeline), accessible names on selects /
+  switches / progress bars, dropzone semantics; axe route matrix extended to
+  pipeline / costs / workspace / knowledge.
+
+### Fixed
+- **Graph view ignored the selected layout** — streamed/late nodes stayed on the
+  provisional ring (concentric arcs) because the layout ran only once on the first
+  batch. A debounced `LayoutScheduler` now re-runs the selected layout when nodes
+  (or, for force layouts, edges) arrive, seeding new nodes next to their neighbours.
+  ForceAtlas2 gets a viewport-aware anti-collision pass (≤300 nodes).
+- **Black / missing edges** — `oklch()` theme tokens are normalised to sRGB for
+  Sigma (`toSigmaColor`); lone edges are straight, only parallel/reverse edges curve
+  (curvature 0 renders nothing in `@sigma/edge-curve`).
+- **Graph minimap** viewport rectangle / click-to-pan used the wrong coordinate
+  space; redraws are now coalesced per frame.
+- Sigma label-culling / edge-hiding profile now follows the real graph size.
+- **Graph interactions overhaul** — selection now outranks hover (hovering another
+  node no longer drops the selected node's neighbourhood); rings fade with hop distance;
+  incident edge labels only show for low-degree focus nodes (no label pile-up on hubs)
+  and the hovered edge always shows its label; drag has a 4px threshold and never
+  triggers a click; cursors (grab / grabbing / pointer); double-click fits the
+  neighbourhood; keyboard: arrows move spatially along connections, `1`/`2`/`3` set
+  depth, `Enter` fits, `Esc` clears; canvas takes focus on press with a visible focus
+  ring; neighbourhood panel gains a Fit button and auto-fits on depth change; shortcut
+  help made truthful. Engine option callbacks are no longer stale closures.
+- **Graph node dragged "stuck" to the pointer after a right-click menu** — Sigma emits
+  `downNode` for every mouse button but never `mouseup` for the right one, so the drag
+  state armed by the right press was never released and the node followed the pointer
+  while the menu was open. Pointer handling is now an explicit state machine
+  (`pointer-fsm.ts`: idle / pressed / dragging / panning / menu, pure + unit-tested):
+  only a primary un-modified press can arm a drag, release is taken from `document`,
+  and blur / lost-button reports also end a gesture. Context menu: native browser menu
+  always suppressed (it showed on the first right-click), right-click no longer changes
+  the selection but keeps the target node emphasised, focus returns to the canvas on
+  close, keyboard twin (`Menu` key / `Shift+F10`), and the menu no longer advertises
+  non-existent `↵` / `⌘C` shortcuts.
+- **Ego depth control did nothing** — it was disabled until a node was selected, wrote
+  an `ego` focus that hover/selection immediately overwrote (and that clobbered
+  answer/path focus), and selection ignored the depth. Depth now drives the selection
+  focus itself (`engine.setEgoDepth`, BFS 1–3 hops, edges inside the neighbourhood stay
+  lit). Redesigned as an always-enabled “Neighbourhood · 1/2/3 hops” segmented control
+  with live reach count, clear button, “highlighting is off” recovery and en/fr/zh
+  strings; clicking empty canvas now clears the selection.
+- **Minimap was vertically mirrored** vs the canvas (Sigma’s Y axis points up), which
+  also gave the viewport rectangle a negative height (the “thin blue bar”).
+
 ## [0.28.5] — 2026-10-01
 
 Patch: release honesty + CD hygiene after the messy `v0.28.4` retag cycle.

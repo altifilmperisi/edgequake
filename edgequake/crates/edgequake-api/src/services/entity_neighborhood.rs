@@ -1,6 +1,6 @@
 //! Entity neighborhood BFS — SPEC-027 IMP-029 (extracted from entity_ops).
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use edgequake_storage::traits::GraphStorage;
@@ -66,19 +66,20 @@ pub async fn build_entity_neighborhood(
     }
 
     let visited: Vec<String> = visited_nodes.iter().cloned().collect();
-    let degree_map: HashMap<String, usize> = graph_storage
-        .node_degrees_batch(&visited)
-        .await
-        .unwrap_or_default()
-        .into_iter()
-        .collect();
+    let degree_map =
+        crate::handlers::graph::degrees_breakdown_batch(graph_storage, &visited).await;
 
     let mut nodes = Vec::with_capacity(visited.len());
     for node_id in &visited {
         if let Ok(node) =
             load_node_for_tenant_context(graph_storage.as_ref(), node_id, tenant_ctx).await
         {
-            let degree = degree_map.get(node_id).copied().unwrap_or(0);
+            let degree = degree_map
+                .get(node_id)
+                .copied()
+                .unwrap_or_else(|| {
+                    crate::handlers::graph_types::DegreeBreakdown::from_total(0)
+                });
             nodes.push(NeighborhoodNode {
                 id: node.id.clone(),
                 label: crate::handlers::graph::graph_node_label(&node),

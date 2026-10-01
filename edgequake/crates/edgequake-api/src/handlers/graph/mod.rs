@@ -34,10 +34,15 @@
 //!
 //! Separating from query handlers enables independent optimization.
 
+mod graph_dto;
 mod graph_label;
 mod graph_query;
 mod graph_stream;
 
+pub use graph_dto::{
+    degrees_breakdown_batch, degrees_breakdown_for_workspace, edge_response, graph_is_truncated,
+    graph_node_response, workspace_communities_and_facets, workspace_graph_totals,
+};
 pub use graph_label::graph_node_label;
 pub use graph_query::*;
 pub use graph_stream::*;

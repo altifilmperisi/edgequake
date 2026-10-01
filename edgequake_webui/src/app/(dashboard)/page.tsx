@@ -14,6 +14,8 @@
  */
 
 import { QuickActions, RecentActivity, StatsCard, SystemStatus } from '@/components/dashboard';
+import { PageHeader } from '@/components/shared/page-header';
+import { PageShell } from '@/components/shared/page-shell';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useWorkspaceTenantValidator } from '@/hooks/use-workspace-tenant-validator';
 import { getDocuments, getWorkspaceStats, getWorkspaces } from '@/lib/api/edgequake';
@@ -174,30 +176,36 @@ export default function DashboardPage() {
         <WorkspaceUrlUpdater />
       </Suspense>
       <div className="p-page space-y-page">
-        {/* Header Section — flush under chrome; contextual, not marketing copy */}
-        <header className="space-y-1">
-          <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">
-            {selectedWorkspace?.name ?? t('dashboard.title', 'Dashboard')}
-          </h1>
-          <p
-            className="min-h-5 text-sm text-muted-foreground"
-            data-testid="spec100-dashboard-subtitle"
-          >
-            {coldStats
-              ? t('common.loading', 'Loading...')
-              : documentValue > 0
-                ? t(
-                    'dashboard.contextSubtitle',
-                    '{{docs}} documents · {{entities}} entities · {{relationships}} relationships',
-                    { docs: documentValue, entities: entityValue, relationships: relationshipValue }
-                  )
-                : t('dashboard.emptySubtitle', 'Upload your first document to get started')}
-          </p>
-        </header>
+        <PageHeader
+          title={selectedWorkspace?.name ?? t('dashboard.title', 'Dashboard')}
+          description={
+            <span data-testid="spec100-dashboard-subtitle">
+              {coldStats
+                ? t('common.loading', 'Loading...')
+                : documentValue > 0
+                  ? t(
+                      'dashboard.contextSubtitle',
+                      {
+                        count: documentValue,
+                        defaultValue_one:
+                          '{{count}} document · {{entities}} entities · {{relationships}} relationships',
+                        defaultValue_other:
+                          '{{count}} documents · {{entities}} entities · {{relationships}} relationships',
+                        entities: entityValue,
+                        relationships: relationshipValue,
+                      },
+                    )
+                  : t(
+                      'dashboard.emptySubtitle',
+                      'Upload your first document to get started',
+                    )}
+            </span>
+          }
+        />
 
         {/* Statistics Section - Shows workspace-specific counts */}
         {/* @implements FEAT1001 - Dashboard statistics visualization */}
-        <section aria-label="Statistics" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <section aria-label={t('dashboard.sections.stats', 'Statistics')} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <StatsCard
             title={t('dashboard.stats.documents', 'Documents')}
             value={documentValue}

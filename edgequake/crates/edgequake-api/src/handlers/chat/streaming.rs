@@ -233,6 +233,8 @@ pub async fn chat_completion_stream(
         // Track message context for saving after streaming completes
         #[allow(unused_assignments)]
         let mut saved_message_context: Option<MessageContext> = None;
+        #[allow(unused_assignments)]
+        let mut saved_subgraph: Option<crate::handlers::context_types::SubgraphBundle> = None;
         // SPEC-142: keep sources for verified answer rewrite at Done / persist.
         // Initial empty is overwritten when Sources arrive; may stay empty if stream ends early.
         #[allow(unused_assignments)]
@@ -492,6 +494,18 @@ pub async fn chat_completion_stream(
 
                 // Save message context for later persistence
                 saved_message_context = Some(build_message_context_from_engine(&context, &sources));
+                saved_subgraph = Some(map_query_context_to_subgraph(
+                    &context,
+                    &MappingOptions {
+                        granularity: stream_content_granularity,
+                        include_lineage: true,
+                        include_documents: false,
+                        include_agent_hints: false,
+                        include_subgraph: true,
+                        rerank_top_k: None,
+                        reranked: false,
+                    },
+                ));
                 sources_for_verify = sources.clone();
 
                 let retrieval_elapsed_ms = retrieval_start.elapsed().as_millis() as u64;
@@ -513,23 +527,11 @@ pub async fn chat_completion_stream(
                 }
 
                 if !sources.is_empty() {
-                    let subgraph = Some(map_query_context_to_subgraph(
-                        &context,
-                        &MappingOptions {
-                            granularity: stream_content_granularity,
-                            include_lineage: true,
-                            include_documents: false,
-                            include_agent_hints: false,
-                            include_subgraph: true,
-                            rerank_top_k: None,
-                            reranked: false,
-                        },
-                    ));
                     let context_event = ChatStreamEvent::Context {
                         sources: sources.clone(),
                         query_mode: Some(used_mode.to_string()),
                         retrieval_time_ms: Some(retrieval_elapsed_ms),
-                        subgraph,
+                        subgraph: saved_subgraph.clone(),
                     };
                     if tx.send(context_event).await.is_err() {
                         ErrorEvent::log_stream_disconnect(
@@ -695,6 +697,8 @@ pub async fn chat_completion_stream(
                         llm_provider: used_provider.clone(),
                         llm_model: used_model.clone(),
                         answer: Some(verified),
+                        // SPEC-155 B09: answer-on-graph linkage
+                        subgraph: saved_subgraph.clone(),
                     })
                     .await;
 

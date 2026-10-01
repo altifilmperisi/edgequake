@@ -152,7 +152,8 @@ export async function searchNodes(
 export interface PopularLabel {
   label: string;
   entity_type: string;
-  degree: number;
+  /** SPEC-155: `{in,out,total}` or bare total. */
+  degree: import("@/types/graph").DegreeValue;
   description: string;
 }
 
@@ -372,4 +373,17 @@ export async function deleteRelationship(
   relationshipId: string,
 ): Promise<void> {
   return api.delete<void>(`/graph/relationships/${relationshipId}`);
+}
+
+/** Server community list (SPEC-155 W3/W5). */
+export interface GraphCommunityItem {
+  id: string;
+  size: number;
+  label?: string;
+}
+
+export async function getGraphCommunities(): Promise<{
+  items: GraphCommunityItem[];
+}> {
+  return api.get<{ items: GraphCommunityItem[] }>("/graph/communities");
 }

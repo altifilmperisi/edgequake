@@ -26,6 +26,7 @@
 "use client";
 
 import { getGraphEdgeKeyFromEdge } from "@/lib/graph/ids";
+import { filterGraphData } from "@/lib/graph/engine/filter-pipeline";
 import type { GraphEdge, GraphNode, KnowledgeGraph } from "@/types";
 import Sigma from "sigma";
 import { create } from "zustand";
@@ -113,6 +114,11 @@ interface GraphState {
   colorMode: ColorMode;
   showClustering: boolean;
 
+  /** Ego neighbourhood depth 1–3 (SPEC-155 W5). */
+  egoDepth: number;
+  /** Engine focus state (answer / ego / path) — GraphRenderer applies to engine. */
+  engineFocus: { mode: string; ids: string[]; depth?: number };
+
   // Sigma instance reference
   sigmaInstance: Sigma | null;
 
@@ -187,6 +193,12 @@ interface GraphActions {
   // Display settings
   setColorMode: (mode: ColorMode) => void;
   toggleClustering: () => void;
+  setEgoDepth: (depth: number) => void;
+  setEngineFocus: (focus: {
+    mode: string;
+    ids: string[];
+    depth?: number;
+  }) => void;
 
   // Sigma instance
   setSigmaInstance: (sigma: Sigma | null) => void;
@@ -256,6 +268,8 @@ const initialState: GraphState = {
   timeFilterEnd: null,
   colorMode: "entity-type",
   showClustering: false,
+  egoDepth: 1,
+  engineFocus: { mode: "none", ids: [] },
   sigmaInstance: null,
   nodeToExpand: null,
   nodeToPrune: null,
@@ -605,6 +619,9 @@ export const useGraphStore = create<GraphStore>()((set, get) => ({
       showClustering: !state.showClustering,
       colorMode: state.showClustering ? "entity-type" : "community",
     })),
+  setEgoDepth: (depth) =>
+    set({ egoDepth: Math.max(1, Math.min(3, Math.round(depth))) }),
+  setEngineFocus: (focus) => set({ engineFocus: focus }),
 
   // Sigma instance
   setSigmaInstance: (sigma) => set({ sigmaInstance: sigma }),
@@ -1000,26 +1017,17 @@ export const useFilteredNodes = () => {
   const timeFilterStart = useGraphStore((state) => state.timeFilterStart);
   const timeFilterEnd = useGraphStore((state) => state.timeFilterEnd);
 
-  // Filter nodes based on visibility, search query, and time range
-  return nodes.filter((node) => {
-    if (!visibleEntityTypes.has(node.node_type)) return false;
-
-    // Time-based filtering
-    if (timeFilterEnabled && node.created_at) {
-      const nodeDate = new Date(node.created_at);
-      if (timeFilterStart && nodeDate < timeFilterStart) return false;
-      if (timeFilterEnd && nodeDate > timeFilterEnd) return false;
-    }
-
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      return (
-        node.label.toLowerCase().includes(query) ||
-        node.description?.toLowerCase().includes(query)
-      );
-    }
-    return true;
-  });
+  return filterGraphData(nodes, [], {
+    types: visibleEntityTypes,
+    relTypes: new Set(),
+    query: searchQuery,
+    timeRange: {
+      enabled: timeFilterEnabled,
+      start: timeFilterStart,
+      end: timeFilterEnd,
+    },
+    documentIds: [],
+  }).nodes;
 };
 
 export const useFilteredEdges = () => {
@@ -1034,35 +1042,17 @@ export const useFilteredEdges = () => {
   const timeFilterStart = useGraphStore((state) => state.timeFilterStart);
   const timeFilterEnd = useGraphStore((state) => state.timeFilterEnd);
 
-  // Compute filtered node IDs (with time filtering)
-  const nodeIds = new Set(
-    nodes
-      .filter((node) => {
-        if (!visibleEntityTypes.has(node.node_type)) return false;
-
-        // Time-based filtering
-        if (timeFilterEnabled && node.created_at) {
-          const nodeDate = new Date(node.created_at);
-          if (timeFilterStart && nodeDate < timeFilterStart) return false;
-          if (timeFilterEnd && nodeDate > timeFilterEnd) return false;
-        }
-
-        if (searchQuery) {
-          const query = searchQuery.toLowerCase();
-          return (
-            node.label.toLowerCase().includes(query) ||
-            node.description?.toLowerCase().includes(query)
-          );
-        }
-        return true;
-      })
-      .map((n) => n.id),
-  );
-
-  return edges.filter((edge) => {
-    if (!visibleRelationshipTypes.has(edge.relationship_type)) return false;
-    return nodeIds.has(edge.source) && nodeIds.has(edge.target);
-  });
+  return filterGraphData(nodes, edges, {
+    types: visibleEntityTypes,
+    relTypes: visibleRelationshipTypes,
+    query: searchQuery,
+    timeRange: {
+      enabled: timeFilterEnabled,
+      start: timeFilterStart,
+      end: timeFilterEnd,
+    },
+    documentIds: [],
+  }).edges;
 };
 
 export default useGraphStore;

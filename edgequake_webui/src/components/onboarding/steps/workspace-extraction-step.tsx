@@ -139,7 +139,7 @@ export function WorkspaceExtractionStep({
               presetKey={suggestedDomain}
               onApply={() => handleDomainSelect(suggestedDomain)}
             />
-            <span className="text-[11px] text-muted-foreground">
+            <span className="text-xs text-muted-foreground">
               {t(
                 'kgSchema.applyDefaultsHint',
                 'Loads default entities, relations, and typed edges for this domain.',
@@ -166,7 +166,7 @@ export function WorkspaceExtractionStep({
             <h4 className="text-sm font-medium">
               {t('onboarding.entityTypesHeading', 'Entity types')}
             </h4>
-            <p className="text-[11px] text-muted-foreground">
+            <p className="text-xs text-muted-foreground">
               {t(
                 'onboarding.entityTypesHintShort',
                 'Kinds of nodes to extract into the graph.',
@@ -216,7 +216,7 @@ export function WorkspaceExtractionStep({
             <h4 className="text-sm font-medium">
               {t('onboarding.relationTypesHeading', 'Relation types')}
             </h4>
-            <p className="text-[11px] text-muted-foreground">
+            <p className="text-xs text-muted-foreground">
               {t(
                 'onboarding.relationTypesHintShort',
                 'Allowed edge labels between entities. Loaded from the domain preset — edit freely.',
@@ -281,7 +281,7 @@ export function WorkspaceExtractionStep({
         </div>
       </div>
 
-      <p className="text-[11px] text-muted-foreground">
+      <p className="text-xs text-muted-foreground">
         {t(
           'onboarding.kgSchemaFutureOnly',
           'Applies to future extractions. Rebuild the knowledge graph to refresh existing nodes and edges.',

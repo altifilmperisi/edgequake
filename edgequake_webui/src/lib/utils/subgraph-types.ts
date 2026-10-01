@@ -21,6 +21,10 @@ export interface ContextEntityApi {
   description: string;
   score: number;
   degree: number;
+  /** Prefer this for graph highlight mapping (SPEC-155 W3/W6). */
+  graph_node_id?: string;
+  /** Alias some payloads use for graph_node_id. */
+  node_id?: string;
   lineage?: EntityLineage;
 }
 

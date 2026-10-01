@@ -314,12 +314,12 @@ export function RelationshipEditDialog({
               </Label>
               <div className="flex flex-wrap gap-1">
                 {edge.source_ids.slice(0, 5).map((id, idx) => (
-                  <Badge key={idx} variant="outline" className="text-[10px]">
+                  <Badge key={idx} variant="outline" className="text-xs">
                     {id.slice(0, 8)}...
                   </Badge>
                 ))}
                 {edge.source_ids.length > 5 && (
-                  <Badge variant="outline" className="text-[10px]">
+                  <Badge variant="outline" className="text-xs">
                     +{edge.source_ids.length - 5} more
                   </Badge>
                 )}

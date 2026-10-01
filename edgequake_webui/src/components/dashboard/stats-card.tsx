@@ -117,7 +117,7 @@ export function StatsCard({
               {title}
               {isStale && (
                 <span
-                  className="ml-1.5 text-[10px] font-normal text-amber-600 dark:text-amber-400"
+                  className="ml-1.5 text-xs font-normal text-amber-600 dark:text-amber-400"
                   data-testid="stats-stale-badge"
                 >
                   (updating)
@@ -147,9 +147,9 @@ export function StatsCard({
             </div>
             {/* LS-03: Zero hint — shown only when value is 0 to guide new users */}
             {value === 0 && zeroHint ? (
-              <p className="text-[11px] text-muted-foreground italic truncate">{zeroHint}</p>
+              <p className="line-clamp-2 text-xs text-muted-foreground" title={zeroHint}>{zeroHint}</p>
             ) : description ? (
-              <p className="text-[11px] text-muted-foreground truncate">{description}</p>
+              <p className="line-clamp-2 text-xs text-muted-foreground" title={description}>{description}</p>
             ) : null}
           </div>
           <div 

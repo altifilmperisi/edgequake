@@ -98,7 +98,7 @@ export function WorkspaceExtractBudgetCard({
             </>
           ) : null}
           <p
-            className="text-[11px] text-muted-foreground"
+            className="text-xs text-muted-foreground"
             data-testid="extract-budget-future-only-hint"
           >
             {t(

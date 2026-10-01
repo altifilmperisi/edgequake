@@ -147,12 +147,20 @@ export function useKeyboardShortcuts(
         return;
       }
 
+      const isMeta = e.metaKey || e.ctrlKey;
+      const key = e.key.toLowerCase();
+
+      // Cmd/Ctrl + K opens the palette even from inputs (LAW-155-6).
+      if (isMeta && key === "k") {
+        e.preventDefault();
+        openSearch();
+        return;
+      }
+
       // Skip other shortcuts if user is typing
       if (isInputting) {
         return;
       }
-
-      const isMeta = e.metaKey || e.ctrlKey;
 
       // ? key: Show help
       if (e.key === "?" && !isMeta) {
@@ -162,35 +170,28 @@ export function useKeyboardShortcuts(
       }
 
       // Cmd/Ctrl + /: Show help
-      if (isMeta && e.key === "/") {
+      if (isMeta && key === "/") {
         e.preventDefault();
         openHelp();
         return;
       }
 
-      // Cmd/Ctrl + K: Open search
-      if (isMeta && e.key === "k") {
-        e.preventDefault();
-        openSearch();
-        return;
-      }
-
       // Cmd/Ctrl + G: Go to Graph
-      if (isMeta && e.key === "g") {
+      if (isMeta && key === "g") {
         e.preventDefault();
         router.push("/graph");
         return;
       }
 
       // Cmd/Ctrl + D: Go to Documents
-      if (isMeta && e.key === "d") {
+      if (isMeta && key === "d") {
         e.preventDefault();
         router.push("/documents");
         return;
       }
 
       // Cmd/Ctrl + Shift + Q: Go to Query (use Shift to avoid quit conflict)
-      if (isMeta && e.shiftKey && e.key === "Q") {
+      if (isMeta && e.shiftKey && key === "q") {
         e.preventDefault();
         router.push("/query");
         return;

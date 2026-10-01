@@ -14,6 +14,63 @@
 export const MAX_ENTITY_TYPE_COLORS = 50;
 
 /**
+ * Colour-blind safe shape markers (SPEC-155 W5). Pair with colour so unknown
+ * / CVD-impaired viewers can still tell types apart. Okabe–Ito-style redundancy.
+ */
+export type EntityTypeShape =
+  | "circle"
+  | "square"
+  | "diamond"
+  | "triangle"
+  | "hexagon"
+  | "star"
+  | "pentagon"
+  | "cross";
+
+const SHAPE_CYCLE: EntityTypeShape[] = [
+  "circle",
+  "square",
+  "diamond",
+  "triangle",
+  "hexagon",
+  "star",
+  "pentagon",
+  "cross",
+];
+
+/** Known types get stable shapes; unknown types hash into SHAPE_CYCLE. */
+export const ENTITY_TYPE_SHAPES: Record<string, EntityTypeShape> = {
+  PERSON: "circle",
+  CREATURE: "star",
+  ORGANIZATION: "square",
+  LOCATION: "diamond",
+  EVENT: "triangle",
+  CONCEPT: "hexagon",
+  METHOD: "pentagon",
+  CONTENT: "cross",
+  DATA: "square",
+  ARTIFACT: "diamond",
+  NATURALOBJECT: "hexagon",
+  OTHER: "cross",
+  TECHNOLOGY: "triangle",
+  DOCUMENT: "square",
+  PRODUCT: "circle",
+  DATE: "diamond",
+  DRAWING: "star",
+  TABLE: "square",
+  EQUATION: "cross",
+  LAW: "pentagon",
+  REGULATION: "pentagon",
+  MACHINE: "hexagon",
+  COMPONENT: "triangle",
+  DEFECT: "star",
+  MEASUREMENT: "diamond",
+  PROCESS: "circle",
+  MATERIAL: "square",
+  DEFAULT: "circle",
+};
+
+/**
  * Canonical default palette (hex). Keys are UPPERCASE entity types.
  * Includes Rust `default_entity_types()` + common presets + multimodal types.
  */
@@ -57,6 +114,27 @@ const HEX_COLOR_RE = /^#(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{3})$/;
 export function normalizeEntityTypeKey(raw: string | undefined | null): string {
   if (!raw) return '';
   return raw.trim().toUpperCase().replace(/[\s-]+/g, '_');
+}
+
+function hashToShapeIndex(key: string): number {
+  let h = 0;
+  for (let i = 0; i < key.length; i++) {
+    h = (h * 31 + key.charCodeAt(i)) >>> 0;
+  }
+  return h % SHAPE_CYCLE.length;
+}
+
+/**
+ * Resolve a distinct shape for an entity type (colour-blind fallback).
+ * Unknown types get a deterministic shape from the key hash.
+ */
+export function resolveEntityTypeShape(
+  entityType: string | undefined | null,
+): EntityTypeShape {
+  const key = normalizeEntityTypeKey(entityType);
+  if (!key) return ENTITY_TYPE_SHAPES.DEFAULT ?? 'circle';
+  if (ENTITY_TYPE_SHAPES[key]) return ENTITY_TYPE_SHAPES[key]!;
+  return SHAPE_CYCLE[hashToShapeIndex(key)]!;
 }
 
 /** True when value is `#RGB` or `#RRGGBB` (case-insensitive hex digits). */

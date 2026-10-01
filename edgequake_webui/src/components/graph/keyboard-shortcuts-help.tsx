@@ -22,13 +22,23 @@ interface ShortcutGroup {
 
 const SHORTCUT_GROUPS: ShortcutGroup[] = [
   {
-    title: 'Navigation',
+    title: 'Navigation (canvas focused)',
     shortcuts: [
-      { keys: ['Tab'], description: 'Next node' },
-      { keys: ['Shift', 'Tab'], description: 'Previous node' },
-      { keys: ['↑', '↓', '←', '→'], description: 'Navigate nodes' },
-      { keys: ['Enter'], description: 'Focus on selected node' },
-      { keys: ['Escape'], description: 'Deselect node' },
+      { keys: ['↑', '↓', '←', '→'], description: 'Move to the nearest node in that direction' },
+      { keys: ['1', '2', '3'], description: 'Neighbourhood depth (hops)' },
+      { keys: ['Enter'], description: 'Fit selected node and its neighbourhood' },
+      { keys: ['Shift', 'F10'], description: 'Node actions menu (also the Menu key)' },
+      { keys: ['Escape'], description: 'Clear selection' },
+      { keys: ['Tab'], description: 'Leave the canvas (focus moves on)' },
+    ],
+  },
+  {
+    title: 'Mouse',
+    shortcuts: [
+      { keys: ['Click'], description: 'Select a node (click empty space to clear)' },
+      { keys: ['Double-click'], description: 'Select and fit the neighbourhood' },
+      { keys: ['Drag'], description: 'Move a node (empty space pans, wheel zooms)' },
+      { keys: ['Right-click'], description: 'Node actions menu (never starts a drag)' },
     ],
   },
   {
@@ -105,7 +115,7 @@ export function KeyboardShortcutsHelp() {
         </div>
         <div className="pt-4 border-t mt-4">
           <p className="text-xs text-muted-foreground text-center">
-            Press <kbd className="px-1.5 py-0.5 text-[10px] font-mono bg-muted rounded border">?</kbd> to show this dialog anytime
+            Press <kbd className="px-1.5 py-0.5 text-xs font-mono bg-muted rounded border">?</kbd> to show this dialog anytime
           </p>
         </div>
       </DialogContent>

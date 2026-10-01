@@ -50,7 +50,7 @@ export function BatchActionsBar({
           {t('documents.bulk.selected', { count: selectedCount }) || `${selectedCount} selected`}
         </span>
         <span className="text-xs text-muted-foreground hidden sm:inline">
-          Press <kbd className="px-1 py-0.5 bg-muted rounded text-[10px]">Esc</kbd> to clear
+          Press <kbd className="px-1 py-0.5 bg-muted rounded text-xs">Esc</kbd> to clear
         </span>
       </div>
       <div className="flex items-center gap-2">

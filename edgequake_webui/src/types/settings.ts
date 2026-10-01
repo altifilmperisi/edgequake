@@ -82,7 +82,7 @@ export interface IngestionSettings {
 
 export interface AppSettings {
   theme: "light" | "dark" | "system";
-  language: "en" | "zh" | "ja" | "ko";
+  language: "en" | "zh" | "fr";
   graphSettings: GraphSettings;
   querySettings: QuerySettings;
   ingestionSettings: IngestionSettings;

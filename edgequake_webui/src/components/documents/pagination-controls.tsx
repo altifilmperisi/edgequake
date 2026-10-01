@@ -55,7 +55,10 @@ export function PaginationControls({
             value={String(pageSize)}
             onValueChange={(v) => onPageSizeChange(Number(v))}
           >
-            <SelectTrigger className="w-16 h-7 text-xs">
+            <SelectTrigger
+              className="w-16 h-7 text-xs"
+              aria-label={t('documents.pagination.rowsPerPage', 'Rows')}
+            >
               <SelectValue />
             </SelectTrigger>
             <SelectContent>

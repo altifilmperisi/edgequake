@@ -98,7 +98,7 @@ function StageMeter({
       className="flex min-w-30 flex-1 flex-col gap-0.5"
       data-testid={`page-health-meter-${stage}`}
     >
-      <div className="flex items-center justify-between gap-2 text-[10px] text-muted-foreground">
+      <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
         <span>{label}</span>
         <span className="tabular-nums">
           {failed > 0
@@ -198,7 +198,7 @@ export function PageHealthStrip({
             </span>
             {failed === 0 && !calmInFlight && !showProgress ? (
               <span
-                className="rounded-md bg-muted px-2 py-0.5 text-[11px] text-muted-foreground"
+                className="rounded-md bg-muted px-2 py-0.5 text-xs text-muted-foreground"
                 data-testid="page-health-all-clear"
               >
                 {t("documents.pageHealth.allClear", {
@@ -210,7 +210,7 @@ export function PageHealthStrip({
               <button
                 type="button"
                 data-testid="page-health-filter-failed"
-                className="rounded-md bg-destructive/10 px-2 py-0.5 text-[11px] text-destructive transition hover:bg-destructive/15"
+                className="rounded-md bg-destructive/10 px-2 py-0.5 text-xs text-destructive transition hover:bg-destructive/15"
                 onClick={() => {
                   const pagesFailed = failedPageNumbers(tiles);
                   if (isOverview) {
@@ -292,7 +292,7 @@ export function PageHealthStrip({
           data-testid="page-health-progressive"
           aria-live="polite"
         >
-          <div className="mb-1 flex items-center justify-between gap-2 text-[11px]">
+          <div className="mb-1 flex items-center justify-between gap-2 text-xs">
             <span className="font-medium text-foreground/90">
               {t("documents.pageHealth.progressTitle", {
                 defaultValue: "Reprocessing · {{done}}/{{total}} pages",
@@ -367,7 +367,7 @@ export function PageHealthStrip({
                 aria-label={title}
                 aria-selected={isPicker ? isSelected : undefined}
                 className={cn(
-                  "flex shrink-0 items-center justify-center rounded-md text-[10px] font-medium tabular-nums transition",
+                  "flex shrink-0 items-center justify-center rounded-md text-xs font-medium tabular-nums transition",
                   dense ? "h-7 w-7" : "h-8 w-8",
                   isSelected
                     ? "bg-primary text-primary-foreground shadow-sm ring-2 ring-primary/40 ring-offset-1 ring-offset-background"
@@ -392,7 +392,7 @@ export function PageHealthStrip({
       ) : null}
 
       {isPicker && showTiles && showChrome ? (
-        <p className="text-[11px] text-muted-foreground">
+        <p className="text-xs text-muted-foreground">
           {t("documents.pageHealth.pickerHint", {
             defaultValue:
               "Click to select · Shift+click for a range · {{count}} selected",

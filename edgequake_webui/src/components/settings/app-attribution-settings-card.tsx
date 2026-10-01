@@ -153,7 +153,12 @@ export function AppAttributionSettingsCard() {
         {data && (
           <div className="space-y-2">
             <h4 className="text-sm font-medium">Provider header catalog</h4>
-            <div className="max-h-48 overflow-y-auto rounded-md border divide-y text-xs" data-testid="app-attribution-provider-catalog">
+            <div
+              className="max-h-48 overflow-y-auto rounded-md border divide-y text-xs"
+              role="region"
+              aria-label="Provider header catalog"
+              tabIndex={0}
+              data-testid="app-attribution-provider-catalog">
               {data.providers.map((p) => (
                 <div key={p.id} className="p-2 flex flex-wrap items-center gap-2">
                   <span className="font-medium">{getProviderDisplayName(p.id)}</span>

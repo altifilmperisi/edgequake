@@ -70,8 +70,8 @@ const statusConfig = {
   deleting: { icon: Trash2, color: 'bg-rose-500', textColor: 'text-rose-600 dark:text-rose-400', label: 'Deleting', animate: true },
   // SPEC-098 LAW-098-11: lifecycle failure ≠ pipeline Failed.
   delete_failed: { icon: XCircle, color: 'bg-rose-500', textColor: 'text-rose-600 dark:text-rose-400', label: 'Delete failed', animate: false },
-  queued: { icon: Clock, color: 'bg-amber-500', textColor: 'text-amber-600 dark:text-amber-400', label: 'Queued', animate: true },
-  pending: { icon: Clock, color: 'bg-amber-500', textColor: 'text-amber-600 dark:text-amber-400', label: 'Pending', animate: false },
+  queued: { icon: Clock, color: 'bg-amber-500', textColor: 'text-amber-700 dark:text-amber-400', label: 'Queued', animate: true },
+  pending: { icon: Clock, color: 'bg-amber-500', textColor: 'text-amber-700 dark:text-amber-400', label: 'Pending', animate: false },
 
   // === IN PROGRESS (Blue family — standard pipeline stages) ===
   uploading: { icon: Upload, color: 'bg-blue-500', textColor: 'text-blue-600 dark:text-blue-400', label: 'Uploading', animate: true },
@@ -92,24 +92,24 @@ const statusConfig = {
   summarizing: { icon: FileText, color: 'bg-purple-500', textColor: 'text-purple-600 dark:text-purple-400', label: 'Summarizing', animate: true },
 
   // === SUCCESS (Green) ===
-  completed: { icon: CheckCircle, color: 'bg-green-500', textColor: 'text-green-600 dark:text-green-400', label: 'Completed', animate: false },
-  indexed: { icon: CheckCircle, color: 'bg-green-500', textColor: 'text-green-600 dark:text-green-400', label: 'Indexed', animate: false },
-  partial_success: { icon: CheckCircle, color: 'bg-green-500', textColor: 'text-green-600 dark:text-green-400', label: 'Partial', animate: false },
+  completed: { icon: CheckCircle, color: 'bg-green-500', textColor: 'text-green-700 dark:text-green-400', label: 'Completed', animate: false },
+  indexed: { icon: CheckCircle, color: 'bg-green-500', textColor: 'text-green-700 dark:text-green-400', label: 'Indexed', animate: false },
+  partial_success: { icon: CheckCircle, color: 'bg-green-500', textColor: 'text-green-700 dark:text-green-400', label: 'Partial', animate: false },
 
   // === FAILURE (Red) ===
-  failed: { icon: XCircle, color: 'bg-red-500', textColor: 'text-red-600 dark:text-red-400', label: 'Failed', animate: false },
+  failed: { icon: XCircle, color: 'bg-red-500', textColor: 'text-red-700 dark:text-red-400', label: 'Failed', animate: false },
 
   // === WARNING / PARTIAL (Orange) ===
-  partial_failure: { icon: XCircle, color: 'bg-orange-500', textColor: 'text-orange-600 dark:text-orange-400', label: 'Partial Failure', animate: false },
-  cancelled: { icon: StopCircle, color: 'bg-orange-500', textColor: 'text-orange-600 dark:text-orange-400', label: 'Cancelled', animate: false },
+  partial_failure: { icon: XCircle, color: 'bg-orange-500', textColor: 'text-orange-700 dark:text-orange-400', label: 'Partial Failure', animate: false },
+  cancelled: { icon: StopCircle, color: 'bg-orange-500', textColor: 'text-orange-700 dark:text-orange-400', label: 'Cancelled', animate: false },
 
   // === CANCEL IN FLIGHT (SPEC-057 P4) ===
-  stopping: { icon: Loader2, color: 'bg-orange-500', textColor: 'text-orange-600 dark:text-orange-400', label: 'Stopping…', animate: true },
-  cancelling: { icon: Loader2, color: 'bg-orange-500', textColor: 'text-orange-600 dark:text-orange-400', label: 'Cancelling…', animate: true },
+  stopping: { icon: Loader2, color: 'bg-orange-500', textColor: 'text-orange-700 dark:text-orange-400', label: 'Stopping…', animate: true },
+  cancelling: { icon: Loader2, color: 'bg-orange-500', textColor: 'text-orange-700 dark:text-orange-400', label: 'Cancelling…', animate: true },
 
   // === TASK LIFECYCLE (SPEC-099 EC-099-15) ===
-  held: { icon: PauseCircle, color: 'bg-amber-500', textColor: 'text-amber-600 dark:text-amber-400', label: 'Held', animate: false },
-  dead_letter: { icon: XCircle, color: 'bg-red-500', textColor: 'text-red-600 dark:text-red-400', label: 'Dead letter', animate: false },
+  held: { icon: PauseCircle, color: 'bg-amber-500', textColor: 'text-amber-700 dark:text-amber-400', label: 'Held', animate: false },
+  dead_letter: { icon: XCircle, color: 'bg-red-500', textColor: 'text-red-700 dark:text-red-400', label: 'Dead letter', animate: false },
 } as const satisfies Record<
   DocumentStatus,
   {
@@ -186,7 +186,7 @@ export const StatusBadge = memo(function StatusBadge({
 
   /**
    * MI-06: Differentiated animation strategy.
-   *   animate:true  → badge pulses (subtle, whole pill)
+   *   animate:true  → icon pulses (text stays static: WCAG contrast must hold mid-animation)
    *   AI stages     → icon also spins (stronger processing signal)
    *   terminal      → no animation
    */
@@ -197,11 +197,13 @@ export const StatusBadge = memo(function StatusBadge({
   const badge = (
     <Badge
       variant="outline"
-      className={`max-w-full min-w-0 gap-1 truncate ${config.textColor} border-current cursor-default${pulseBadge ? ' motion-safe:animate-pulse' : ''}`}
+      className={`max-w-full min-w-0 gap-1 truncate ${config.textColor} border-current cursor-default`}
       data-testid="status-badge"
       title={label}
     >
-      <Icon className={`h-3 w-3 shrink-0${spinIcon ? ' animate-spin' : ''}`} />
+      <Icon
+        className={`h-3 w-3 shrink-0${spinIcon ? ' animate-spin' : pulseBadge ? ' motion-safe:animate-pulse' : ''}`}
+      />
       {!compact && <span className="truncate">{label}</span>}
     </Badge>
   );
@@ -243,7 +245,7 @@ export const StatusBadge = memo(function StatusBadge({
             
             {typeof stageProgressValue === 'number' && (
               <div className="space-y-1">
-                <div className="flex justify-between text-[10px] text-foreground/90">
+                <div className="flex justify-between text-xs text-foreground/90">
                   <span>Progress</span>
                   <span>{Math.round(stageProgressValue * 100)}%</span>
                 </div>
@@ -270,7 +272,7 @@ export const StatusBadge = memo(function StatusBadge({
               ))}
             </div>
             
-            <div className="flex justify-between text-[10px] text-muted-foreground">
+            <div className="flex justify-between text-xs text-muted-foreground">
               {PROCESSING_STAGES.map((stage, index) => (
                 <span 
                   key={stage.key}

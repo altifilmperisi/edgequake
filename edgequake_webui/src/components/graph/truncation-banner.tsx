@@ -22,13 +22,11 @@ interface TruncationBannerProps {
  * - Optional "Load More" action
  */
 export function TruncationBanner({ onLoadMore, isLoading }: TruncationBannerProps) {
-  const { 
-    isTruncated, 
-    nodes,
-    totalNodesInStorage, 
-    maxNodes,
-    setMaxNodes,
-  } = useGraphStore();
+  const isTruncated = useGraphStore((s) => s.isTruncated);
+  const nodes = useGraphStore((s) => s.nodes);
+  const totalNodesInStorage = useGraphStore((s) => s.totalNodesInStorage);
+  const maxNodes = useGraphStore((s) => s.maxNodes);
+  const setMaxNodes = useGraphStore((s) => s.setMaxNodes);
 
   const handleLoadMore = useCallback(() => {
     if (onLoadMore) {
@@ -95,11 +93,9 @@ export function TruncationBanner({ onLoadMore, isLoading }: TruncationBannerProp
  * Compact version for toolbar display.
  */
 export function TruncationIndicator() {
-  const { 
-    isTruncated, 
-    nodes,
-    totalNodesInStorage, 
-  } = useGraphStore();
+  const isTruncated = useGraphStore((s) => s.isTruncated);
+  const nodes = useGraphStore((s) => s.nodes);
+  const totalNodesInStorage = useGraphStore((s) => s.totalNodesInStorage);
 
   if (!isTruncated || totalNodesInStorage === 0) {
     return null;

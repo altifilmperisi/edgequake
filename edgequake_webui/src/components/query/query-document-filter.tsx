@@ -100,7 +100,7 @@ export function QueryDocumentFilter({
             {count > 0 && (
               <Badge
                 variant="secondary"
-                className="ml-auto h-5 min-w-5 px-1.5 font-mono text-[10px]"
+                className="ml-auto h-5 min-w-5 px-1.5 font-mono text-xs"
               >
                 {count}
               </Badge>
@@ -118,7 +118,7 @@ export function QueryDocumentFilter({
             {count > 0 && (
               <Badge
                 variant="destructive"
-                className="absolute -top-1 -right-1 h-4 w-4 p-0 flex items-center justify-center text-[10px]"
+                className="absolute -top-1 -right-1 h-4 w-4 p-0 flex items-center justify-center text-xs"
               >
                 {count}
               </Badge>

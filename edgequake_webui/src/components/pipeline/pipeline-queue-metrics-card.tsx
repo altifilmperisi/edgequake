@@ -56,7 +56,7 @@ export function PipelineQueueMetricsCard() {
             Queue Metrics
           </CardTitle>
           {isActive && !cold && (
-            <Badge variant="outline" className="text-blue-500 border-blue-500 animate-pulse">
+            <Badge variant="outline" className="text-blue-600 dark:text-blue-400 border-blue-500">
               <Loader2 className="h-3 w-3 mr-1 animate-spin" />
               Live
             </Badge>
@@ -88,6 +88,7 @@ export function PipelineQueueMetricsCard() {
                 </span>
               </div>
               <Progress
+                aria-label="Worker utilization"
                 value={utilization}
                 className={`h-2 ${
                   utilization >= 90
@@ -132,7 +133,7 @@ export function PipelineQueueMetricsCard() {
             <div className="flex items-center justify-between text-xs text-muted-foreground pt-2 border-t">
               <span>Queue: {pendingCount} pending</span>
               {metrics?.rate_limited && (
-                <Badge variant="destructive" className="text-[10px]">
+                <Badge variant="destructive" className="text-xs">
                   <AlertTriangle className="h-3 w-3 mr-1" />
                   Rate Limited
                 </Badge>

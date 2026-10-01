@@ -11,6 +11,8 @@ import { BudgetIndicator } from '@/components/cost/budget-indicator';
 import { CostBreakdownChart } from '@/components/cost/cost-breakdown-chart';
 import { CostSummaryCard } from '@/components/cost/cost-summary-card';
 import { TokenUsageTable } from '@/components/cost/token-usage-table';
+import { PageHeader } from '@/components/shared/page-header';
+import { PageShell } from '@/components/shared/page-shell';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -26,16 +28,19 @@ import {
     useCostHistory,
     useWorkspaceCostSummary,
 } from '@/hooks';
+import { formatCost } from '@/lib/format';
 import {
     Calendar, DollarSign,
     Download, RefreshCw,
     TrendingUp
 } from 'lucide-react';
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 type TimePeriod = '7d' | '30d' | '90d' | 'all';
 
 export default function CostDashboardPage() {
+  const { t } = useTranslation();
   const [period, setPeriod] = useState<TimePeriod>('30d');
   
   // Fetch data
@@ -61,7 +66,7 @@ export default function CostDashboardPage() {
       const headers = ['Date', 'Cost (USD)', 'Documents', 'Tokens'];
       const rows = history?.map(h => [
         h.timestamp,
-        h.total_cost.toFixed(4),
+        formatCost(h.total_cost).replace(/[^0-9.-]/g, '') || h.total_cost.toFixed(4),
         h.document_count.toString(),
         h.total_tokens.toString(),
       ]) ?? [];
@@ -84,59 +89,53 @@ export default function CostDashboardPage() {
   };
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="border-b px-page py-3">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-semibold tracking-tight sm:text-2xl flex items-center gap-2">
-              <DollarSign className="h-5 w-5 sm:h-6 sm:w-6" />
-              Cost Dashboard
-            </h1>
-            <p className="text-sm text-muted-foreground mt-0.5">
-              Monitor LLM costs and usage across your workspace
-            </p>
-          </div>
-          
-          <div className="flex items-center gap-2">
-            {/* Period selector */}
-            <Select value={period} onValueChange={(v) => setPeriod(v as TimePeriod)}>
-              <SelectTrigger className="w-32">
-                <Calendar className="h-4 w-4 mr-2" />
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="7d">Last 7 days</SelectItem>
-                <SelectItem value="30d">Last 30 days</SelectItem>
-                <SelectItem value="90d">Last 90 days</SelectItem>
-                <SelectItem value="all">All time</SelectItem>
-              </SelectContent>
-            </Select>
+    <div className="flex flex-col h-full overflow-auto">
+      <PageShell>
+        <PageHeader
+          title={
+            <span className="flex items-center gap-2">
+              <DollarSign className="h-5 w-5" />
+              {t('costs.title', 'Cost Dashboard')}
+            </span>
+          }
+          description={t(
+            'costs.subtitle',
+            'Monitor LLM costs and usage across your workspace',
+          )}
+          actions={
+            <>
+              <Select value={period} onValueChange={(v) => setPeriod(v as TimePeriod)}>
+                <SelectTrigger
+                  className="w-36"
+                  aria-label={t('costs.period.label', 'Time period')}
+                >
+                  <Calendar className="h-4 w-4 mr-2" />
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="7d">{t('costs.period.7d', 'Last 7 days')}</SelectItem>
+                  <SelectItem value="30d">{t('costs.period.30d', 'Last 30 days')}</SelectItem>
+                  <SelectItem value="90d">{t('costs.period.90d', 'Last 90 days')}</SelectItem>
+                  <SelectItem value="all">{t('costs.period.all', 'All time')}</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button
+                variant="outline"
+                size="icon"
+                aria-label={t('common.refresh', 'Refresh')}
+                onClick={() => refetchSummary()}
+              >
+                <RefreshCw className="h-4 w-4" />
+              </Button>
+              <Button variant="outline" onClick={() => handleExport('csv')}>
+                <Download className="h-4 w-4 mr-2" />
+                {t('common.download', 'Export')}
+              </Button>
+            </>
+          }
+        />
 
-            {/* Refresh */}
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => refetchSummary()}
-            >
-              <RefreshCw className="h-4 w-4" />
-            </Button>
-
-            {/* Export */}
-            <Button
-              variant="outline"
-              onClick={() => handleExport('csv')}
-            >
-              <Download className="h-4 w-4 mr-2" />
-              Export
-            </Button>
-          </div>
-        </div>
-      </div>
-
-      {/* Content */}
-      <div className="flex-1 overflow-auto p-page">
-        <div className="max-w-7xl mx-auto space-y-page">
+        <div className="space-y-page">
           {/* Top row: Summary and Budget */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-page">
             <div className="lg:col-span-2">
@@ -216,7 +215,7 @@ export default function CostDashboardPage() {
             isLoading={isSummaryLoading && !summary}
           />
         </div>
-      </div>
+      </PageShell>
     </div>
   );
 }

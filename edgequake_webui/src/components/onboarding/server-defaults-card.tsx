@@ -105,7 +105,7 @@ function ServerDefaultsCardView({
         <p className="text-sm font-medium">{title}</p>
         {overridden ? (
           <span
-            className="rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground"
+            className="rounded-md bg-muted px-1.5 py-0.5 text-xs font-medium uppercase tracking-wide text-muted-foreground"
             data-testid="server-defaults-overridden"
           >
             {t('onboarding.overriddenDefaults', 'Overridden')}

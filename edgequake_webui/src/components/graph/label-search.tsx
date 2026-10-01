@@ -19,6 +19,7 @@ import {
 import { useDebounce } from '@/hooks/use-debounce';
 import { useEntityTypeColors } from '@/hooks/use-entity-type-colors';
 import { getPopularLabels, searchLabels, type PopularLabel } from '@/lib/api/edgequake';
+import { degreeTotal } from '@/types/graph';
 import { useQuery } from '@tanstack/react-query';
 import { Search, Sparkles, X } from 'lucide-react';
 import { useCallback, useState } from 'react';
@@ -146,7 +147,7 @@ export function LabelSearch({
                     <Sparkles className="h-3 w-3 text-amber-500" />
                     <Badge
                       variant="secondary"
-                      className="text-[10px] px-1.5 py-0 border"
+                      className="text-xs px-1.5 py-0 border"
                       style={{
                         borderColor: colorFor(label.entity_type),
                         color: colorFor(label.entity_type),
@@ -157,7 +158,7 @@ export function LabelSearch({
                     </Badge>
                     <span className="flex-1 truncate text-sm">{label.label}</span>
                     <span className="text-xs text-muted-foreground tabular-nums">
-                      {label.degree}
+                      {degreeTotal(label.degree)}
                     </span>
                   </CommandItem>
                 ))}

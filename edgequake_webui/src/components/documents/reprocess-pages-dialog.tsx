@@ -94,7 +94,7 @@ const STAGE_CARDS: {
 
 function StepBadge({ n }: { n: number }) {
   return (
-    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[11px] font-semibold text-primary">
+    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
       {n}
     </span>
   );
@@ -333,7 +333,7 @@ export function ReprocessPagesDialog({
                   </Label>
                   <span
                     className={cn(
-                      "ml-auto rounded-md px-2 py-0.5 text-[11px] tabular-nums",
+                      "ml-auto rounded-md px-2 py-0.5 text-xs tabular-nums",
                       selected.length > 0
                         ? "bg-primary/10 font-medium text-primary"
                         : "bg-muted text-muted-foreground",
@@ -360,7 +360,7 @@ export function ReprocessPagesDialog({
                   <div className="space-y-1">
                     <Label
                       htmlFor="reprocess-pages-range-input"
-                      className="text-[11px] text-muted-foreground"
+                      className="text-xs text-muted-foreground"
                     >
                       {t("documents.pageHealth.rangeLabel", {
                         defaultValue: "Page range",
@@ -541,14 +541,14 @@ export function ReprocessPagesDialog({
                               aria-hidden
                             />
                           ) : locked ? (
-                            <span className="shrink-0 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                            <span className="shrink-0 text-xs font-medium uppercase tracking-wide text-muted-foreground">
                               {t("documents.pageHealth.lockedDownstream", {
                                 defaultValue: "Included",
                               })}
                             </span>
                           ) : null}
                         </div>
-                        <p className="mt-1.5 text-[11px] leading-snug text-muted-foreground">
+                        <p className="mt-1.5 text-xs leading-snug text-muted-foreground">
                           {t(largeDoc ? card.descShortKey : card.descKey, {
                             defaultValue: largeDoc
                               ? card.descShortDefault
@@ -584,7 +584,7 @@ export function ReprocessPagesDialog({
                   >
                     {summaryLine}
                     {selected.length > 0 ? (
-                      <span className="mt-0.5 block text-[11px] text-muted-foreground">
+                      <span className="mt-0.5 block text-xs text-muted-foreground">
                         {t("documents.pageHealth.selectedRangePreview", {
                           defaultValue: "Pages: {{range}}",
                           range: formatPageRange(selected),
@@ -593,7 +593,7 @@ export function ReprocessPagesDialog({
                     ) : null}
                   </p>
                 ) : (
-                  <p className="text-[11px] text-muted-foreground">
+                  <p className="text-xs text-muted-foreground">
                     {t("documents.pageHealth.confirmHint", {
                       defaultValue:
                         "Select at least one page to enable Start reprocess.",
@@ -637,7 +637,7 @@ export function ReprocessPagesDialog({
 
         <DialogFooter className="shrink-0 flex-col gap-2 border-t bg-background px-6 py-3 sm:flex-col">
           <p
-            className="w-full text-[11px] text-muted-foreground"
+            className="w-full text-xs text-muted-foreground"
             data-testid="never-downgrade-note"
           >
             {t("documents.pageHealth.neverDowngrade", {

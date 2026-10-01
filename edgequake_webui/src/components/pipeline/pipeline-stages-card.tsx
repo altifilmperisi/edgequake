@@ -22,9 +22,11 @@ import {
 } from "@/lib/pipeline/pipeline-workspace-context";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle, Clock, Layers, Loader2, StopCircle } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
 export function PipelineStagesCard() {
+  const { t } = useTranslation();
   const { selectedTenantId, selectedWorkspaceId } = usePipelineWorkspace();
   const queryClient = useQueryClient();
 
@@ -86,7 +88,11 @@ export function PipelineStagesCard() {
               Document Pipeline
             </CardTitle>
             <CardDescription>
-              {totalDocs} documents in workspace
+              {t("pipeline.documentsInWorkspace", {
+                count: totalDocs,
+                defaultValue_one: "{{count}} document in workspace",
+                defaultValue_other: "{{count}} documents in workspace",
+              })}
             </CardDescription>
           </div>
           {status?.is_busy && (
@@ -109,7 +115,7 @@ export function PipelineStagesCard() {
           {!status?.is_busy && isActive && (
             <Badge
               variant="outline"
-              className="text-yellow-500 border-yellow-500"
+              className="text-yellow-700 dark:text-yellow-400 border-yellow-600"
             >
               <Clock className="h-3 w-3 mr-1" />
               Queued
@@ -178,6 +184,7 @@ export function PipelineStagesCard() {
               </span>
             </div>
             <Progress
+              aria-label="Pipeline progress"
               value={
                 totalDocs > 0 ? (phaseCounts.completed / totalDocs) * 100 : 0
               }

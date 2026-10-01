@@ -255,7 +255,7 @@ export function DocumentPreviewPanel({
 
       {/* Details section — RP-04: lowercase label */}
       <div className="space-y-2">
-        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
           {t('documents.preview.metadata', 'Details')}
         </p>
         <div className="grid gap-2">
@@ -346,7 +346,7 @@ export function DocumentPreviewPanel({
       {/* Cost Information */}
       {(document.cost_usd !== undefined || document.total_tokens !== undefined) && (
         <div className="space-y-2">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             {t('documents.preview.processingCost', 'Cost')}
           </p>
             
@@ -397,7 +397,7 @@ export function DocumentPreviewPanel({
                     {document.llm_model && (
                       <div className="flex items-center justify-between text-xs">
                         <span className="text-muted-foreground">{t('documents.preview.llmModel', 'LLM Model')}</span>
-                        <code className="bg-muted px-1.5 py-0.5 rounded text-[10px] max-w-[60%] truncate" title={document.llm_model}>
+                        <code className="bg-muted px-1.5 py-0.5 rounded text-xs max-w-[60%] truncate" title={document.llm_model}>
                           {document.llm_model}
                         </code>
                       </div>
@@ -405,7 +405,7 @@ export function DocumentPreviewPanel({
                     {document.embedding_model && (
                       <div className="flex items-center justify-between text-xs">
                         <span className="text-muted-foreground">{t('documents.preview.embedding', 'Embedding')}</span>
-                        <code className="bg-muted px-1.5 py-0.5 rounded text-[10px] max-w-[60%] truncate" title={document.embedding_model}>
+                        <code className="bg-muted px-1.5 py-0.5 rounded text-xs max-w-[60%] truncate" title={document.embedding_model}>
                           {document.embedding_model}
                         </code>
                       </div>
@@ -423,7 +423,7 @@ export function DocumentPreviewPanel({
                           {t('documents.preview.visionModel', 'Vision Model')}
                         </span>
                         <code
-                          className="bg-violet-500/10 text-violet-700 dark:text-violet-300 px-1.5 py-0.5 rounded text-[10px] max-w-[60%] truncate"
+                          className="bg-violet-500/10 text-violet-700 dark:text-violet-300 px-1.5 py-0.5 rounded text-xs max-w-[60%] truncate"
                           title={document.lineage.pdf_vision_model}
                         >
                           {document.lineage.pdf_vision_model}
@@ -435,7 +435,7 @@ export function DocumentPreviewPanel({
                         <span className="text-muted-foreground">
                           {t('documents.preview.extractionMethod', 'Extraction Method')}
                         </span>
-                        <Badge variant="outline" className="text-[10px] h-4 capitalize">
+                        <Badge variant="outline" className="text-xs h-4 capitalize">
                           {document.lineage.pdf_extraction_method === 'edgeparse'
                             ? 'EdgeParse'
                             : document.lineage.pdf_extraction_method}
@@ -443,7 +443,7 @@ export function DocumentPreviewPanel({
                       </div>
                     )}
                     {document.lineage?.pdf_extraction_warning && (
-                      <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-[11px] text-amber-800 dark:text-amber-200">
+                      <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-xs text-amber-800 dark:text-amber-200">
                         {document.lineage.pdf_extraction_warning}
                       </div>
                     )}
@@ -459,7 +459,7 @@ export function DocumentPreviewPanel({
       {/* Content Preview */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             {t('documents.preview.content', 'Content')}
           </p>
           {(fullDocument?.content || document?.content_summary) && (
@@ -554,7 +554,7 @@ export function DocumentPreviewPanel({
                     {errorInfo.categoryLabel}
                   </h4>
                   {errorInfo.isTransient && (
-                    <Badge variant="outline" className="text-[10px] text-green-600 border-green-200">
+                    <Badge variant="outline" className="text-xs text-green-600 border-green-200">
                       {t('documents.preview.retryable', 'Retryable')}
                     </Badge>
                   )}
@@ -577,7 +577,7 @@ export function DocumentPreviewPanel({
                       <summary className="cursor-pointer text-muted-foreground hover:text-foreground select-none">
                         {t('documents.preview.technicalDetails', 'Technical details')}
                       </summary>
-                      <code className="block mt-1 p-2 bg-muted/50 rounded text-[10px] break-all">
+                      <code className="block mt-1 p-2 bg-muted/50 rounded text-xs break-all">
                         {errorInfo.originalMessage}
                       </code>
                     </details>
@@ -647,7 +647,7 @@ export function DocumentPreviewPanel({
 
       {/* Actions */}
       <div className="space-y-2">
-        <h4 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+        <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
           {t('documents.preview.actions', 'Actions')}
         </h4>
         

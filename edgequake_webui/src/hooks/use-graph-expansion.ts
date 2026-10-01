@@ -183,8 +183,8 @@ export function useGraphExpansion() {
                 forceLabel: showEdgeLabels, // WHY: match initial graph forceLabel (issue #91)
                 size: Math.max(1, Math.min((edge.weight || 1) * 2, 5)),
                 color: "#4b5563",
-                type: "curvedArrow",
-                curvature: 0.25,
+                // Lone edges are straight (see apply-delta STRAIGHT_EDGE_TYPE).
+                type: "arrow",
               });
             }
           } catch {

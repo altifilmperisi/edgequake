@@ -9,22 +9,22 @@
 export const DOCUMENT_TABLE_COL_PERCENTS = {
   default: {
     checkbox: '3%',
-    title: '30%',
-    status: '16%',
-    entities: '8%',
+    title: '31%',
+    status: '15%',
+    entities: '11%',
     created: '14%',
     updated: '14%',
-    actions: '15%',
+    actions: '12%',
   },
   withCost: {
     checkbox: '3%',
-    title: '24%',
+    title: '23%',
     status: '15%',
-    entities: '7%',
+    entities: '10%',
     cost: '8%',
     created: '13%',
     updated: '13%',
-    actions: '17%',
+    actions: '15%',
   },
 } as const;
 

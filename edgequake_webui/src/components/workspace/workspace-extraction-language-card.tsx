@@ -69,7 +69,7 @@ export function WorkspaceExtractionLanguageCard({
             )}
           </CardDescription>
           <p
-            className="text-[11px] text-muted-foreground"
+            className="text-xs text-muted-foreground"
             data-testid="extraction-language-future-only-hint"
           >
             {t(

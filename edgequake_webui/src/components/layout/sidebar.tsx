@@ -117,7 +117,7 @@ function SidebarContent({
             >
               {/* Group label — only shown expanded and when label exists */}
               {group.label && !collapsed && (
-                <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground select-none">
+                <p className="px-3 pb-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground select-none">
                   {group.labelKey ? t(group.labelKey, group.label) : group.label}
                 </p>
               )}
@@ -222,7 +222,7 @@ function SidebarContent({
                   {!collapsed && (
                     <div className="flex flex-col min-w-0">
                       <span className="text-xs font-semibold truncate">EdgeQuake</span>
-                      <span className="text-[9px] text-muted-foreground">{t('common.uiVersion', { version: APP_VERSION_NUMBER })}</span>
+                      <span className="text-xs text-muted-foreground">{t('common.uiVersion', { version: APP_VERSION_NUMBER })}</span>
                     </div>
                   )}
                 </div>

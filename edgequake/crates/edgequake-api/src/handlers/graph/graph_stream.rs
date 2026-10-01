@@ -1,6 +1,8 @@
 //! SSE streaming handler for progressive graph data loading.
 //!
 //! Contains: `stream_graph`.
+//!
+//! SPEC-155 W3: workspace-exact totals, optional `start_node` BFS, degree SSOT.
 
 use axum::{
     extract::{Query, State},
@@ -14,6 +16,10 @@ use tokio_stream::wrappers::ReceiverStream;
 use tracing::debug;
 
 use crate::error::{ApiError, TransientCongestion};
+use crate::handlers::graph::graph_dto::{
+    degrees_breakdown_batch, edge_response, graph_is_truncated, graph_node_response,
+    workspace_graph_totals,
+};
 use crate::handlers::graph_types::*;
 use crate::middleware::TenantContext;
 use crate::services::{admit_graph_materialization, run_timed_graph_query};
@@ -61,6 +67,7 @@ pub async fn stream_graph(
         workspace_id = ?tenant_ctx.workspace_id,
         max_nodes = params.max_nodes,
         batch_size = params.batch_size,
+        start_node = ?params.start_node,
         "Starting graph stream"
     );
 
@@ -113,40 +120,99 @@ pub async fn stream_graph(
             }
         };
 
-        debug!("About to query counts + nodes in parallel");
+        debug!("About to query workspace totals + nodes");
 
         let max_nodes = params_clone.max_nodes;
         let tenant_id = tenant_ctx_clone.tenant_id.clone();
         let workspace_id = tenant_ctx_clone.workspace_id.clone();
         let graph_for_query = graph_clone.clone();
-        let graph_for_node_count = graph_storage.clone();
-        let graph_for_edge_count = graph_storage.clone();
-        let graph_for_popular = graph_storage.clone();
+        let graph_for_totals = graph_storage.clone();
+        let tenant_for_totals = tenant_ctx_clone.clone();
+        let graph_for_materialize = graph_storage.clone();
         let graph_for_edges = graph_storage.clone();
+        let start_node = params_clone.start_node.clone();
 
-        let (total_nodes, total_edges, nodes_result) = tokio::join!(
-            async move { graph_for_node_count.node_count_fast().await.unwrap_or(0) },
-            async move { graph_for_edge_count.edge_count_fast().await.unwrap_or(0) },
+        let (totals_result, materialize_result) = tokio::join!(
+            async move { workspace_graph_totals(&graph_for_totals, &tenant_for_totals).await },
             async move {
                 run_timed_graph_query(&graph_for_query.budget, "graph_stream", async move {
-                    graph_for_popular
-                        .get_popular_nodes_with_degree(
-                            max_nodes,
-                            None,
-                            None,
-                            tenant_id.as_deref(),
-                            workspace_id.as_deref(),
-                        )
-                        .await
+                    if let Some(start) = start_node.as_deref() {
+                        let kg = graph_for_materialize
+                            .get_knowledge_graph(
+                                start,
+                                default_depth(),
+                                max_nodes,
+                                tenant_id.as_deref(),
+                                workspace_id.as_deref(),
+                            )
+                            .await?;
+                        let node_ids: Vec<String> =
+                            kg.nodes.iter().map(|n| n.id.clone()).collect();
+                        let degree_map =
+                            degrees_breakdown_batch(&graph_for_materialize, &node_ids).await;
+                        let nodes: Vec<GraphNodeResponse> = kg
+                            .nodes
+                            .iter()
+                            .map(|n| {
+                                let degree = degree_map
+                                    .get(&n.id)
+                                    .copied()
+                                    .unwrap_or_else(|| DegreeBreakdown::from_total(0));
+                                graph_node_response(n, degree)
+                            })
+                            .collect();
+                        let edges: Vec<GraphEdgeResponse> =
+                            kg.edges.into_iter().map(edge_response).collect();
+                        Ok::<_, edgequake_storage::error::StorageError>((nodes, Some(edges)))
+                    } else {
+                        let popular = graph_for_materialize
+                            .get_popular_nodes_with_degree(
+                                max_nodes,
+                                None,
+                                None,
+                                tenant_id.as_deref(),
+                                workspace_id.as_deref(),
+                            )
+                            .await?;
+                        let node_ids: Vec<String> =
+                            popular.iter().map(|(n, _)| n.id.clone()).collect();
+                        let degree_map =
+                            degrees_breakdown_batch(&graph_for_materialize, &node_ids).await;
+                        let nodes: Vec<GraphNodeResponse> = popular
+                            .into_iter()
+                            .map(|(node, total)| {
+                                let degree = degree_map
+                                    .get(&node.id)
+                                    .copied()
+                                    .unwrap_or_else(|| DegreeBreakdown::from_total(total));
+                                graph_node_response(&node, degree)
+                            })
+                            .collect();
+                        Ok::<_, edgequake_storage::error::StorageError>((nodes, None))
+                    }
                 })
                 .await
             }
         );
 
-        let nodes_with_degrees = match nodes_result {
-            Ok(nodes) => {
-                debug!("Query succeeded with {} nodes", nodes.len());
-                nodes
+        let (total_nodes, total_edges) = match totals_result {
+            Ok(t) => t,
+            Err(e) => {
+                let _ = tx
+                    .send(GraphStreamEvent::Error {
+                        message: e.to_string(),
+                        reason: None,
+                        retry_after_secs: None,
+                    })
+                    .await;
+                return;
+            }
+        };
+
+        let (nodes, prefetched_edges) = match materialize_result {
+            Ok(payload) => {
+                debug!("Query succeeded with {} nodes", payload.0.len());
+                payload
             }
             Err(e) => {
                 let _ = tx
@@ -161,15 +227,16 @@ pub async fn stream_graph(
         };
 
         // WHY release the guard here (SPEC-053 B2):
-        // The materialization semaphore guards the DB-intensive initial fetch
-        // (the tokio::join! above: 3 parallel connections for node_count,
-        // edge_count, popular_nodes). Once the data is in memory, streaming
-        // SSE events to the client uses no additional DB connections.
-        // Holding the permit for the entire streaming loop (seconds) starves
-        // concurrent search_nodes, traversal, and popular_labels handlers.
+        // The materialization semaphore guards the DB-intensive initial fetch.
+        // Once the data is in memory, streaming SSE events to the client uses
+        // no additional DB connections. Holding the permit for the entire
+        // streaming loop (seconds) starves concurrent search_nodes, traversal,
+        // and popular_labels handlers.
         drop(_materialize_guard);
 
-        let nodes_to_stream = nodes_with_degrees.len();
+        let nodes_to_stream = nodes.len();
+        let is_truncated =
+            graph_is_truncated(nodes_to_stream, total_nodes, params_clone.max_nodes, false);
         let total_batches = nodes_to_stream.div_ceil(params_clone.batch_size);
 
         // Send metadata event
@@ -179,6 +246,7 @@ pub async fn stream_graph(
                 total_edges,
                 nodes_to_stream,
                 edges_to_stream: 0, // Will be determined after node streaming
+                is_truncated,
             })
             .await
             .is_err()
@@ -186,38 +254,12 @@ pub async fn stream_graph(
             return; // Client disconnected
         }
 
-        // Collect all node IDs for edge fetching
-        let all_node_ids: Vec<String> = nodes_with_degrees
-            .iter()
-            .map(|(n, _)| n.id.clone())
-            .collect();
+        // Collect all node IDs for edge fetching (popular path)
+        let all_node_ids: Vec<String> = nodes.iter().map(|n| n.id.clone()).collect();
 
         // Stream nodes in batches
-        for (batch_idx, chunk) in nodes_with_degrees
-            .chunks(params_clone.batch_size)
-            .enumerate()
-        {
-            let batch_nodes: Vec<GraphNodeResponse> = chunk
-                .iter()
-                .map(|(node, degree)| GraphNodeResponse {
-                    id: node.id.clone(),
-                    label: crate::handlers::graph::graph_node_label(node),
-                    node_type: node
-                        .properties
-                        .get("entity_type")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("UNKNOWN")
-                        .to_string(),
-                    description: node
-                        .properties
-                        .get("description")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("")
-                        .to_string(),
-                    degree: *degree,
-                    properties: serde_json::to_value(&node.properties).unwrap_or_default(),
-                })
-                .collect();
+        for (batch_idx, chunk) in nodes.chunks(params_clone.batch_size).enumerate() {
+            let batch_nodes: Vec<GraphNodeResponse> = chunk.to_vec();
 
             if tx
                 .send(GraphStreamEvent::Nodes {
@@ -235,32 +277,31 @@ pub async fn stream_graph(
             tokio::task::yield_now().await;
         }
 
-        // Fetch and stream edges (optimized batch query)
-        let edges = match graph_for_edges
-            .get_edges_for_node_set(
-                &all_node_ids,
-                tenant_ctx_clone.tenant_id.as_deref(),
-                tenant_ctx_clone.workspace_id.as_deref(),
-            )
-            .await
-        {
-            Ok(e) => e,
-            Err(e) => {
-                let _ = tx
-                    .send(GraphStreamEvent::Error {
-                        message: format!("Failed to fetch edges: {}", e),
-                        reason: None,
-                        retry_after_secs: None,
-                    })
-                    .await;
-                return;
+        // Edges: prefer BFS prefetch; otherwise batch-fetch for popular nodes.
+        let edge_responses: Vec<GraphEdgeResponse> = if let Some(edges) = prefetched_edges {
+            edges
+        } else {
+            match graph_for_edges
+                .get_edges_for_node_set(
+                    &all_node_ids,
+                    tenant_ctx_clone.tenant_id.as_deref(),
+                    tenant_ctx_clone.workspace_id.as_deref(),
+                )
+                .await
+            {
+                Ok(e) => e.into_iter().map(edge_response).collect(),
+                Err(e) => {
+                    let _ = tx
+                        .send(GraphStreamEvent::Error {
+                            message: format!("Failed to fetch edges: {}", e),
+                            reason: None,
+                            retry_after_secs: None,
+                        })
+                        .await;
+                    return;
+                }
             }
         };
-
-        let edge_responses: Vec<GraphEdgeResponse> = edges
-            .into_iter()
-            .map(GraphEdgeResponse::from_storage_edge)
-            .collect();
 
         let edges_count = edge_responses.len();
 

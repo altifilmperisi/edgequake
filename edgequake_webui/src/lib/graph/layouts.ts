@@ -113,10 +113,107 @@ function applyHierarchicalLayout(graph: Graph): void {
   });
 }
 
+/** Viewport edge (px) the spacing pass assumes when the real size is unknown. */
+const NOMINAL_VIEWPORT_PX = 700;
+const MIN_VIEWPORT_PX = 240;
+const MAX_VIEWPORT_PX = 1400;
+
+export interface LayoutOptions {
+  /**
+   * Usable canvas edge in px (shorter side minus padding). Sigma fits the graph
+   * into it, so it decides how far apart nodes must be in graph units.
+   */
+  viewportPx?: number;
+}
+
+function resolveViewportPx(options?: LayoutOptions): number {
+  const px = options?.viewportPx;
+  if (!px || !Number.isFinite(px)) return NOMINAL_VIEWPORT_PX;
+  return Math.min(MAX_VIEWPORT_PX, Math.max(MIN_VIEWPORT_PX, px));
+}
+/** Beyond this the anti-collision pass cannot converge cheaply; skip it. */
+const SPACING_PASS_MAX_NODES = 300;
+
+/** Uniformly scale + centre positions so the longest side equals `side`. */
+function rescaleToExtent(graph: Graph, side: number): void {
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minY = Infinity;
+  let maxY = -Infinity;
+  graph.forEachNode((_, a) => {
+    minX = Math.min(minX, a.x);
+    maxX = Math.max(maxX, a.x);
+    minY = Math.min(minY, a.y);
+    maxY = Math.max(maxY, a.y);
+  });
+  const extent = Math.max(maxX - minX, maxY - minY);
+  if (!Number.isFinite(extent) || extent <= 0) return;
+
+  const k = side / extent;
+  const cx = (minX + maxX) / 2;
+  const cy = (minY + maxY) / 2;
+  graph.forEachNode((id, a) => {
+    graph.setNodeAttribute(id, "x", (a.x - cx) * k);
+    graph.setNodeAttribute(id, "y", (a.y - cy) * k);
+  });
+}
+
+/**
+ * Spread a settled force layout so node discs (sized in px by Sigma) do not
+ * sit on top of each other. Sigma fits the graph extent to the viewport, so the
+ * graph-unit radius of a node is `size * extent / viewport`.
+ */
+function applySpacingPass(
+  graph: Graph,
+  mode: GraphLayoutMode,
+  options?: LayoutOptions,
+): void {
+  if (graph.order < 2 || graph.order > SPACING_PASS_MAX_NODES) return;
+
+  const viewport = resolveViewportPx(options);
+  // Grow the layout area with node count and with how cramped the canvas is.
+  const side = Math.max(500, Math.sqrt(graph.order) * 110 * (NOMINAL_VIEWPORT_PX / viewport));
+  rescaleToExtent(graph, side);
+  noverlap.assign(graph, {
+    maxIterations: getNoverlapIterations(graph.order, mode),
+    settings: {
+      margin: 4,
+      ratio: side / viewport,
+      expansion: 1.05,
+      gridSize: graph.order > 100 ? 20 : 1,
+      speed: 3,
+    },
+  });
+}
+
+function applyForceAtlas2Layout(
+  graph: Graph,
+  mode: GraphLayoutMode,
+  options?: LayoutOptions,
+): void {
+  const inferred = forceAtlas2.inferSettings(graph);
+
+  forceAtlas2.assign(graph, {
+    iterations: getForceAtlas2Iterations(graph.order, mode),
+    settings: {
+      ...inferred,
+      gravity: 1,
+      scalingRatio: 2,
+      strongGravityMode: true,
+      barnesHutOptimize: graph.order > 50,
+      barnesHutTheta: graph.order > 200 ? 0.7 : 0.6,
+      slowDown: mode === "streaming" ? 2.5 : 2,
+      edgeWeightInfluence: 0.5,
+    },
+  });
+  applySpacingPass(graph, mode, options);
+}
+
 export function applyLayoutToGraph(
   graph: Graph,
   layout: GraphLayoutType,
   mode: GraphLayoutMode = "initial",
+  options?: LayoutOptions,
 ): void {
   switch (layout) {
     case "circular":
@@ -165,23 +262,8 @@ export function applyLayoutToGraph(
       return;
 
     case "force":
-    default: {
-      const inferred = forceAtlas2.inferSettings(graph);
-
-      forceAtlas2.assign(graph, {
-        iterations: getForceAtlas2Iterations(graph.order, mode),
-        settings: {
-          ...inferred,
-          gravity: 1,
-          scalingRatio: 2,
-          strongGravityMode: true,
-          barnesHutOptimize: graph.order > 50,
-          barnesHutTheta: graph.order > 200 ? 0.7 : 0.6,
-          slowDown: mode === "streaming" ? 2.5 : 2,
-          edgeWeightInfluence: 0.5,
-        },
-      });
-    }
+    default:
+      applyForceAtlas2Layout(graph, mode, options);
   }
 }
 
@@ -189,9 +271,10 @@ export function calculateLayoutPositions(
   graph: Graph,
   layout: GraphLayoutType,
   mode: GraphLayoutMode = "initial",
+  options?: LayoutOptions,
 ): LayoutPositions {
   const tempGraph = graph.copy();
-  applyLayoutToGraph(tempGraph, layout, mode);
+  applyLayoutToGraph(tempGraph, layout, mode, options);
 
   const positions: LayoutPositions = {};
   tempGraph.forEachNode((nodeId) => {

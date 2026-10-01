@@ -154,11 +154,11 @@ export function MergeTargetCombobox({
                           <span className="truncate text-sm font-medium">
                             {candidate.label}
                           </span>
-                          <Badge variant="outline" className="text-[10px]">
+                          <Badge variant="outline" className="text-xs">
                             {candidate.entity_type}
                           </Badge>
                           {isRecommended && (
-                            <Badge variant="secondary" className="text-[10px]">
+                            <Badge variant="secondary" className="text-xs">
                               Recommended
                             </Badge>
                           )}

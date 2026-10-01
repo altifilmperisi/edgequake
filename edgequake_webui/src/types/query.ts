@@ -144,6 +144,8 @@ export interface QueryContext {
     /** Original file path for citation display */
     source_file_path?: string;
   }>;
+  /** Optional structured subgraph retained for answer-on-graph (SPEC-155 W6). */
+  subgraph?: SubgraphBundle;
 }
 
 export interface QueryResponse {

@@ -108,7 +108,7 @@ export function WorkspaceActionsCard({
               {t("workspace.id", "Workspace ID")}
             </dt>
             <dd>
-              <code className="block truncate font-mono text-[11px]" title={workspace.id}>
+              <code className="block truncate font-mono text-xs" title={workspace.id}>
                 {workspace.id}
               </code>
             </dd>
@@ -118,7 +118,7 @@ export function WorkspaceActionsCard({
               {t("workspace.slug", "Slug")}
             </dt>
             <dd>
-              <code className="font-mono text-[11px]">
+              <code className="font-mono text-xs">
                 {workspace.slug || "-"}
               </code>
             </dd>

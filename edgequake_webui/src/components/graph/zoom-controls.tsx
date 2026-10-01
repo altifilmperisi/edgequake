@@ -142,7 +142,7 @@ export function ZoomControls() {
   return (
     <TooltipProvider>
       <div 
-        className="flex flex-col gap-1 bg-background/95 backdrop-blur-sm rounded-lg border border-border/50 shadow-lg p-1 hover:shadow-xl transition-shadow duration-200"
+        className="flex flex-col gap-1 graph-overlay-surface rounded-lg p-1"
         role="toolbar"
         aria-label={t('graph.controls.title', 'Graph controls')}
         data-tour="zoom-controls"
@@ -162,7 +162,7 @@ export function ZoomControls() {
           </TooltipTrigger>
           <TooltipContent side="left" className="flex items-center gap-2">
             <span>{t('graph.zoomIn', 'Zoom In')}</span>
-            <kbd className="px-1.5 py-0.5 text-[10px] font-mono bg-background/20 rounded border border-background/10">+</kbd>
+            <kbd className="px-1.5 py-0.5 text-xs font-mono bg-background/20 rounded border border-background/10">+</kbd>
           </TooltipContent>
         </Tooltip>
 
@@ -180,7 +180,7 @@ export function ZoomControls() {
           </TooltipTrigger>
           <TooltipContent side="left" className="flex items-center gap-2">
             <span>{t('graph.zoomOut', 'Zoom Out')}</span>
-            <kbd className="px-1.5 py-0.5 text-[10px] font-mono bg-background/20 rounded border border-background/10">-</kbd>
+            <kbd className="px-1.5 py-0.5 text-xs font-mono bg-background/20 rounded border border-background/10">-</kbd>
           </TooltipContent>
         </Tooltip>
 
@@ -239,7 +239,7 @@ export function ZoomControls() {
             </TooltipTrigger>
             <TooltipContent side="left" className="flex items-center gap-2">
               <span>{t('graph.focusOnNode', 'Focus on Selected')}</span>
-              <kbd className="px-1.5 py-0.5 text-[10px] font-mono bg-background/20 rounded border border-background/10">Enter</kbd>
+              <kbd className="px-1.5 py-0.5 text-xs font-mono bg-background/20 rounded border border-background/10">Enter</kbd>
             </TooltipContent>
           </Tooltip>
         )}
@@ -259,7 +259,7 @@ export function ZoomControls() {
           </TooltipTrigger>
           <TooltipContent side="left" className="flex items-center gap-2">
             <span>{t('graph.resetZoom', 'Reset View')}</span>
-            <kbd className="px-1.5 py-0.5 text-[10px] font-mono bg-background/20 rounded border border-background/10">0</kbd>
+            <kbd className="px-1.5 py-0.5 text-xs font-mono bg-background/20 rounded border border-background/10">0</kbd>
           </TooltipContent>
         </Tooltip>
 
@@ -286,7 +286,7 @@ export function ZoomControls() {
             <span>{isFullscreen
               ? t('graph.exitFullscreen', 'Exit Fullscreen')
               : t('graph.enterFullscreen', 'Fullscreen')}</span>
-            <kbd className="px-1.5 py-0.5 text-[10px] font-mono bg-background/20 rounded border border-background/10">F</kbd>
+            <kbd className="px-1.5 py-0.5 text-xs font-mono bg-background/20 rounded border border-background/10">F</kbd>
           </TooltipContent>
         </Tooltip>
       </div>

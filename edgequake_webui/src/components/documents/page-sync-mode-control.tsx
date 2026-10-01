@@ -98,7 +98,7 @@ export function PageSyncModeControl({
                   aria-label={t(MODE_ARIA_KEY[option], MODE_ARIA_FALLBACK[option])}
                   data-testid={`${testId}-${option}`}
                   className={cn(
-                    compact ? 'h-6 px-1.5 text-[11px] leading-none' : 'h-8 px-2 text-xs',
+                    compact ? 'h-6 px-1.5 text-xs leading-none' : 'h-8 px-2 text-xs',
                     'font-medium',
                   )}
                   onClick={() => onModeChange(option)}

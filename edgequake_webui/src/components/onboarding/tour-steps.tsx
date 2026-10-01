@@ -67,7 +67,7 @@ export const GRAPH_TOUR_STEPS: TourStep[] = [
     content: (
       <>
         <p>Find any entity instantly. Start typing to search by name, type, or description.</p>
-        <p className="mt-2 text-xs">Tip: Press <kbd className="px-1 py-0.5 bg-muted rounded text-[10px]">⌘K</kbd> for quick access!</p>
+        <p className="mt-2 text-xs">Tip: Press <kbd className="px-1 py-0.5 bg-muted rounded text-xs">⌘K</kbd> for quick access!</p>
       </>
     ),
     placement: 'bottom',
@@ -129,7 +129,7 @@ export const GRAPH_TOUR_STEPS: TourStep[] = [
     content: (
       <>
         <p>Power users love keyboard shortcuts! Click this button to see all available shortcuts.</p>
-        <p className="mt-2 text-xs">Try using <kbd className="px-1 py-0.5 bg-muted rounded text-[10px]">Tab</kbd> to navigate between nodes!</p>
+        <p className="mt-2 text-xs">Try using <kbd className="px-1 py-0.5 bg-muted rounded text-xs">Tab</kbd> to navigate between nodes!</p>
       </>
     ),
     placement: 'bottom',

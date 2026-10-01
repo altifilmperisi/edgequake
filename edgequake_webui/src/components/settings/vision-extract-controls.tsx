@@ -168,7 +168,7 @@ export function VisionExtractControls({
           <p className="text-xs font-medium text-muted-foreground">
             {t('documents.upload.visionExtract.modalities', 'Extract')}
           </p>
-          <p className="text-[11px] text-muted-foreground mt-0.5">
+          <p className="text-xs text-muted-foreground mt-0.5">
             {t(
               scope === 'workspace'
                 ? 'onboarding.visionExtractModalitiesHint'
@@ -197,7 +197,7 @@ export function VisionExtractControls({
                 <span className="block text-sm font-medium leading-none">
                   {t(`documents.upload.visionExtract.${key}`, label)}
                 </span>
-                <span className="block text-[11px] text-muted-foreground mt-1 leading-snug">
+                <span className="block text-xs text-muted-foreground mt-1 leading-snug">
                   {t(`documents.upload.visionExtract.hint.${key}`, hint)}
                 </span>
               </span>
@@ -240,7 +240,7 @@ export function VisionExtractControls({
 
         {promptsOpen ? (
           <div className="space-y-3" data-testid="vision-extract-prompts">
-            <p className="text-[11px] text-muted-foreground leading-relaxed">
+            <p className="text-xs text-muted-foreground leading-relaxed">
               {t(
                 'documents.upload.visionExtract.promptIntro',
                 'What you see is the system prompt Vision uses. Edit to override; Reset restores the built-in default.',
@@ -257,7 +257,7 @@ export function VisionExtractControls({
                       </Label>
                       <span
                         className={cn(
-                          'text-[10px] uppercase tracking-wide shrink-0',
+                          'text-xs uppercase tracking-wide shrink-0',
                           custom
                             ? 'text-foreground'
                             : 'text-muted-foreground',
@@ -424,14 +424,14 @@ export function VisionSettingsPanel({
             <h4 className="text-sm font-medium leading-none">
               {t('documents.upload.visionSettingsHeading', 'Vision settings')}
             </h4>
-            <p className="text-[11px] text-muted-foreground leading-relaxed">
+            <p className="text-xs text-muted-foreground leading-relaxed">
               {t(
                 'documents.upload.visionSettingsSubheading',
                 'Applies to this upload only. Workspace defaults stay unchanged.',
               )}
             </p>
             {scent ? (
-              <p className="text-[11px] text-foreground/80 pt-1">{scent}</p>
+              <p className="text-xs text-foreground/80 pt-1">{scent}</p>
             ) : null}
           </div>
           <VisionExtractControls

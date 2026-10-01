@@ -13,53 +13,36 @@ import {
     TooltipContent,
     TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { exportGraphImage } from '@/lib/graph/engine';
 import { useGraphStore } from '@/stores/use-graph-store';
 import { Download, FileCode, FileJson, ImageIcon } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
+import { useShallow } from 'zustand/react/shallow';
 
 export function GraphExport() {
   const { t } = useTranslation();
-  const { nodes, edges } = useGraphStore();
+  const { nodes, edges, sigmaInstance } = useGraphStore(
+    useShallow((s) => ({
+      nodes: s.nodes,
+      edges: s.edges,
+      sigmaInstance: s.sigmaInstance,
+    })),
+  );
 
   const exportAsPNG = async () => {
     try {
-      // Find the sigma canvas element
-      const container = document.querySelector('[data-graph-container] canvas, .sigma-container canvas');
-      if (!container) {
+      if (!sigmaInstance) {
         toast.error(t('graph.export.noCanvas', 'No graph canvas found'));
         return;
       }
-
-      const canvas = container as HTMLCanvasElement;
-      
-      // Create a new canvas with white background for better visibility
-      const exportCanvas = document.createElement('canvas');
-      exportCanvas.width = canvas.width;
-      exportCanvas.height = canvas.height;
-      const ctx = exportCanvas.getContext('2d');
-      
-      if (ctx) {
-        // White background
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect(0, 0, exportCanvas.width, exportCanvas.height);
-        // Draw the graph
-        ctx.drawImage(canvas, 0, 0);
+      // G04: @sigma/export-image — never grab the first canvas alone
+      const result = await exportGraphImage(sigmaInstance, { format: 'png' });
+      if (!result.ok) {
+        toast.error(t('graph.export.failed', 'Export failed'));
+        return;
       }
-
-      exportCanvas.toBlob((blob) => {
-        if (!blob) {
-          toast.error(t('graph.export.failed', 'Export failed'));
-          return;
-        }
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `edgequake-graph-${Date.now()}.png`;
-        a.click();
-        URL.revokeObjectURL(url);
-        toast.success(t('graph.export.pngSuccess', 'Graph exported as PNG'));
-      }, 'image/png');
+      toast.success(t('graph.export.pngSuccess', 'Graph exported as PNG'));
     } catch (error) {
       console.error('PNG export error:', error);
       toast.error(t('graph.export.failed', 'Export failed'));
@@ -67,8 +50,6 @@ export function GraphExport() {
   };
 
   const exportAsSVG = async () => {
-    // SVG export is more complex and requires specialized libraries
-    // For now, show info message
     toast.info(t('graph.export.svgComingSoon', 'SVG export coming soon'));
   };
 
@@ -135,7 +116,7 @@ export function GraphExport() {
         <TooltipContent side="bottom">
           <div className="space-y-1">
             <div className="font-medium text-xs">{t('graph.export.title', 'Export Graph')}</div>
-            <p className="text-[10px] text-muted-foreground">Save as PNG, SVG, or JSON</p>
+            <p className="text-xs text-muted-foreground">Save as PNG, SVG, or JSON</p>
           </div>
         </TooltipContent>
       </Tooltip>

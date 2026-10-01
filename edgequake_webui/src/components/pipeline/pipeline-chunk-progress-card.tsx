@@ -47,7 +47,7 @@ export function PipelineChunkProgressCard() {
           <Layers className="h-5 w-5" />
           Chunk Progress
           {hasActiveProgress && (
-            <Badge variant="outline" className="text-blue-500 border-blue-500 animate-pulse">
+            <Badge variant="outline" className="text-blue-600 dark:text-blue-400 border-blue-500">
               <Loader2 className="h-3 w-3 mr-1 animate-spin" />
               Live
             </Badge>
@@ -95,7 +95,11 @@ export function PipelineChunkProgressCard() {
                         ETA: {formatDurationSeconds(progress.etaSeconds)}
                       </span>
                     </div>
-                    <Progress value={progress.percentComplete} className="h-2" />
+                    <Progress
+                      aria-label="Chunk extraction progress"
+                      value={progress.percentComplete}
+                      className="h-2"
+                    />
                   </div>
 
                   {progress.chunkPreview && (

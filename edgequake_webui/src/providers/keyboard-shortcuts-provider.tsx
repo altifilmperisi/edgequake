@@ -1,5 +1,6 @@
 'use client';
 
+import { CommandPalette } from '@/components/shared/command-palette';
 import { KeyboardShortcutsDialog } from '@/components/shared/keyboard-shortcuts-dialog';
 import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts';
 import { createContext, useContext, type ReactNode } from 'react';
@@ -28,7 +29,7 @@ interface KeyboardShortcutsProviderProps {
 }
 
 /**
- * Provider component that enables global keyboard shortcuts and manages the help dialog
+ * Single mount for global keyboard shortcuts + Cmd+K palette (SPEC-155 F-155-S01/S02).
  */
 export function KeyboardShortcutsProvider({ children }: KeyboardShortcutsProviderProps) {
   const {
@@ -54,6 +55,7 @@ export function KeyboardShortcutsProvider({ children }: KeyboardShortcutsProvide
     >
       {children}
       <KeyboardShortcutsDialog open={helpOpen} onOpenChange={setHelpOpen} />
+      <CommandPalette />
     </KeyboardShortcutsContext.Provider>
   );
 }

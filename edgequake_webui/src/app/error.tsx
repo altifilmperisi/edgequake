@@ -41,12 +41,12 @@ export default function Error({
       <div className="space-y-1">
         <h2 className="text-lg font-semibold">Something went wrong</h2>
         <p className="text-sm text-muted-foreground max-w-md">
-          {error.message ||
-            'An unexpected error occurred while loading this page.'}
+          An unexpected error occurred while loading this page. You can try again
+          or return to the dashboard.
         </p>
         {error.digest && (
           <p className="text-xs text-muted-foreground">
-            Error ID: {error.digest}
+            Reference: {error.digest}
           </p>
         )}
       </div>

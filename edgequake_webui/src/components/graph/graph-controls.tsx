@@ -52,8 +52,9 @@ export function GraphControls() {
             <Button
               variant="outline"
               size="icon"
-              className="bg-background/95 backdrop-blur-sm shadow-lg border-border/50 hover:bg-accent hover:border-primary/30 hover:shadow-xl transition-all duration-200"
+              className="h-9 w-9 graph-overlay-surface hover:bg-accent hover:border-primary/30 transition-all duration-200"
               onClick={() => setIsExpanded(true)}
+              aria-label="Graph Settings"
             >
               <Settings2 className="h-4 w-4" />
             </Button>
@@ -67,7 +68,7 @@ export function GraphControls() {
   }
 
   return (
-    <Card className="w-56 shadow-lg bg-background/95 backdrop-blur-sm">
+    <Card className="w-56 graph-overlay-surface shadow-md">
       <CardHeader className="py-2 px-3">
         <div className="flex items-center justify-between">
           <CardTitle className="text-xs font-medium flex items-center gap-1.5">
@@ -77,7 +78,7 @@ export function GraphControls() {
           <Button
             variant="ghost"
             size="icon"
-            className="h-5 w-5"
+            className="h-8 w-8"
             onClick={() => setIsExpanded(false)}
           >
             <X className="h-3 w-3" />
@@ -124,8 +125,8 @@ export function GraphControls() {
           {/* Node Size */}
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
-              <span className="text-[11px] text-muted-foreground">Node Size</span>
-              <span className="text-[10px] font-medium bg-muted px-1.5 py-0.5 rounded">
+              <span className="text-xs text-muted-foreground">Node Size</span>
+              <span className="text-xs font-medium bg-muted px-1.5 py-0.5 rounded">
                 {graphSettings.nodeSize}
               </span>
             </div>
@@ -149,7 +150,7 @@ export function GraphControls() {
           {/* Color By */}
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
-              <span className="text-[11px] text-muted-foreground">Color By</span>
+              <span className="text-xs text-muted-foreground">Color By</span>
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -192,7 +193,7 @@ export function GraphControls() {
 
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <span className="text-[11px] text-muted-foreground">Show Labels</span>
+              <span className="text-xs text-muted-foreground">Show Labels</span>
               <Switch
                 checked={graphSettings.showLabels ?? true}
                 onCheckedChange={(checked) => setGraphSettings({ showLabels: checked })}
@@ -201,7 +202,7 @@ export function GraphControls() {
             </div>
 
             <div className="flex items-center justify-between">
-              <span className="text-[11px] text-muted-foreground">Show Edge Labels</span>
+              <span className="text-xs text-muted-foreground">Show Edge Labels</span>
               <Switch
                 checked={graphSettings.showEdgeLabels ?? false}
                 onCheckedChange={(checked) => setGraphSettings({ showEdgeLabels: checked })}
@@ -210,7 +211,7 @@ export function GraphControls() {
             </div>
 
             <div className="flex items-center justify-between">
-              <span className="text-[11px] text-muted-foreground">Enable Node Drag</span>
+              <span className="text-xs text-muted-foreground">Enable Node Drag</span>
               <Switch
                 checked={graphSettings.enableNodeDrag ?? true}
                 onCheckedChange={(checked) => setGraphSettings({ enableNodeDrag: checked })}
@@ -219,7 +220,7 @@ export function GraphControls() {
             </div>
 
             <div className="flex items-center justify-between">
-              <span className="text-[11px] text-muted-foreground">Highlight Neighbors</span>
+              <span className="text-xs text-muted-foreground">Highlight Neighbors</span>
               <Switch
                 checked={graphSettings.highlightNeighbors ?? true}
                 onCheckedChange={(checked) => setGraphSettings({ highlightNeighbors: checked })}
@@ -228,7 +229,7 @@ export function GraphControls() {
             </div>
 
             <div className="flex items-center justify-between">
-              <span className="text-[11px] text-muted-foreground">Hide Unselected Edges</span>
+              <span className="text-xs text-muted-foreground">Hide Unselected Edges</span>
               <Switch
                 checked={graphSettings.hideUnselectedEdges ?? false}
                 onCheckedChange={(checked) => setGraphSettings({ hideUnselectedEdges: checked })}

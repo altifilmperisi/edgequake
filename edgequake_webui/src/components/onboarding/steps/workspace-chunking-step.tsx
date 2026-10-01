@@ -49,7 +49,7 @@ export function WorkspaceChunkingStep({
       />
 
       <aside
-        className="rounded-lg border border-dashed bg-muted/20 px-3 py-2.5 text-[11px] leading-relaxed text-muted-foreground"
+        className="rounded-lg border border-dashed bg-muted/20 px-3 py-2.5 text-xs leading-relaxed text-muted-foreground"
         data-testid="wizard-chunking-extract-hint"
       >
         {t(

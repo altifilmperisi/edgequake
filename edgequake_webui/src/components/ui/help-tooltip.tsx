@@ -78,9 +78,9 @@ export function HelpTooltip({
                 {shortcuts.map((key, index) => (
                   <React.Fragment key={key}>
                     {index > 0 && (
-                      <span className="text-[10px] text-muted-foreground">then</span>
+                      <span className="text-xs text-muted-foreground">then</span>
                     )}
-                    <kbd className="px-1.5 py-0.5 text-[10px] font-mono bg-foreground/15 rounded border border-foreground/20 text-foreground">
+                    <kbd className="px-1.5 py-0.5 text-xs font-mono bg-foreground/15 rounded border border-foreground/20 text-foreground">
                       {key}
                     </kbd>
                   </React.Fragment>
@@ -128,19 +128,19 @@ export function FeatureTooltip({
         <div className="space-y-2">
           <div>
             <h4 className="font-medium text-xs mb-0.5 text-foreground">{title}</h4>
-            <p className="text-[11px] text-muted-foreground leading-relaxed">{description}</p>
+            <p className="text-xs text-muted-foreground leading-relaxed">{description}</p>
           </div>
           {shortcuts && shortcuts.length > 0 && (
             <div className="pt-2 border-t border-foreground/25">
               <div className="flex items-center gap-1.5 mb-1.5">
                 <Keyboard className="h-3 w-3 text-muted-foreground" aria-hidden="true" />
-                <span className="text-[10px] font-medium text-foreground/90">
+                <span className="text-xs font-medium text-foreground/90">
                   Keyboard Shortcuts
                 </span>
               </div>
               <div className="grid gap-1">
                 {shortcuts.map(({ key, action }) => (
-                  <div key={key} className="flex items-center justify-between gap-4 text-[10px]">
+                  <div key={key} className="flex items-center justify-between gap-4 text-xs">
                     <span className="text-muted-foreground">{action}</span>
                     <kbd className="px-1.5 py-0.5 font-mono bg-foreground/15 rounded border border-foreground/20 shrink-0 text-foreground">
                       {key}
@@ -170,7 +170,7 @@ export function ShortcutHint({ shortcut, action }: ShortcutHintProps) {
   return (
     <div className="inline-flex items-center gap-2 text-xs text-muted-foreground">
       <span>{action}</span>
-      <kbd className="px-1.5 py-0.5 font-mono text-[10px] bg-muted rounded border">
+      <kbd className="px-1.5 py-0.5 font-mono text-xs bg-muted rounded border">
         {shortcut}
       </kbd>
     </div>

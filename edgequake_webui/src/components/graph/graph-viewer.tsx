@@ -22,6 +22,13 @@
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { ResizablePanel } from '@/components/ui/resizable-panel';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
@@ -38,19 +45,28 @@ import { useGraphStream } from '@/hooks/use-graph-stream';
 import { useMediaQuery } from '@/hooks/use-media-query';
 import { deleteEntity, getGraph } from '@/lib/api/edgequake';
 import { focusCameraOnNode } from '@/lib/graph/camera-utils';
+import {
+  filterGraphData,
+  resolveTruncationInfo,
+  type GraphFiltersState,
+} from '@/lib/graph/engine';
 import { formatEntityLabel } from '@/lib/graph/label-utils';
 import { useGraphStore } from '@/stores/use-graph-store';
 import { useTenantStore } from '@/stores/use-tenant-store';
 import type { GraphNode } from '@/types';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertCircle, ChevronLeft, ChevronRight, Filter, Loader2, Maximize2, Menu, Network, PanelRightClose, RefreshCw, Upload, ZoomIn, ZoomOut } from 'lucide-react';
+import { AlertCircle, ChevronLeft, ChevronRight, Filter, Loader2, Maximize2, Menu, MoreHorizontal, Network, PanelRightClose, RefreshCw, Table2, Upload, ZoomIn, ZoomOut } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
+import { useShallow } from 'zustand/react/shallow';
 import { GraphEmptyIllustration } from '../illustrations/graph-empty-illustration';
 import { BookmarksPanel } from './bookmarks-panel';
 import { EntityBrowserPanel } from './entity-browser-panel';
+import { fitNeighbourhood } from '@/hooks/use-neighbourhood';
+import { EgoDepthSlider } from './ego-depth-slider';
 import { GraphAccessibilityAnnouncer } from './graph-accessibility-announcer';
+import { GraphAsTable } from './graph-as-table';
 import { GraphControls } from './graph-controls';
 import { GraphDocumentFilterBar } from './graph-document-filter-bar';
 import { GraphExport } from './graph-export';
@@ -72,11 +88,14 @@ import { TimeFilter } from './time-filter';
 import { TruncationBanner, TruncationIndicator } from './truncation-banner';
 import { ZoomControls } from './zoom-controls';
 import { isAutomatedBrowser } from '@/lib/runtime/browser-detection';
+import { useAnswerGraphStore } from '@/stores/use-answer-graph-store';
 
 export function GraphViewer() {
   const { documentFilterId, setDocumentFilter } = useGraphDocumentFilterUrl();
   const isDocumentScopedRef = useRef(!!documentFilterId);
-  isDocumentScopedRef.current = !!documentFilterId;
+  useEffect(() => {
+    isDocumentScopedRef.current = !!documentFilterId;
+  }, [documentFilterId]);
 
   const {
     isDocumentScoped,
@@ -96,6 +115,7 @@ export function GraphViewer() {
   const [mobileDetailsDrawerOpen, setMobileDetailsDrawerOpen] = useState(false);
   const [mobileLegendVisible, setMobileLegendVisible] = useState(false);
   
+  // G11: selectors + useShallow — hover must not re-render the whole viewer
   const {
     nodes: allNodes,
     edges: allEdges,
@@ -114,7 +134,33 @@ export function GraphViewer() {
     visibleRelationshipTypes,
     searchQuery,
     setSearchQuery,
-  } = useGraphStore();
+    timeFilterEnabled,
+    timeFilterStart,
+    timeFilterEnd,
+  } = useGraphStore(
+    useShallow((s) => ({
+      nodes: s.nodes,
+      edges: s.edges,
+      selectedNodeId: s.selectedNodeId,
+      showNodeDetails: s.showNodeDetails,
+      rightPanelCollapsed: s.rightPanelCollapsed,
+      sigmaInstance: s.sigmaInstance,
+      setGraph: s.setGraph,
+      selectNode: s.selectNode,
+      toggleNodeDetails: s.toggleNodeDetails,
+      toggleRightPanel: s.toggleRightPanel,
+      hoverNode: s.hoverNode,
+      setLoading: s.setLoading,
+      setError: s.setError,
+      visibleEntityTypes: s.visibleEntityTypes,
+      visibleRelationshipTypes: s.visibleRelationshipTypes,
+      searchQuery: s.searchQuery,
+      setSearchQuery: s.setSearchQuery,
+      timeFilterEnabled: s.timeFilterEnabled,
+      timeFilterStart: s.timeFilterStart,
+      timeFilterEnd: s.timeFilterEnd,
+    })),
+  );
 
   const queryClient = useQueryClient();
 
@@ -122,30 +168,85 @@ export function GraphViewer() {
   const { selectedTenantId, selectedWorkspaceId } = useTenantStore();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const viewMode = searchParams.get('view') === 'table' ? 'table' : 'canvas';
+  const setEngineFocus = useGraphStore((s) => s.setEngineFocus);
 
-  // Memoize filtered nodes to prevent re-render loops
-  const filteredNodes = useMemo(() => {
-    return allNodes.filter((node) => {
-      if (!visibleEntityTypes.has(node.node_type)) return false;
-      if (searchQuery) {
-        const query = searchQuery.toLowerCase();
-        return (
-          node.label.toLowerCase().includes(query) ||
-          node.description?.toLowerCase().includes(query)
-        );
-      }
-      return true;
-    });
-  }, [allNodes, visibleEntityTypes, searchQuery]);
+  // SPEC-155 W6: answer-on-graph deep link
+  useEffect(() => {
+    const answerMessage = searchParams.get('answerMessage');
+    const focusMode = searchParams.get('focus');
+    if (!answerMessage && focusMode !== 'answer') return;
+    if (allNodes.length === 0) return;
 
-  // Memoize filtered edges
-  const filteredEdges = useMemo(() => {
-    const nodeIds = new Set(filteredNodes.map((n) => n.id));
-    return allEdges.filter((edge) => {
-      if (!visibleRelationshipTypes.has(edge.relationship_type)) return false;
-      return nodeIds.has(edge.source) && nodeIds.has(edge.target);
-    });
-  }, [allEdges, filteredNodes, visibleRelationshipTypes]);
+    const entry = answerMessage
+      ? useAnswerGraphStore.getState().getAnswer(answerMessage)
+      : useAnswerGraphStore.getState().lastAnswer;
+    if (!entry) return;
+
+    const byId = new Set(allNodes.map((n) => n.id));
+    const byLabel = new Map(
+      allNodes.map((n) => [n.label.toUpperCase(), n.id]),
+    );
+    const resolved: string[] = [];
+    for (const id of entry.nodeIds) {
+      if (byId.has(id)) resolved.push(id);
+    }
+    for (const name of entry.entityNames) {
+      const hit = byLabel.get(name.toUpperCase());
+      if (hit && !resolved.includes(hit)) resolved.push(hit);
+    }
+    if (resolved.length === 0) return;
+    setEngineFocus({ mode: 'answer', ids: resolved });
+    if (resolved[0]) selectNode(resolved[0]);
+  }, [searchParams, allNodes, setEngineFocus, selectNode]);
+
+  const toggleTableView = useCallback(() => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (viewMode === 'table') {
+      params.delete('view');
+    } else {
+      params.set('view', 'table');
+    }
+    const qs = params.toString();
+    router.replace(qs ? `/graph?${qs}` : '/graph', { scroll: false });
+  }, [router, searchParams, viewMode]);
+
+  // Engine filter payload (dim layer) — time filter included (G06)
+  const engineFilters = useMemo((): Partial<GraphFiltersState> & {
+    types: Set<string>;
+    relTypes: Set<string>;
+  } => {
+    return {
+      types: visibleEntityTypes,
+      relTypes: visibleRelationshipTypes,
+      query: searchQuery,
+      timeRange: {
+        enabled: timeFilterEnabled,
+        start: timeFilterStart,
+        end: timeFilterEnd,
+      },
+    };
+  }, [
+    visibleEntityTypes,
+    visibleRelationshipTypes,
+    searchQuery,
+    timeFilterEnabled,
+    timeFilterStart,
+    timeFilterEnd,
+  ]);
+
+  // UI-only filtered counts (empty-state); renderer gets full data + dim filters
+  const { nodes: filteredNodes } = useMemo(
+    () => filterGraphData(allNodes, allEdges, engineFilters as GraphFiltersState),
+    [allNodes, allEdges, engineFilters],
+  );
+
+  // Stream metadata for truthful truncation (G03)
+  const streamMetaRef = useRef<{
+    total_nodes: number;
+    total_edges: number;
+    is_truncated?: boolean;
+  } | null>(null);
 
   // Context menu state
   const {
@@ -233,6 +334,13 @@ export function GraphViewer() {
       if (isDocumentScopedRef.current) return;
       // Clear existing graph when new streaming starts
       clearGraphForStreaming();
+      streamMetaRef.current = {
+        total_nodes: metadata.total_nodes,
+        total_edges: metadata.total_edges,
+        is_truncated:
+          metadata.total_nodes > metadata.nodes_to_stream ||
+          metadata.total_edges > metadata.edges_to_stream,
+      };
       setStreamingProgress({
         phase: 'metadata',
         totalNodes: metadata.nodes_to_stream,
@@ -267,10 +375,19 @@ export function GraphViewer() {
         nodesLoaded: stats.nodes_count,
         edgesLoaded: stats.edges_count,
       });
+      // G03: honour server totals from stream metadata — never invert vs maxNodes
+      const meta = streamMetaRef.current;
+      const truncation = resolveTruncationInfo({
+        streamedNodes: stats.nodes_count,
+        streamedEdges: stats.edges_count,
+        totalNodes: meta?.total_nodes,
+        totalEdges: meta?.total_edges,
+        isTruncated: meta?.is_truncated,
+      });
       setTruncationInfo(
-        stats.nodes_count < maxNodes, // Assume truncated if less than max
-        stats.nodes_count,
-        stats.edges_count
+        truncation.isTruncated,
+        truncation.totalNodes,
+        truncation.totalEdges,
       );
     },
     onError: (error) => {
@@ -282,9 +399,22 @@ export function GraphViewer() {
     },
   });
 
+  // Double-click = "focus here": select and frame the node's neighbourhood.
+  const handleNodeDoubleClick = useCallback(
+    (nodeId: string) => {
+      selectNode(nodeId);
+      fitNeighbourhood(nodeId);
+    },
+    [selectNode],
+  );
+
   // Enable keyboard navigation for graph
   useGraphKeyboardNavigation({
     enabled: true,
+    onOpenContextMenu: (nodeId, x, y) => {
+      const node = allNodes.find((n) => n.id === nodeId);
+      if (node) openContextMenu(node, x, y);
+    },
     onNodeFocus: () => {
       // Node focus is handled by the hook itself
     },
@@ -351,7 +481,9 @@ export function GraphViewer() {
   // restarting it, leaving `isWorkspaceTransitioning` stuck true forever.
   const prevWorkspaceKeyRef = useRef<string>("");
   const clearGraphRef = useRef(clearGraphForStreaming);
-  clearGraphRef.current = clearGraphForStreaming;
+  useEffect(() => {
+    clearGraphRef.current = clearGraphForStreaming;
+  }, [clearGraphForStreaming]);
   const setDocumentFilterId = useGraphStore((s) => s.setDocumentFilterId);
 
   useEffect(() => {
@@ -450,11 +582,18 @@ export function GraphViewer() {
   useEffect(() => {
     if (data && !useStreaming && !isDocumentScoped) {
       setGraph(data);
-      // Update truncation info from server response
+      // Update truncation info from server response (G03)
+      const truncation = resolveTruncationInfo({
+        streamedNodes: data.nodes.length,
+        streamedEdges: data.edges.length,
+        totalNodes: data.total_nodes,
+        totalEdges: data.total_edges,
+        isTruncated: data.is_truncated,
+      });
       setTruncationInfo(
-        data.is_truncated ?? false,
-        data.total_nodes ?? data.nodes.length,
-        data.total_edges ?? data.edges.length
+        truncation.isTruncated,
+        truncation.totalNodes,
+        truncation.totalEdges,
       );
     }
   }, [data, setGraph, setTruncationInfo, useStreaming, isDocumentScoped]);
@@ -546,7 +685,7 @@ export function GraphViewer() {
   // 5. View Documents — navigate to documents page (workspace-scoped).
   // WHY: Previously used window.location.href (full page reload, loses state).
   // Using router.push preserves the Next.js client state and is faster.
-  const handleViewDocuments = useCallback((_node: GraphNode) => {
+  const handleViewDocuments = useCallback(() => {
     const searchParams = new URLSearchParams(window.location.search);
     const ws = searchParams.get('workspace');
     const destination = ws ? `/documents?workspace=${ws}` : '/documents';
@@ -624,28 +763,28 @@ export function GraphViewer() {
 
       {/* Main Graph Area */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        {/* Toolbar - compact and slick */}
+        {/* Toolbar - compact; secondary actions collapse on mobile */}
         <header 
-          className="flex items-center justify-between border-b px-2 sm:px-4 py-2 shrink-0 bg-card/50 backdrop-blur-sm"
+          className="flex items-center justify-between border-b px-2 sm:px-4 py-2 shrink-0 bg-card/90 backdrop-blur-sm"
           data-tour="graph-header"
         >
-          <div className="flex items-center gap-1.5 sm:gap-2.5">
+          <div className="flex items-center gap-1.5 sm:gap-2.5 min-w-0">
             {/* Mobile menu button */}
             {isMobile && (
               <Button 
                 variant="ghost" 
                 size="icon" 
-                className="h-7 w-7"
+                className="h-9 w-9 shrink-0"
                 onClick={() => setMobileEntityDrawerOpen(true)}
                 aria-label="Open entity browser"
               >
                 <Menu className="h-4 w-4" />
               </Button>
             )}
-            <h2 className="text-sm sm:text-base font-semibold tracking-tight">
+            <h2 className="text-sm sm:text-base font-semibold tracking-tight truncate">
               {isMobile ? 'Graph' : 'Knowledge Graph'}
             </h2>
-            {effectiveIsLoading && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
+            {effectiveIsLoading && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground shrink-0" />}
             {/* SPEC-100: always reserve count chip so load→data does not shove toolbar */}
             {!isMobile && (
               <span
@@ -658,53 +797,101 @@ export function GraphViewer() {
               </span>
             )}
           </div>
-          <div className="flex items-center gap-0.5 sm:gap-1">
+          <div className="flex items-center gap-0.5 sm:gap-1 shrink-0">
             {/* Show filter button on mobile and tablet (right panel is hidden) */}
             {isSmallScreen && (
               <Button 
                 variant="ghost" 
                 size="icon" 
-                className="h-7 w-7"
+                className="h-9 w-9"
                 onClick={() => setMobileDetailsDrawerOpen(true)}
                 aria-label="Open filters"
               >
-                <Filter className="h-3.5 w-3.5" />
+                <Filter className="h-4 w-4" />
               </Button>
             )}
-            {/* Search */}
+            {/* Search — always primary */}
             <div data-tour="graph-search"><GraphSearch /></div>
-            {/* Truncation indicator (compact) */}
-            {!isMobile && <TruncationIndicator />}
-            {/* ── View group ─────────────────── */}
-            {!isMobile && <div className="w-px h-4 bg-border/60 mx-0.5" aria-hidden="true" />}
-            <div data-tour="layout-control"><LayoutControl /></div>
-            <LayoutController />
-            {/* ── Data group ──────────────────── */}
-            {!isMobile && <div className="w-px h-4 bg-border/60 mx-0.5" aria-hidden="true" />}
-            {!isMobile && <GraphExport />}
-            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleRefetch} title="Refresh graph data">
-              <RefreshCw className="h-3.5 w-3.5" />
+            {/* Accessible table alternative (SPEC-155 W5) */}
+            <Button
+              variant={viewMode === 'table' ? 'secondary' : 'ghost'}
+              size="icon"
+              className="h-9 w-9"
+              onClick={toggleTableView}
+              title={viewMode === 'table' ? 'Show canvas' : 'Show as table'}
+              aria-label={viewMode === 'table' ? 'Show canvas' : 'Show as table'}
+              data-testid="graph-view-table-toggle"
+            >
+              {viewMode === 'table' ? (
+                <Network className="h-4 w-4" />
+              ) : (
+                <Table2 className="h-4 w-4" />
+              )}
             </Button>
-            {/* ── Settings group ─────────────── */}
-            {!isMobile && <div className="w-px h-4 bg-border/60 mx-0.5" aria-hidden="true" />}
-            {!isMobile && (
-              <GraphSettingsPanel onSettingsChange={handleSettingsChange} />
-            )}
-            {!isMobile && <div data-tour="keyboard-help"><KeyboardShortcutsHelp /></div>}
-            {/* ── Zoom group ─────────────────── */}
-            {!isMobile && (
+
+            {/* Desktop secondary toolbar (desktop only — tablet uses overflow) */}
+            {!isSmallScreen && (
               <>
+                <TruncationIndicator />
                 <div className="w-px h-4 bg-border/60 mx-0.5" aria-hidden="true" />
-                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleZoomIn} title="Zoom in">
-                  <ZoomIn className="h-3.5 w-3.5" />
+                <div data-tour="layout-control"><LayoutControl /></div>
+                <LayoutController />
+                <div className="w-px h-4 bg-border/60 mx-0.5" aria-hidden="true" />
+                <GraphExport />
+                <Button variant="ghost" size="icon" className="h-9 w-9" onClick={handleRefetch} title="Refresh graph data">
+                  <RefreshCw className="h-4 w-4" />
                 </Button>
-                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleZoomOut} title="Zoom out">
-                  <ZoomOut className="h-3.5 w-3.5" />
+                <div className="w-px h-4 bg-border/60 mx-0.5" aria-hidden="true" />
+                <GraphSettingsPanel onSettingsChange={handleSettingsChange} />
+                <div data-tour="keyboard-help"><KeyboardShortcutsHelp /></div>
+                <div className="w-px h-4 bg-border/60 mx-0.5" aria-hidden="true" />
+                <Button variant="ghost" size="icon" className="h-9 w-9" onClick={handleZoomIn} title="Zoom in">
+                  <ZoomIn className="h-4 w-4" />
                 </Button>
-                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleResetZoom} title="Fit to screen">
-                  <Maximize2 className="h-3.5 w-3.5" />
+                <Button variant="ghost" size="icon" className="h-9 w-9" onClick={handleZoomOut} title="Zoom out">
+                  <ZoomOut className="h-4 w-4" />
+                </Button>
+                <Button variant="ghost" size="icon" className="h-9 w-9" onClick={handleResetZoom} title="Fit to screen">
+                  <Maximize2 className="h-4 w-4" />
                 </Button>
               </>
+            )}
+
+            {/* Mobile/tablet overflow — layout / export / refresh / settings */}
+            {isSmallScreen && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-9 w-9"
+                    aria-label="More graph actions"
+                    data-testid="graph-toolbar-more"
+                  >
+                    <MoreHorizontal className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-48">
+                  <DropdownMenuItem onSelect={() => handleRefetch()}>
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                    Refresh
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => handleResetZoom()}>
+                    <Maximize2 className="h-4 w-4 mr-2" />
+                    Fit to screen
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <div className="px-2 py-1.5" data-tour="layout-control">
+                    <LayoutControl />
+                  </div>
+                  <div className="px-2 py-1">
+                    <GraphExport />
+                  </div>
+                  <div className="px-2 py-1">
+                    <GraphSettingsPanel onSettingsChange={handleSettingsChange} />
+                  </div>
+                </DropdownMenuContent>
+              </DropdownMenu>
             )}
           </div>
         </header>
@@ -752,7 +939,7 @@ export function GraphViewer() {
                       Your knowledge graph is empty. Upload documents to automatically extract entities and relationships.
                     </p>
                     <Button
-                      onClick={() => window.location.href = '/documents'}
+                      onClick={() => router.push('/documents')}
                     >
                       <Upload className="h-4 w-4 mr-2" />
                       Upload Documents
@@ -761,27 +948,31 @@ export function GraphViewer() {
                 )}
               </div>
             </div>
-          ) : filteredNodes.length === 0 ? (
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="text-center max-w-md px-4">
-                <div className="w-40 h-32 mx-auto mb-4 opacity-50">
-                  <GraphEmptyIllustration animate={false} />
-                </div>
-                <h3 className="text-lg font-medium">No visible nodes</h3>
-                <p className="text-sm text-muted-foreground mt-2">
-                  All entity types are hidden. Use <strong>Show All</strong> in the filters panel or click a type to show it again.
-                </p>
-              </div>
-            </div>
+          ) : viewMode === 'table' ? (
+            <GraphAsTable />
           ) : (
             <>
               <GraphRenderer
-                nodes={filteredNodes}
-                edges={filteredEdges}
+                nodes={allNodes}
+                edges={allEdges}
+                filters={engineFilters}
                 onNodeClick={selectNode}
+                onNodeDoubleClick={handleNodeDoubleClick}
+                onStageClick={() => selectNode(null)}
                 onNodeHover={hoverNode}
                 onNodeRightClick={handleNodeRightClick}
+                contextTargetId={contextMenuNode?.id ?? null}
               />
+              {filteredNodes.length === 0 ? (
+                <div className="pointer-events-none absolute inset-0 z-[5] flex items-center justify-center">
+                  <div className="rounded-lg bg-background/80 px-4 py-3 text-center shadow-sm backdrop-blur-sm">
+                    <h3 className="text-sm font-medium">No matching nodes</h3>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Adjust filters or search to reveal entities (dimmed nodes stay on the canvas).
+                    </p>
+                  </div>
+                </div>
+              ) : null}
               
               {/* Truncation Banner - Shows when graph is truncated */}
               <TruncationBanner 
@@ -830,61 +1021,55 @@ export function GraphViewer() {
             isExpanded={contextMenuNode ? expandedNodes.has(contextMenuNode.id) : false}
           />
 
-          {/* Graph Controls Overlay - Top Left */}
-          <div className="absolute top-4 left-4 flex flex-col gap-2 z-20">
-            <GraphControls />
-            <GraphTourTrigger />
-          </div>
-
-          {/* Minimap Overlay - Below controls on left side */}
-          {!isMobile && filteredNodes.length > 0 && (
-            <div className="absolute top-20 left-4 z-10">
-              <GraphMinimap width={140} height={100} />
-            </div>
-          )}
-
-          {/* Time Filter Overlay - Below Minimap on Left */}
-          {!isMobile && filteredNodes.length > 0 && (
-            <div className="absolute top-44 left-4 z-10">
-              <TimeFilter collapsed />
-            </div>
-          )}
-
-          {/* Bookmarks Panel - Below Time Filter on Left */}
-          {!isMobile && filteredNodes.length > 0 && (
-            <div className="absolute top-56 left-4 z-10">
-              <BookmarksPanel collapsed />
-            </div>
-          )}
-
-          {/* Zoom Controls Overlay - Right Side */}
-          <div className="absolute top-4 right-4 flex flex-col gap-2">
-            <ZoomControls />
-          </div>
-          
-          {/* Legend Overlay - Bottom Right (toggle on mobile) */}
-          {isMobile ? (
-            mobileLegendVisible && (
-              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20">
-                <GraphLegend />
+          {/* Graph Controls Overlay — only when canvas has data (avoid empty-state clutter) */}
+          {allNodes.length > 0 && viewMode !== 'table' && (
+            <>
+              <div
+                className="absolute top-3 left-3 z-20 flex flex-col gap-2 max-w-[min(100%-1.5rem,16rem)] pointer-events-none [&>*]:pointer-events-auto"
+                data-tour="graph-overlay-left"
+              >
+                <GraphControls />
+                <div className="graph-overlay-surface w-48 px-3 py-2.5">
+                  <EgoDepthSlider />
+                </div>
+                <GraphTourTrigger />
+                {!isMobile && filteredNodes.length > 0 && (
+                  <>
+                    <GraphMinimap width={140} height={100} />
+                    <TimeFilter collapsed />
+                    <BookmarksPanel collapsed />
+                  </>
+                )}
               </div>
-            )
-          ) : (
-            <div className="absolute bottom-4 right-4">
-              <GraphLegend />
-            </div>
-          )}
+
+              <div
+                className="absolute top-3 right-3 z-20 flex flex-col gap-2 pointer-events-none [&>*]:pointer-events-auto"
+                data-tour="graph-overlay-right"
+              >
+                <ZoomControls />
+              </div>
           
-          {/* Mobile legend toggle */}
-          {isMobile && (
-            <Button
-              variant="secondary"
-              size="sm"
-              className="absolute bottom-4 right-4 h-8 text-xs shadow-md"
-              onClick={() => setMobileLegendVisible(!mobileLegendVisible)}
-            >
-              {mobileLegendVisible ? 'Hide Legend' : 'Legend'}
-            </Button>
+              <div
+                className="absolute bottom-3 right-3 z-20 flex items-end gap-2 pointer-events-none [&>*]:pointer-events-auto"
+                data-tour="graph-overlay-bottom"
+              >
+                {isMobile ? (
+                  <>
+                    {mobileLegendVisible && <GraphLegend />}
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      className="h-9 min-w-11 text-xs shadow-md graph-overlay-surface"
+                      onClick={() => setMobileLegendVisible(!mobileLegendVisible)}
+                    >
+                      {mobileLegendVisible ? 'Hide Legend' : 'Legend'}
+                    </Button>
+                  </>
+                ) : (
+                  <GraphLegend />
+                )}
+              </div>
+            </>
           )}
         </div>
       </div>
@@ -905,7 +1090,7 @@ export function GraphViewer() {
             <div className="mt-3 flex flex-col items-center gap-1.5">
               <PanelRightClose className="h-3.5 w-3.5 text-muted-foreground" />
               <span
-                className="text-[10px] text-muted-foreground font-medium"
+                className="text-xs text-muted-foreground font-medium"
                 style={{ writingMode: 'vertical-rl', textOrientation: 'mixed' }}
               >
                 Details
@@ -964,7 +1149,7 @@ export function GraphViewer() {
                         <p className="text-xs font-medium text-muted-foreground mb-1">
                           Select a node
                         </p>
-                        <p className="text-[11px] text-muted-foreground leading-relaxed">
+                        <p className="text-xs text-muted-foreground leading-relaxed">
                           Click any node to explore its connections and sources
                         </p>
                       </div>
@@ -983,14 +1168,14 @@ export function GraphViewer() {
       
       {/* Mobile Entity Browser Drawer */}
       <Sheet open={mobileEntityDrawerOpen} onOpenChange={setMobileEntityDrawerOpen}>
-        <SheetContent side="left" size="sm" className="w-[300px] p-0">
+        <SheetContent side={isMobile ? "bottom" : "left"} size="sm" className={isMobile ? "h-[75vh] p-0 rounded-t-xl" : "w-[300px] p-0"}>
           <SheetHeader className="border-b">
             <SheetTitle className="text-sm flex items-center gap-2">
               <Network className="h-4 w-4" />
               Entity Browser
             </SheetTitle>
           </SheetHeader>
-          <ScrollArea className="h-[calc(100vh-60px)]">
+          <ScrollArea className={isMobile ? "h-[calc(75vh-60px)]" : "h-[calc(100vh-60px)]"}>
             <div className="px-5 py-4 sm:px-6">
               <EntityBrowserPanel className="w-full border-none" />
             </div>
@@ -1000,14 +1185,14 @@ export function GraphViewer() {
       
       {/* Mobile Details/Filters Drawer */}
       <Sheet open={mobileDetailsDrawerOpen} onOpenChange={setMobileDetailsDrawerOpen}>
-        <SheetContent side="right" size="sm" className="w-[300px] p-0">
+        <SheetContent side={isMobile ? "bottom" : "right"} size="sm" className={isMobile ? "h-[75vh] p-0 rounded-t-xl" : "w-[300px] p-0"}>
           <SheetHeader className="border-b">
             <SheetTitle className="text-sm flex items-center gap-2">
               <Filter className="h-4 w-4" />
               Details & Filters
             </SheetTitle>
           </SheetHeader>
-          <ScrollArea className="h-[calc(100vh-60px)]">
+          <ScrollArea className={isMobile ? "h-[calc(75vh-60px)]" : "h-[calc(100vh-60px)]"}>
             <div className="px-5 py-4 space-y-4 sm:px-6">
               {/* Node Details - Primary content when selected */}
               {selectedNode && showNodeDetails && (

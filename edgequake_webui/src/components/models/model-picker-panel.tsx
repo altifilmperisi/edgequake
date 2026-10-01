@@ -604,7 +604,7 @@ export function ModelPickerPanel({
                   <Badge
                     key={cap}
                     variant={capabilityFilters.has(cap) ? "default" : "outline"}
-                    className="cursor-pointer capitalize text-[11px]"
+                    className="cursor-pointer capitalize text-xs"
                     data-testid={`model-picker-capability-${cap}`}
                     onClick={() => toggleCapability(cap)}
                   >
@@ -667,14 +667,14 @@ export function ModelPickerPanel({
                             {opt.isLive && (
                               <Badge
                                 variant="outline"
-                                className="h-4 px-1 text-[10px] shrink-0"
+                                className="h-4 px-1 text-xs shrink-0"
                                 data-testid="model-picker-live-badge"
                               >
                                 Live
                               </Badge>
                             )}
                             {hint ? (
-                              <span className="text-[10px] text-muted-foreground shrink-0">
+                              <span className="text-xs text-muted-foreground shrink-0">
                                 {hint}
                               </span>
                             ) : null}

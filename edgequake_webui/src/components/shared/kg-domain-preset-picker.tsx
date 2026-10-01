@@ -58,14 +58,14 @@ export function KgDomainPresetPicker({
             {t('kgSchema.domainHeading', 'Domain preset')}
           </h4>
           {!compact ? (
-            <p className="text-[11px] text-muted-foreground mt-0.5">
+            <p className="text-xs text-muted-foreground mt-0.5">
               {t(
                 'kgSchema.domainHint',
                 'One click loads entity types and default relations for that domain. Blank clears the lists so you can build your own.',
               )}
             </p>
           ) : (
-            <p className="text-[11px] text-muted-foreground mt-0.5 truncate">
+            <p className="text-xs text-muted-foreground mt-0.5 truncate">
               {t(
                 'kgSchema.domainHintShort',
                 'Loads entities, relations, and typed edges. Blank starts empty.',
@@ -75,7 +75,7 @@ export function KgDomainPresetPicker({
         </div>
         {activePreset === 'custom' ? (
           <span
-            className="text-[11px] text-muted-foreground shrink-0"
+            className="text-xs text-muted-foreground shrink-0"
             data-testid="kg-schema-custom-badge"
           >
             {t('kgSchema.customActive', 'Custom schema')}
@@ -137,13 +137,13 @@ export function KgDomainPresetPicker({
               </span>
               {!compact ? (
                 <>
-                  <span className="text-[10px] text-muted-foreground tabular-nums leading-tight">
+                  <span className="text-xs text-muted-foreground tabular-nums leading-tight">
                     {isBlank
                       ? t('kgSchema.blankCounts', 'Empty slate')
                       : `${entityCount} ${t('kgSchema.entitiesShort', 'entities')} · ${relationCount} ${t('kgSchema.relationsShort', 'relations')}`}
                   </span>
                   {showRelationSamples ? (
-                    <span className="text-[10px] font-mono text-muted-foreground truncate w-full">
+                    <span className="text-xs font-mono text-muted-foreground truncate w-full">
                       {isBlank
                         ? t('kgSchema.blankSample', 'Add your own types…')
                         : `${samples}…`}
@@ -151,7 +151,7 @@ export function KgDomainPresetPicker({
                   ) : null}
                 </>
               ) : (
-                <span className="text-[10px] text-muted-foreground tabular-nums">
+                <span className="text-xs text-muted-foreground tabular-nums">
                   {isBlank
                     ? t('kgSchema.blankCountsShort', 'empty')
                     : `${entityCount}·${relationCount}`}
@@ -163,7 +163,7 @@ export function KgDomainPresetPicker({
       </div>
 
       {activePreset === 'custom' ? (
-        <p className="text-[11px] text-muted-foreground">
+        <p className="text-xs text-muted-foreground">
           {t(
             'kgSchema.customHint',
             'Lists were edited manually. Pick a domain above to reset both entity and relation defaults.',

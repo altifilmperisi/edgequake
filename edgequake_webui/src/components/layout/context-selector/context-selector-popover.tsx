@@ -161,7 +161,7 @@ export function ContextSelectorPopover({
                       <div className="min-w-0 flex-1">
                         <div className="truncate text-sm font-medium">{workspace.name}</div>
                         {workspace.slug ? (
-                          <div className="truncate font-mono text-[10px] text-muted-foreground">
+                          <div className="truncate font-mono text-xs text-muted-foreground">
                             {workspace.slug}
                           </div>
                         ) : null}

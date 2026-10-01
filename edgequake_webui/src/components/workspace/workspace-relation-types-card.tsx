@@ -97,7 +97,7 @@ export function WorkspaceRelationTypesCard({
                 ({edges.length})
               </span>
             </p>
-            <ul className="space-y-0.5 font-mono text-[11px] text-muted-foreground">
+            <ul className="space-y-0.5 font-mono text-xs text-muted-foreground">
               {edges.slice(0, 6).map((e) => (
                 <li
                   key={`${e.source}-${e.relation}-${e.target}`}

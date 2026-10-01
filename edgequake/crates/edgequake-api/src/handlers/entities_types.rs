@@ -383,8 +383,8 @@ pub struct NeighborhoodNode {
     /// Entity description.
     pub description: String,
 
-    /// Node degree (number of connections).
-    pub degree: usize,
+    /// Degree SSOT `{in, out, total}` (SPEC-155).
+    pub degree: crate::handlers::graph_types::DegreeBreakdown,
 }
 
 /// Edge in the neighborhood graph.

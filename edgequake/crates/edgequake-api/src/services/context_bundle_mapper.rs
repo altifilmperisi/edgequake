@@ -155,9 +155,16 @@ pub fn map_query_context_to_subgraph(
             let description = truncate_for_granularity(&entity.description, options.granularity);
 
             let lineage = if options.include_lineage {
+                let mut doc_ids = entity.source_document_ids.clone();
+                if doc_ids.is_empty() {
+                    if let Some(ref singular) = entity.source_document_id {
+                        doc_ids.push(singular.clone());
+                    }
+                }
                 Some(EntityLineage {
                     source_chunk_ids: entity.source_chunk_ids.clone(),
                     source_document_id: entity.source_document_id.clone(),
+                    source_document_ids: doc_ids,
                     source_file_path: entity.source_file_path.clone(),
                 })
             } else {
@@ -166,11 +173,13 @@ pub fn map_query_context_to_subgraph(
 
             ContextEntity {
                 id: format!("ent:{}", entity.name),
+                graph_node_id: entity.name.clone(),
                 name: entity.name.clone(),
                 entity_type: entity.entity_type.clone(),
                 description,
                 score: entity.score,
                 degree: entity.degree,
+                source_document_ids: entity.source_document_ids.clone(),
                 lineage,
             }
         })

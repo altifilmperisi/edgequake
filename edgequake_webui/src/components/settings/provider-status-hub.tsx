@@ -104,7 +104,7 @@ export function ProviderStatusHub({
                     {authLabel && (
                       <Badge
                         variant="outline"
-                        className="text-[10px] font-normal"
+                        className="text-xs font-normal"
                         data-testid={`provider-auth-badge-${provider.name}`}
                       >
                         {authLabel}

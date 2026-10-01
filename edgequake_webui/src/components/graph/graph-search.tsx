@@ -417,7 +417,7 @@ export function GraphSearch({ onSelect }: GraphSearchProps) {
         >
           <Search className="h-4 w-4" aria-hidden="true" />
           <span className="hidden sm:inline">{t('graph.search.placeholder')}</span>
-          <kbd className="hidden lg:inline-flex h-5 items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
+          <kbd className="hidden lg:inline-flex h-5 items-center gap-1 rounded border bg-muted px-1.5 font-mono text-xs font-medium text-muted-foreground">
             <span className="text-xs">⌘</span>K
           </kbd>
         </Button>
@@ -519,15 +519,15 @@ export function GraphSearch({ onSelect }: GraphSearchProps) {
             {/* Keyboard hints */}
             <div className="border-t px-3 py-2 text-xs text-muted-foreground flex items-center gap-4">
               <span className="flex items-center gap-1">
-                <kbd className="px-1 py-0.5 bg-muted rounded text-[10px]">↑↓</kbd>
+                <kbd className="px-1 py-0.5 bg-muted rounded text-xs">↑↓</kbd>
                 {t('graph.search.navigate', 'Navigate')}
               </span>
               <span className="flex items-center gap-1">
-                <kbd className="px-1 py-0.5 bg-muted rounded text-[10px]">↵</kbd>
+                <kbd className="px-1 py-0.5 bg-muted rounded text-xs">↵</kbd>
                 {t('graph.search.select', 'Select')}
               </span>
               <span className="flex items-center gap-1">
-                <kbd className="px-1 py-0.5 bg-muted rounded text-[10px]">esc</kbd>
+                <kbd className="px-1 py-0.5 bg-muted rounded text-xs">esc</kbd>
                 {t('common.close', 'Close')}
               </span>
             </div>

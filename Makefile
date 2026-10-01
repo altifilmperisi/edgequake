@@ -3421,6 +3421,11 @@ release-gates: ## Pre-release gate: fmt, workspace clippy, SPEC-006/018, WebUI, 
 	@chmod +x scripts/release_gates.sh
 	@./scripts/release_gates.sh
 
+# SPEC-155 additive WebUI gates (also invoked from scripts/release_gates.sh):
+#   cd edgequake_webui && bun run test:locale-parity
+#   cd edgequake_webui && bun run test:perf-budget
+#   cd edgequake_webui && PLAYWRIGHT_SKIP_STACK_CHECK=1 bun run test:e2e:spec155
+
 .PHONY: git-hygiene
 git-hygiene: ## SPEC-097 / GH-351: block fat bench artifacts and >50MiB tip blobs
 	@chmod +x tools/git-hygiene/check_no_fat_artifacts.sh

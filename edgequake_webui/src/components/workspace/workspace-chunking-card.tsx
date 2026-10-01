@@ -112,7 +112,7 @@ export function WorkspaceChunkingCard({
             </>
           ) : null}
           <p
-            className="text-[11px] text-muted-foreground"
+            className="text-xs text-muted-foreground"
             data-testid="chunking-markdown-pack-hint"
           >
             {t(
@@ -121,7 +121,7 @@ export function WorkspaceChunkingCard({
             )}
           </p>
           <p
-            className="text-[11px] text-muted-foreground"
+            className="text-xs text-muted-foreground"
             data-testid="chunking-pdf-pack-hint"
           >
             {t(
@@ -130,7 +130,7 @@ export function WorkspaceChunkingCard({
             )}
           </p>
           <p
-            className="text-[11px] text-muted-foreground"
+            className="text-xs text-muted-foreground"
             data-testid="chunking-future-only-hint"
           >
             {t(

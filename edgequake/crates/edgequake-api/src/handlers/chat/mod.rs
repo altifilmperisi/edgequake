@@ -254,6 +254,7 @@ mod tests {
             llm_provider: None,
             llm_model: None,
             answer: None,
+            subgraph: None,
         };
         let json = serde_json::to_string(&event).unwrap();
         assert!(json.contains("\"type\":\"done\""));

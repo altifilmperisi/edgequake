@@ -99,7 +99,21 @@ export const useSettingsStore = create<SettingsState>()(
 
       setTheme: (theme) => set({ theme }),
 
-      setLanguage: (language) => set({ language }),
+      setLanguage: (language) => {
+        set({ language });
+        // SPEC-155 F-155-I01: keep i18next + <html lang> in sync
+        if (typeof window !== "undefined") {
+          void import("@/lib/i18n").then(({ default: i18n }) => {
+            void i18n.changeLanguage(language);
+            document.documentElement.lang = language;
+          });
+          try {
+            localStorage.setItem("edgequake-language", language);
+          } catch {
+            /* ignore quota */
+          }
+        }
+      },
 
       setGraphSettings: (settings) =>
         set((state) => ({

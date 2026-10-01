@@ -78,7 +78,7 @@ export function PipelineTaskQueueCard() {
           {totalWaiting > 0 && (
             <Badge
               variant="outline"
-              className="text-yellow-500 border-yellow-500"
+              className="text-yellow-700 dark:text-yellow-400 border-yellow-600"
             >
               {totalWaiting} waiting
             </Badge>
@@ -151,7 +151,7 @@ export function PipelineTaskQueueCard() {
                         className="flex items-center justify-between py-1.5 px-2 rounded bg-blue-50/50 dark:bg-blue-950/30 text-xs"
                       >
                         <div className="flex items-center gap-2 min-w-0">
-                          <Loader2 className="h-3 w-3 animate-spin text-blue-500" />
+                          <Loader2 className="h-3 w-3 animate-spin text-blue-600 dark:text-blue-400" />
                           <span className="font-medium truncate max-w-32">
                             {formatTaskType(task.task_type)}
                           </span>

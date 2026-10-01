@@ -128,14 +128,14 @@ export function TypedEdgeEditor({
           <h4 className="text-sm font-medium">
             {t('kgSchema.typedEdgesHeading', 'Typed edges')}
           </h4>
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-xs text-muted-foreground">
             {t(
               'kgSchema.typedEdgesHint',
               'Associate relations with source and target entity types.',
             )}
           </p>
         </div>
-        <span className="text-[10px] text-muted-foreground tabular-nums shrink-0 pt-0.5">
+        <span className="text-xs text-muted-foreground tabular-nums shrink-0 pt-0.5">
           {edges.length}/{MAX_RELATION_EDGES}
         </span>
       </div>
@@ -149,7 +149,7 @@ export function TypedEdgeEditor({
           type="button"
           onClick={() => setLens('all')}
           className={cn(
-            'rounded-md border px-1.5 py-0.5 text-[10px]',
+            'rounded-md border px-1.5 py-0.5 text-xs',
             lens === 'all'
               ? 'border-foreground/30 bg-accent'
               : 'border-border bg-background',
@@ -164,7 +164,7 @@ export function TypedEdgeEditor({
             type="button"
             onClick={() => setLens(ent)}
             className={cn(
-              'rounded-md border px-1.5 py-0.5 text-[10px] font-mono',
+              'rounded-md border px-1.5 py-0.5 text-xs font-mono',
               lens === ent
                 ? 'border-foreground/30 bg-accent'
                 : 'border-border bg-background',
@@ -181,7 +181,7 @@ export function TypedEdgeEditor({
         data-testid="typed-edge-list"
       >
         {filtered.length === 0 ? (
-          <li className="text-[11px] text-muted-foreground italic py-2">
+          <li className="text-xs text-muted-foreground italic py-2">
             {edges.length === 0
               ? t(
                   'kgSchema.typedEdgesEmpty',
@@ -195,7 +195,7 @@ export function TypedEdgeEditor({
             return (
               <li
                 key={key}
-                className="flex items-center gap-1 rounded-md border bg-background px-2 py-1 text-[10px] font-mono"
+                className="flex items-center gap-1 rounded-md border bg-background px-2 py-1 text-xs font-mono"
                 data-testid={`typed-edge-row-${key}`}
               >
                 <span className="truncate flex-1 min-w-0">
@@ -238,7 +238,7 @@ export function TypedEdgeEditor({
       >
         <div className="grid grid-cols-3 gap-1">
           <Select value={source || undefined} onValueChange={setSource}>
-            <SelectTrigger className="h-8 text-[10px] w-full" data-testid="typed-edge-source">
+            <SelectTrigger className="h-8 text-xs w-full" data-testid="typed-edge-source">
               <SelectValue placeholder={t('kgSchema.source', 'Source')} />
             </SelectTrigger>
             <SelectContent side="top" position="popper" className="max-h-56">
@@ -250,7 +250,7 @@ export function TypedEdgeEditor({
             </SelectContent>
           </Select>
           <Select value={relation || undefined} onValueChange={setRelation}>
-            <SelectTrigger className="h-8 text-[10px] w-full" data-testid="typed-edge-relation">
+            <SelectTrigger className="h-8 text-xs w-full" data-testid="typed-edge-relation">
               <SelectValue placeholder={t('kgSchema.relation', 'Relation')} />
             </SelectTrigger>
             <SelectContent side="top" position="popper" className="max-h-56">
@@ -262,7 +262,7 @@ export function TypedEdgeEditor({
             </SelectContent>
           </Select>
           <Select value={target || undefined} onValueChange={setTarget}>
-            <SelectTrigger className="h-8 text-[10px] w-full" data-testid="typed-edge-target">
+            <SelectTrigger className="h-8 text-xs w-full" data-testid="typed-edge-target">
               <SelectValue placeholder={t('kgSchema.target', 'Target')} />
             </SelectTrigger>
             <SelectContent side="top" position="popper" className="max-h-56">

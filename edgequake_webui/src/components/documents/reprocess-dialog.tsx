@@ -311,7 +311,7 @@ function ReprocessOption({
       <div className="flex-1 min-w-0 space-y-1">
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-sm font-medium leading-tight">{label}</span>
-          <span className="text-[10px] uppercase tracking-wide rounded-full border px-1.5 py-0.5 text-muted-foreground">
+          <span className="text-xs uppercase tracking-wide rounded-full border px-1.5 py-0.5 text-muted-foreground">
             {badge}
           </span>
         </div>

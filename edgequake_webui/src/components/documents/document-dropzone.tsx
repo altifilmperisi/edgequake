@@ -214,7 +214,8 @@ export function DocumentDropzone({
         openFileDialog();
       }
     },
-    role: 'button' as const,
+    // WHY group, not button: the root hosts nested selects (axe nested-interactive).
+    role: 'group' as const,
     'aria-label': collapsed
       ? t('documents.upload.uploadCollapsed', 'Add files — click or drop')
       : t('documents.upload.uploadDrop', 'Upload files by clicking or dragging'),
@@ -245,7 +246,11 @@ export function DocumentDropzone({
             : 'border-muted-foreground/20 hover:border-primary/50 hover:bg-muted/30',
       )}
     >
-      <input {...getInputProps()} data-testid="document-dropzone-input" />
+      <input
+        {...getInputProps()}
+        aria-label={t('documents.upload.uploadDrop', 'Upload files by clicking or dragging')}
+        data-testid="document-dropzone-input"
+      />
       <div
         className={cn(
           'rounded-lg transition-all shrink-0',

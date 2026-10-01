@@ -12,14 +12,14 @@ export const PIPELINE_PHASES = [
     key: "pending",
     label: "Pending",
     icon: Clock,
-    color: "text-yellow-500",
+    color: "text-yellow-700 dark:text-yellow-400",
     bgColor: "bg-yellow-50 border-yellow-500",
   },
   {
     key: "processing",
     label: "Processing",
     icon: Zap,
-    color: "text-blue-500",
+    color: "text-blue-600 dark:text-blue-400",
     bgColor: "bg-blue-50 border-blue-500",
   },
   {
@@ -41,12 +41,12 @@ export const PIPELINE_PHASES = [
 export const PIPELINE_MESSAGE_LEVEL_CONFIG = {
   info: {
     icon: Activity,
-    color: "text-blue-500",
+    color: "text-blue-600 dark:text-blue-400",
     bgColor: "bg-blue-50 dark:bg-blue-950",
   },
   warn: {
     icon: AlertCircle,
-    color: "text-yellow-500",
+    color: "text-yellow-700 dark:text-yellow-400",
     bgColor: "bg-yellow-50 dark:bg-yellow-950",
   },
   error: {

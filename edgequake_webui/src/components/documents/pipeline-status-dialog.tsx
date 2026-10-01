@@ -86,7 +86,7 @@ function MessageItem({ message }: { message: PipelineMessage }) {
       <Icon className={`h-3 w-3 mt-0.5 shrink-0 ${config.color}`} />
       <div className="flex-1 min-w-0 overflow-hidden">
         <p className="break-words whitespace-pre-wrap">{message.message}</p>
-        <p className="text-[10px] text-muted-foreground mt-0.5">
+        <p className="text-xs text-muted-foreground mt-0.5">
           {formatDistanceToNow(new Date(message.timestamp), { addSuffix: true })}
         </p>
       </div>
@@ -166,7 +166,7 @@ function ChunkProgressSection() {
                   {progress.documentId.split('-').slice(0, 2).join('-')}...
                 </span>
               </div>
-              <Badge variant="secondary" className="text-[10px]">
+              <Badge variant="secondary" className="text-xs">
                 {progress.percentComplete}%
               </Badge>
             </div>
@@ -403,7 +403,7 @@ function ClearSummarySection({ clearStats }: { clearStats?: ClearStats }) {
       <div className={`grid ${gridClass} gap-2 text-sm`}>
         {clearStats.nodesCleared !== undefined && (
           <div className="text-center p-2 bg-white dark:bg-gray-900 rounded">
-            <p className="text-[10px] text-muted-foreground uppercase tracking-wide">
+            <p className="text-xs text-muted-foreground uppercase tracking-wide">
               Entities
             </p>
             <p className="text-lg font-bold text-green-600">
@@ -413,7 +413,7 @@ function ClearSummarySection({ clearStats }: { clearStats?: ClearStats }) {
         )}
         {clearStats.edgesCleared !== undefined && (
           <div className="text-center p-2 bg-white dark:bg-gray-900 rounded">
-            <p className="text-[10px] text-muted-foreground uppercase tracking-wide">
+            <p className="text-xs text-muted-foreground uppercase tracking-wide">
               Relations
             </p>
             <p className="text-lg font-bold text-green-600">
@@ -423,7 +423,7 @@ function ClearSummarySection({ clearStats }: { clearStats?: ClearStats }) {
         )}
         {clearStats.vectorsCleared !== undefined && (
           <div className="text-center p-2 bg-white dark:bg-gray-900 rounded">
-            <p className="text-[10px] text-muted-foreground uppercase tracking-wide">
+            <p className="text-xs text-muted-foreground uppercase tracking-wide">
               Vectors
             </p>
             <p className="text-lg font-bold text-green-600">

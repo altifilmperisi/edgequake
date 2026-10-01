@@ -121,7 +121,7 @@ export function EntityTypeFilterList({
       <div className="flex items-center justify-between gap-2 px-0.5 shrink-0">
         <p
           className={cn(
-            "text-[11px] tabular-nums leading-snug",
+            "text-xs tabular-nums leading-snug",
             noneVisible
               ? "text-amber-600 dark:text-amber-400 font-medium"
               : "text-muted-foreground",
@@ -138,7 +138,7 @@ export function EntityTypeFilterList({
               type="button"
               variant="ghost"
               size="sm"
-              className="h-7 px-2 text-[10px] font-medium"
+              className="h-7 px-2 text-xs font-medium"
               onClick={() => setVisibleEntityTypes(allTypes)}
             >
               {t("graph.showAll", "Show All")}
@@ -149,7 +149,7 @@ export function EntityTypeFilterList({
               type="button"
               variant="ghost"
               size="sm"
-              className="h-7 px-2 text-[10px] font-medium text-muted-foreground"
+              className="h-7 px-2 text-xs font-medium text-muted-foreground"
               onClick={() => setVisibleEntityTypes([])}
             >
               {t("graph.filters.hideAll", "Hide all")}
@@ -159,7 +159,7 @@ export function EntityTypeFilterList({
       </div>
 
       {noneVisible && (
-        <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-2 text-[11px] text-amber-800 dark:text-amber-200 shrink-0">
+        <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-2 text-xs text-amber-800 dark:text-amber-200 shrink-0">
           {t(
             "graph.filters.allHiddenHint",
             "All types are hidden. Show at least one category to see the graph.",
@@ -183,7 +183,7 @@ export function EntityTypeFilterList({
           )}
         >
           {filteredStats.length === 0 ? (
-            <p className="text-[11px] text-muted-foreground px-2 py-3 text-center">
+            <p className="text-xs text-muted-foreground px-2 py-3 text-center">
               {t("graph.filters.noMatchingTypes", "No matching types")}
             </p>
           ) : (
@@ -222,14 +222,14 @@ export function EntityTypeFilterList({
                     <span
                       className={cn(
                         "flex-1 truncate font-medium min-w-0",
-                        compact ? "text-[11px]" : "text-xs",
+                        compact ? "text-xs" : "text-xs",
                       )}
                     >
                       {label}
                     </span>
                     <Badge
                       variant={isVisible ? "secondary" : "outline"}
-                      className="h-5 min-w-7 px-1.5 text-[10px] font-semibold tabular-nums shrink-0 justify-center"
+                      className="h-5 min-w-7 px-1.5 text-xs font-semibold tabular-nums shrink-0 justify-center"
                     >
                       {count}
                     </Badge>

@@ -6,7 +6,8 @@ use axum::{
 };
 
 use crate::error::ApiResult;
-use crate::handlers::graph_types::GraphNodeResponse;
+use crate::handlers::graph::graph_dto::{degrees_breakdown_batch, graph_node_response};
+use crate::handlers::graph_types::{DegreeBreakdown, GraphNodeResponse};
 use crate::handlers::isolation::load_node_for_tenant_context;
 use crate::middleware::TenantContext;
 use crate::state::StorageRuntime;
@@ -32,24 +33,10 @@ pub async fn get_node(
     let node =
         load_node_for_tenant_context(storage.graph_storage.as_ref(), &node_id, &tenant_ctx).await?;
 
-    let degree = storage.graph_storage.node_degree(&node_id).await?;
+    let degree = degrees_breakdown_batch(&storage.graph_storage, std::slice::from_ref(&node_id))
+        .await
+        .remove(&node_id)
+        .unwrap_or_else(|| DegreeBreakdown::from_total(0));
 
-    Ok(Json(GraphNodeResponse {
-        id: node.id.clone(),
-        label: crate::handlers::graph::graph_node_label(&node),
-        node_type: node
-            .properties
-            .get("entity_type")
-            .and_then(|v| v.as_str())
-            .unwrap_or("UNKNOWN")
-            .to_string(),
-        description: node
-            .properties
-            .get("description")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string(),
-        degree,
-        properties: serde_json::to_value(&node.properties).unwrap_or_default(),
-    }))
+    Ok(Json(graph_node_response(&node, degree)))
 }

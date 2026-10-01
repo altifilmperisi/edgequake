@@ -9,7 +9,6 @@ import { FirstRunWizard } from '@/components/onboarding/first-run-wizard';
 import { ApiErrorBoundary } from '@/components/shared/api-error-boundary';
 import { BackendStatusBanner } from '@/components/shared/backend-status-banner';
 import { SkipLink } from '@/components/shared/skip-link';
-import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts';
 import { useWorkspaceUrl } from '@/hooks/use-workspace-url';
 import { Suspense } from 'react';
 
@@ -24,8 +23,7 @@ export default function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  // Enable global keyboard shortcuts
-  useKeyboardShortcuts();
+  // Keyboard shortcuts: mounted once in KeyboardShortcutsProvider (SPEC-155 F-155-S02)
 
   return (
     <AuthGuard>

@@ -65,6 +65,7 @@ pub fn empty_graph_response() -> KnowledgeGraphResponse {
         is_truncated: false,
         total_nodes: 0,
         total_edges: 0,
+        max_nodes: 0,
     }
 }
 

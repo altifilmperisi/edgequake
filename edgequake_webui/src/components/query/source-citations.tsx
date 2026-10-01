@@ -288,7 +288,7 @@ function PassageRow({
         {/* Row 1: passage index + content + score */}
         <div className="flex items-start gap-2">
           {/* Passage number — muted mono badge for clear hierarchy (SPEC-142: prefer reference_id) */}
-          <span className="flex-shrink-0 mt-0.5 w-5 h-5 rounded bg-muted/60 text-muted-foreground text-[9px] font-mono flex items-center justify-center select-none" aria-hidden="true">
+          <span className="flex-shrink-0 mt-0.5 w-5 h-5 rounded bg-muted/60 text-muted-foreground text-xs font-mono flex items-center justify-center select-none" aria-hidden="true">
             {chunk.reference_id ?? (chunk.chunk_index ?? chunkIdx) + 1}
           </span>
 
@@ -302,7 +302,7 @@ function PassageRow({
             {formatPassagePreview(chunk.content, fullChunkContent)}
           </p>
 
-          <span className={`text-[10px] font-semibold flex-shrink-0 mt-0.5 tabular-nums ${scoreColor}`}>
+          <span className={`text-xs font-semibold flex-shrink-0 mt-0.5 tabular-nums ${scoreColor}`}>
             {Math.round(score * 100)}%
           </span>
         </div>
@@ -312,7 +312,7 @@ function PassageRow({
           <div className="mt-1.5 pl-7 flex items-center">
             <Link
               href={pageUrl}
-              className="inline-flex items-center gap-0.5 text-[10px] font-medium text-primary/75 hover:text-primary transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50 rounded-sm"
+              className="inline-flex items-center gap-0.5 text-xs font-medium text-primary/75 hover:text-primary transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50 rounded-sm"
               title={`Open PDF at page ${chunk.page_start}`}
               aria-label={`Go to ${pageAria} in document viewer`}
               data-testid="citation-page-badge"
@@ -327,7 +327,7 @@ function PassageRow({
 
         {/* Row 2 fallback: line range for non-PDF sources */}
         {!pageUrl && chunk.start_line !== undefined && chunk.end_line !== undefined && (
-          <div className="mt-1 pl-7 text-[9px] text-muted-foreground">
+          <div className="mt-1 pl-7 text-xs text-muted-foreground">
             L{chunk.start_line}–{chunk.end_line}
           </div>
         )}
@@ -372,7 +372,7 @@ function PagePassageGroup({
           {/* Colored pill label */}
           <div className="flex items-center gap-1 bg-primary/8 dark:bg-primary/12 border border-primary/15 rounded-full px-2 py-0.5">
             <BookOpen className="h-2.5 w-2.5 text-primary/70 flex-shrink-0" aria-hidden="true" />
-            <span className="text-[10px] font-semibold text-primary/80 leading-none">
+            <span className="text-xs font-semibold text-primary/80 leading-none">
               Page {page}
             </span>
           </div>
@@ -384,7 +384,7 @@ function PagePassageGroup({
           {pageDeeplink && (
             <Link
               href={pageDeeplink}
-              className="inline-flex items-center gap-0.5 text-[10px] font-medium text-primary/70 hover:text-primary transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/40 rounded-sm"
+              className="inline-flex items-center gap-0.5 text-xs font-medium text-primary/70 hover:text-primary transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/40 rounded-sm"
               aria-label={`Open PDF at page ${page}`}
               title={`Jump to page ${page} in the document viewer`}
             >
@@ -483,7 +483,7 @@ const DocumentsTab = ({
   return (
     <div className="space-y-1.5">
       {/* Summary row */}
-      <p className="text-[10px] text-muted-foreground px-0.5">
+      <p className="text-xs text-muted-foreground px-0.5">
         {entries.length} document{entries.length !== 1 ? 's' : ''}
         {' · '}
         {totalChunks} passage{totalChunks !== 1 ? 's' : ''}
@@ -544,7 +544,7 @@ const DocumentsTab = ({
                           </span>
                           {/* Passage count pill: shows total chunks for this document */}
                           {chunks.length > 1 && (
-                            <Badge variant="outline" className="text-[9px] h-4 px-1">
+                            <Badge variant="outline" className="text-xs h-4 px-1">
                               {chunks.length}×
                             </Badge>
                           )}
@@ -611,7 +611,7 @@ const DocumentsTab = ({
                         {/* Per-document expand / collapse for docs with many passages */}
                         {hiddenCount > 0 && (
                           <button
-                            className="w-full text-[10px] text-muted-foreground hover:text-foreground flex items-center justify-center gap-1 py-1 rounded hover:bg-muted/40 transition-colors"
+                            className="w-full text-xs text-muted-foreground hover:text-foreground flex items-center justify-center gap-1 py-1 rounded hover:bg-muted/40 transition-colors"
                             onClick={() => toggleDocExpand(docId)}
                           >
                             {isExpanded ? (
@@ -670,7 +670,7 @@ const KnowledgeTab = ({
             <div className="flex items-center gap-2">
               <Sparkles className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
               <h4 className="text-xs font-semibold text-foreground">Key Topics</h4>
-              <Badge variant="secondary" className="text-[10px] h-4 px-1.5">
+              <Badge variant="secondary" className="text-xs h-4 px-1.5">
                 {entities.length}
               </Badge>
             </div>
@@ -693,11 +693,11 @@ const KnowledgeTab = ({
                         <div className="flex items-center gap-1 shrink-0">
                           {entity.entity_type &&
                             entity.entity_type !== "UNKNOWN" && (
-                              <Badge variant="secondary" className="text-[10px]">
+                              <Badge variant="secondary" className="text-xs">
                                 {entity.entity_type.toLowerCase()}
                               </Badge>
                             )}
-                          <Badge variant="outline" className="text-[10px]">
+                          <Badge variant="outline" className="text-xs">
                             {Math.round(entity.relevance * 100)}% match
                           </Badge>
                         </div>
@@ -744,7 +744,7 @@ const KnowledgeTab = ({
             <div className="flex items-center gap-2">
               <Network className="h-3.5 w-3.5 text-primary" />
               <h4 className="text-xs font-semibold text-foreground">Connections</h4>
-              <Badge variant="secondary" className="text-[10px] h-4 px-1.5">
+              <Badge variant="secondary" className="text-xs h-4 px-1.5">
                 {relationships.length}
               </Badge>
             </div>
@@ -773,7 +773,7 @@ const KnowledgeTab = ({
                         })}
                       </span>
                       <span className="text-primary/60 group-hover:text-primary transition-colors">→</span>
-                      <Badge variant="outline" className="text-[10px] px-1.5 h-4 font-normal">
+                      <Badge variant="outline" className="text-xs px-1.5 h-4 font-normal">
                         {rel.type.toLowerCase().replace(/_/g, ' ')}
                       </Badge>
                       <span className="text-primary/60 group-hover:text-primary transition-colors">→</span>
@@ -796,7 +796,7 @@ const KnowledgeTab = ({
                       </span>
                       {/* Only show score if meaningful (> 0) - graph relationships often have no similarity score */}
                       {rel.relevance > 0.01 && (
-                        <span className="ml-auto text-[10px] text-muted-foreground">
+                        <span className="ml-auto text-xs text-muted-foreground">
                           {Math.round(rel.relevance * 100)}%
                         </span>
                       )}
@@ -817,7 +817,7 @@ const KnowledgeTab = ({
                           maxLen: 80,
                         })}
                       </p>
-                      <Badge variant="secondary" className="text-[10px]">{rel.type}</Badge>
+                      <Badge variant="secondary" className="text-xs">{rel.type}</Badge>
                       {(rel.source_file_path || rel.source_document_id) && (
                         <button
                           onClick={() => rel.source_document_id && onDocumentClick?.(rel.source_document_id)}
@@ -835,7 +835,7 @@ const KnowledgeTab = ({
               {/* Expand / collapse relationship list */}
               {relationships && relationships.length > 6 && (
                 <button
-                  className="w-full text-[10px] text-muted-foreground hover:text-foreground flex items-center justify-center gap-1 py-1 rounded hover:bg-muted/40 transition-colors mt-1"
+                  className="w-full text-xs text-muted-foreground hover:text-foreground flex items-center justify-center gap-1 py-1 rounded hover:bg-muted/40 transition-colors mt-1"
                   onClick={() => setShowAllRelationships(v => !v)}
                 >
                   {showAllRelationships ? (
@@ -876,7 +876,7 @@ const ExploreTab = ({
         <div className="w-20 h-20 rounded-full bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center">
           <Network className="h-8 w-8 text-primary" />
         </div>
-        <div className="absolute -top-1 -right-1 w-6 h-6 rounded-full bg-primary text-primary-foreground text-[10px] font-semibold flex items-center justify-center">
+        <div className="absolute -top-1 -right-1 w-6 h-6 rounded-full bg-primary text-primary-foreground text-xs font-semibold flex items-center justify-center">
           {entityCount}
         </div>
       </div>
@@ -982,7 +982,7 @@ export function SourceCitations({
                   <FileText className="h-3 w-3" aria-hidden="true" />
                   <span>Docs</span>
                   {Object.keys(chunksByDocument).length > 0 && (
-                    <Badge variant="secondary" className="text-[9px] h-3.5 px-1 ml-0.5 hidden sm:flex">
+                    <Badge variant="secondary" className="text-xs h-3.5 px-1 ml-0.5 hidden sm:flex">
                       {Object.keys(chunksByDocument).length}
                     </Badge>
                   )}
@@ -991,7 +991,7 @@ export function SourceCitations({
                   <Brain className="h-3 w-3" aria-hidden="true" />
                   <span>Topics</span>
                   {(topicCount + (context.relationships?.length ?? 0)) > 0 && (
-                    <Badge variant="secondary" className="text-[9px] h-3.5 px-1 ml-0.5 hidden sm:flex">
+                    <Badge variant="secondary" className="text-xs h-3.5 px-1 ml-0.5 hidden sm:flex">
                       {topicCount + (context.relationships?.length ?? 0)}
                     </Badge>
                   )}
@@ -1060,14 +1060,14 @@ export function InlineCitation({ index, chunk }: InlineCitationProps) {
               <FileText className="h-3 w-3" />
               Source #{index}
             </span>
-            <Badge variant="outline" className="text-[10px]">
+            <Badge variant="outline" className="text-xs">
               {(chunk.score * 100).toFixed(0)}% match
             </Badge>
           </div>
           <p className="text-xs text-muted-foreground line-clamp-4">
             {chunk.content}
           </p>
-          <p className="text-[10px] text-muted-foreground truncate">
+          <p className="text-xs text-muted-foreground truncate">
             Document: {chunk.document_id}
           </p>
         </div>

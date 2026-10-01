@@ -120,7 +120,7 @@ export function EditQuotaDialog({
               onChange={(e) => setNewMax(e.target.value)}
               className="h-8 text-sm"
             />
-            <p className="text-[11px] text-muted-foreground">
+            <p className="text-xs text-muted-foreground">
               Min: {currentCount} (in use) · Max: 10000
             </p>
           </div>

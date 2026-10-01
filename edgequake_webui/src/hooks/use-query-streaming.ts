@@ -20,6 +20,10 @@ import {
 } from "@/lib/query/stream-accumulator";
 import { buildQueryContextFromRetrieval } from "@/lib/utils/source-mapper";
 import { generateUUID } from "@/lib/utils/uuid";
+import {
+  mapSubgraphToAnswerFocus,
+  useAnswerGraphStore,
+} from "@/stores/use-answer-graph-store";
 import type { useQueryUIStore } from "@/stores/use-query-ui-store";
 import type { useSettingsStore } from "@/stores/use-settings-store";
 import type { DocumentFilter } from "@/types";
@@ -162,6 +166,16 @@ export function useQueryStreaming({
                     chunk.subgraph,
                   ),
                 );
+              }
+              // SPEC-155 W6: persist answer subgraph for Show-on-graph
+              if (hasSubgraph && chunk.subgraph) {
+                const mapped = mapSubgraphToAnswerFocus(chunk.subgraph);
+                useAnswerGraphStore.getState().setAnswerSubgraph({
+                  messageId: assistantMessage.id,
+                  nodeIds: mapped.nodeIds,
+                  entityNames: mapped.entityNames,
+                  subgraph: chunk.subgraph,
+                });
               }
               break;
             }

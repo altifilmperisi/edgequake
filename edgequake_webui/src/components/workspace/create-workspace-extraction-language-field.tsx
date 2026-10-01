@@ -43,7 +43,7 @@ export function CreateWorkspaceExtractionLanguageField({
           <label className="text-sm font-medium">
             {t('workspace.extractionLanguage.title', 'Extraction Language')}
           </label>
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-xs text-muted-foreground">
             {t(
               'workspace.extractionLanguage.descriptionShort',
               'Names and relationship text language.',

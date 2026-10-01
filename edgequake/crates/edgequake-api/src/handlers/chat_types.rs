@@ -224,6 +224,9 @@ pub enum ChatStreamEvent {
         /// SPEC-142: verified markdown answer (replace streamed tokens).
         #[serde(skip_serializing_if = "Option::is_none")]
         answer: Option<String>,
+        /// SPEC-155 B09: query-matched subgraph for answer-on-graph.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        subgraph: Option<crate::handlers::context_types::SubgraphBundle>,
     },
 
     /// Conversation title was auto-generated from first message.
@@ -309,6 +312,7 @@ mod tests {
             llm_provider: Some("ollama".to_string()),
             llm_model: Some("gemma4:latest".to_string()),
             answer: None,
+            subgraph: None,
         };
         let json = serde_json::to_value(&event).unwrap();
         assert_eq!(json["type"], "done");
@@ -327,6 +331,7 @@ mod tests {
             llm_provider: None,
             llm_model: None,
             answer: None,
+            subgraph: None,
         };
         let json = serde_json::to_value(&event).unwrap();
         assert_eq!(json["type"], "done");

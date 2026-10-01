@@ -52,7 +52,7 @@ export function DrawerSection({
     <section className={cn('space-y-3', className)}>
       <div className="flex items-center gap-2">
         {icon}
-        <h3 className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+        <h3 className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
           {title}
         </h3>
       </div>
@@ -187,7 +187,7 @@ export function DrawerSliderField({
             </TooltipProvider>
           ) : null}
         </div>
-        <Badge variant="secondary" className="font-mono text-[11px] h-5 px-2 shrink-0">
+        <Badge variant="secondary" className="font-mono text-xs h-5 px-2 shrink-0">
           {displayValue ?? value}
         </Badge>
       </div>

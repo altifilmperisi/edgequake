@@ -309,7 +309,7 @@ export const MarkdownInlineTokens = memo(function MarkdownInlineTokens({
                 onClick={() => onSourceClick?.(citationToken.sourceId)}
                 className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs font-medium text-primary bg-primary/10 rounded-md hover:bg-primary/20 transition-colors"
               >
-                <span className="text-[10px]">📄</span>
+                <span className="text-xs">📄</span>
                 <span>{citationToken.sourceId}</span>
               </button>
             );

@@ -178,7 +178,7 @@ function ConfigAreaSection({
                     return (
                       <div key={i} className="flex items-start gap-1.5 pl-2">
                         <span className="shrink-0 mt-0.5">•</span>
-                        <span className="font-mono text-[11px]">{trimmed.slice(1).trim()}</span>
+                        <span className="font-mono text-xs">{trimmed.slice(1).trim()}</span>
                       </div>
                     );
                   }
@@ -216,11 +216,11 @@ function ConfigAreaSection({
 
                 <div className="flex-1 min-w-0">
                   <div className="flex flex-wrap items-center gap-1.5 mb-1">
-                    <Badge variant={levelBadgeVariant(lvl.level)} className="text-[10px] py-0 h-4">
+                    <Badge variant={levelBadgeVariant(lvl.level)} className="text-xs py-0 h-4">
                       {lvl.label}
                     </Badge>
                     {lvl.active && (
-                      <Badge variant="default" className="text-[10px] py-0 h-4 bg-primary">
+                      <Badge variant="default" className="text-xs py-0 h-4 bg-primary">
                         ACTIVE
                       </Badge>
                     )}
@@ -248,14 +248,14 @@ function ConfigAreaSection({
 
                   {/* Source */}
                   {lvl.source && (
-                    <p className="text-[10px] text-muted-foreground mt-0.5 font-mono">
+                    <p className="text-xs text-muted-foreground mt-0.5 font-mono">
                       source: {lvl.source}
                     </p>
                   )}
 
                   {/* Note */}
                   {lvl.note && (
-                    <p className="text-[10px] text-muted-foreground mt-0.5">{lvl.note}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{lvl.note}</p>
                   )}
                 </div>
               </div>
@@ -386,7 +386,7 @@ export function ConfigExplainabilityPanel() {
                         key={role}
                         className="flex flex-wrap items-center gap-2 rounded-md border px-3 py-2 text-xs"
                       >
-                        <Badge variant="outline" className="font-mono text-[10px]">
+                        <Badge variant="outline" className="font-mono text-xs">
                           {role}
                         </Badge>
                         <span>
@@ -398,11 +398,11 @@ export function ConfigExplainabilityPanel() {
                           <span className="font-mono">{info.effective ?? 'omit'}</span>
                         </span>
                         {info.clamped && (
-                          <Badge variant="secondary" className="text-[10px] py-0 h-4">
+                          <Badge variant="secondary" className="text-xs py-0 h-4">
                             clamped
                           </Badge>
                         )}
-                        <span className="text-muted-foreground font-mono text-[10px]">
+                        <span className="text-muted-foreground font-mono text-xs">
                           {info.source}
                         </span>
                       </div>
@@ -421,7 +421,7 @@ export function ConfigExplainabilityPanel() {
             </div>
 
             {/* Last refresh */}
-            <p className="text-[10px] text-muted-foreground text-right">
+            <p className="text-xs text-muted-foreground text-right">
               Last refreshed: {lastRefresh.toLocaleTimeString()}
             </p>
           </>

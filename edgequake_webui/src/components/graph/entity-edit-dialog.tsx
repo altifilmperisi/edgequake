@@ -483,7 +483,7 @@ export function EntityEditDialog({
                 <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                   <Lock className="h-3.5 w-3.5" />
                   {t('entity.systemProperties', 'System Properties')}
-                  <span className="text-[10px] font-normal normal-case">(read-only)</span>
+                  <span className="text-xs font-normal normal-case">(read-only)</span>
                 </div>
                 <div className="bg-muted/30 rounded-lg p-3 space-y-2 border border-border/50">
                   {Object.entries(node.properties)
@@ -497,7 +497,7 @@ export function EntityEditDialog({
                           <span className="min-w-20 text-muted-foreground">{key}</span>
                           <div className="flex items-center gap-1.5 flex-1 justify-end min-w-0">
                             <span 
-                              className="max-w-45 truncate rounded bg-background/50 px-2 py-1 font-mono text-[10px]"
+                              className="max-w-45 truncate rounded bg-background/50 px-2 py-1 font-mono text-xs"
                               title={stringValue}
                             >
                               {isLongValue ? `${stringValue.slice(0, 24)}...` : stringValue}

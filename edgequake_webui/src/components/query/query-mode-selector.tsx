@@ -116,7 +116,7 @@ export function QueryModeSelector({ value, onChange, disabled }: QueryModeSelect
                 <p className="text-xs text-muted-foreground leading-relaxed">
                   {description}
                 </p>
-                <p className="text-[11px] uppercase tracking-wide text-foreground/90 font-medium">
+                <p className="text-xs uppercase tracking-wide text-foreground/90 font-medium">
                   {t('query.modes.apiName', 'API mode')}: {mode.apiName}
                 </p>
               </TooltipContent>

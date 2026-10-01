@@ -35,7 +35,7 @@ export function PipelineMessageItem({
       <Icon className={`h-3 w-3 mt-0.5 shrink-0 ${config.color}`} />
       <div className="flex-1 min-w-0">
         <p className="break-words">{formattedMessage}</p>
-        <p className="text-[10px] text-muted-foreground mt-0.5">
+        <p className="text-xs text-muted-foreground mt-0.5">
           {formatDistanceToNow(new Date(message.timestamp), { addSuffix: true })}
         </p>
       </div>

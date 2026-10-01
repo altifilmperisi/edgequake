@@ -65,7 +65,7 @@ export function QueryScopeBar({
       {hasScope ? (
         /* ── Active state ──────────────────────────────────────── */
         <>
-          <span className="text-[11px] font-medium text-muted-foreground shrink-0 select-none tracking-wide uppercase">
+          <span className="text-xs font-medium text-muted-foreground shrink-0 select-none tracking-wide uppercase">
             {t('query.scope.label', 'Scope')}
           </span>
 

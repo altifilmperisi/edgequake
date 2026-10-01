@@ -214,8 +214,8 @@ export const DocumentTableRow = memo(function DocumentTableRow({
     'hover:bg-primary/5 dark:hover:bg-primary/10',
     isActive && 'bg-primary/10 dark:bg-primary/15 ring-1 ring-primary/20',
     index % 2 === 0 ? 'bg-background' : 'bg-muted/20',
-    // SPEC-048: only gently de-emphasize non-active rows — never look disabled
-    isBackground && 'opacity-80',
+    // SPEC-048/155: background rows keep full text contrast (opacity-80 broke WCAG AA)
+    isBackground && 'bg-muted/30',
     // SPEC-050: Dim row while deletion is in progress
     isDeleting && 'opacity-50 pointer-events-none',
     // SPEC-099 F-099-15: highlight via domain display status (covers delete_failed)

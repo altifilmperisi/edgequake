@@ -161,7 +161,7 @@ export function PagePickerGrid({
               (id === "selected" && selected.length === 0)
             }
             className={cn(
-              "rounded-md px-2 py-0.5 text-[11px] transition",
+              "rounded-md px-2 py-0.5 text-xs transition",
               filter === id
                 ? "bg-primary text-primary-foreground"
                 : "bg-muted/80 text-muted-foreground hover:bg-muted",
@@ -172,7 +172,7 @@ export function PagePickerGrid({
             {label}
           </button>
         ))}
-        <span className="ml-auto text-[11px] tabular-nums text-muted-foreground">
+        <span className="ml-auto text-xs tabular-nums text-muted-foreground">
           {t("documents.pageHealth.showingOf", {
             defaultValue: "{{shown}} of {{total}}",
             shown: visible.length,
@@ -195,7 +195,7 @@ export function PagePickerGrid({
               type="button"
               size="sm"
               variant="ghost"
-              className="h-6 px-1.5 text-[10px] text-muted-foreground"
+              className="h-6 px-1.5 text-xs text-muted-foreground"
               data-testid={`page-picker-band-${b.start}`}
               onClick={() => jumpToBand(b.start)}
             >
@@ -255,7 +255,7 @@ export function PagePickerGrid({
                   aria-label={title}
                   aria-selected={isSelected}
                   className={cn(
-                    "flex h-7 items-center justify-center rounded-md text-[10px] font-medium tabular-nums transition",
+                    "flex h-7 items-center justify-center rounded-md text-xs font-medium tabular-nums transition",
                     isSelected
                       ? "bg-primary text-primary-foreground shadow-sm ring-2 ring-primary/30"
                       : tileTone(worst),
@@ -271,7 +271,7 @@ export function PagePickerGrid({
         )}
       </div>
 
-      <p className="text-[11px] text-muted-foreground">
+      <p className="text-xs text-muted-foreground">
         {t("documents.pageHealth.pickerHintShort", {
           defaultValue: "Click to toggle · Shift+click for a range",
         })}

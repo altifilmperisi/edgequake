@@ -147,11 +147,16 @@ pub struct SubgraphBundle {
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct ContextEntity {
     pub id: String,
+    /// Graph node id (workspace-scoped AGE node id / entity name).
+    pub graph_node_id: String,
     pub name: String,
     pub entity_type: String,
     pub description: String,
     pub score: f32,
     pub degree: usize,
+    /// Full document lineage arrays (SPEC-155 — do not collapse to one).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub source_document_ids: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub lineage: Option<EntityLineage>,
 }
@@ -196,8 +201,11 @@ pub struct ContextChunk {
 pub struct EntityLineage {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub source_chunk_ids: Vec<String>,
+    /// Prefer `source_document_ids` arrays; singular kept for one-release compat.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub source_document_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub source_document_ids: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub source_file_path: Option<String>,
 }

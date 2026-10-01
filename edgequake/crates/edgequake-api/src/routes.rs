@@ -632,6 +632,8 @@ fn api_v1_routes(state: AppState) -> Router<AppState> {
         .route("/graph/labels/search", get(handlers::search_labels))
         .route("/graph/labels/popular", get(handlers::get_popular_labels))
         .route("/graph/degrees/batch", post(handlers::get_degrees_batch))
+        .route("/graph/communities", get(handlers::get_graph_communities))
+        .route("/graph/facets", get(handlers::get_graph_facets))
         // Entities (Phase 2)
         .route(
             "/graph/entities",

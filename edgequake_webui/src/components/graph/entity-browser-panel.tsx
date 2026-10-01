@@ -28,6 +28,7 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useEntityTypeColors } from "@/hooks/use-entity-type-colors";
 import { searchNodes } from "@/lib/api/edgequake";
+import { degreeTotal } from "@/types/graph";
 import { focusCameraOnNode } from "@/lib/graph/camera-utils";
 import {
   formatEntityLabel,
@@ -75,7 +76,7 @@ const EntityItem = memo(function EntityItem({
 }: EntityItemProps) {
   const itemRef = useRef<HTMLButtonElement>(null);
   const { colorFor } = useEntityTypeColors();
-  const connectionStrength = Math.min((node.degree || 0) / 10, 1); // Normalize to 0-1
+  const connectionStrength = Math.min(degreeTotal(node.degree) / 10, 1); // Normalize to 0-1
   
   // Focus element when isFocused changes
   useEffect(() => {
@@ -88,10 +89,11 @@ const EntityItem = memo(function EntityItem({
   return (
     <button
       ref={itemRef}
+      type="button"
       onClick={onClick}
       onKeyDown={onKeyDown}
-      role="option"
-      aria-selected={isSelected}
+      aria-pressed={isSelected}
+      aria-label={formatEntityLabel(node.label ?? node.id ?? "Unknown")}
       tabIndex={isFocused ? 0 : -1}
       className={cn(
         "w-full text-left px-2.5 py-1.5 rounded-md transition-all duration-150",
@@ -124,16 +126,16 @@ const EntityItem = memo(function EntityItem({
         </p>
         <div className="flex items-center gap-1.5 mt-0.5">
           <span className={cn(
-            "text-[9px] tracking-wide",
+            "text-xs tracking-wide",
             isSelected ? "text-primary-foreground/70" : "text-muted-foreground"
           )}>
             {formatMmEntitySubtitle(node.node_type, node.properties) ??
               formatEntityType(node.node_type ?? "unknown")}
           </span>
-          {node.degree && node.degree > 0 && (
+          {node.degree != null && degreeTotal(node.degree) > 0 && (
             <>
               <span className={cn(
-                "text-[9px]",
+                "text-xs",
                 isSelected ? "text-primary-foreground/50" : "text-muted-foreground/50"
               )}>·</span>
               <div className="flex items-center gap-0.5">
@@ -147,10 +149,10 @@ const EntityItem = memo(function EntityItem({
                   />
                 </div>
                 <span className={cn(
-                  "text-[9px] font-medium tabular-nums",
+                  "text-xs font-medium tabular-nums",
                   isSelected ? "text-primary-foreground/70" : "text-muted-foreground"
                 )}>
-                  {node.degree}
+                  {degreeTotal(node.degree)}
                 </span>
               </div>
             </>
@@ -202,7 +204,7 @@ const VirtualizedEntityList = memo(function VirtualizedEntityList({
   return (
     <div
       ref={parentRef}
-      role="listbox"
+      role="list"
       aria-label={t("graph.entityBrowser.entityList", "Entity list")}
       tabIndex={0}
       onKeyDown={onKeyDown}
@@ -465,7 +467,7 @@ export function EntityBrowserPanel({ className }: EntityBrowserPanelProps) {
           comparison = (a.label ?? "").localeCompare(b.label ?? "");
           break;
         case "degree":
-          comparison = (b.degree ?? 0) - (a.degree ?? 0);
+          comparison = degreeTotal(b.degree) - degreeTotal(a.degree);
           break;
         case "type":
           comparison = (a.node_type ?? "").localeCompare(b.node_type ?? "");
@@ -611,12 +613,12 @@ export function EntityBrowserPanel({ className }: EntityBrowserPanelProps) {
         <div className="mt-3 flex flex-col items-center gap-1.5">
           <Network className="h-3.5 w-3.5 text-muted-foreground" />
           <span
-            className="text-[10px] text-muted-foreground font-medium"
+            className="text-xs text-muted-foreground font-medium"
             style={{ writingMode: "vertical-rl", textOrientation: "mixed" }}
           >
             {t("graph.entityBrowser.title", "Entities")}
           </span>
-          <Badge variant="secondary" className="text-[9px] h-4 px-1">
+          <Badge variant="secondary" className="text-xs h-4 px-1">
             {nodes.length}
           </Badge>
         </div>
@@ -640,7 +642,7 @@ export function EntityBrowserPanel({ className }: EntityBrowserPanelProps) {
           <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             {t("graph.entityBrowser.title", "Entities")}
           </h2>
-          <Badge variant="secondary" className="text-[9px] h-4 px-1.5">
+          <Badge variant="secondary" className="text-xs h-4 px-1.5">
             {filteredNodes.length}
             {filteredNodes.length !== nodes.length && `/${nodes.length}`}
           </Badge>
@@ -680,7 +682,7 @@ export function EntityBrowserPanel({ className }: EntityBrowserPanelProps) {
           </span>
         </div>
         {isTruncated && searchQuery.trim().length >= 2 && (
-          <p className="text-[10px] text-muted-foreground mt-1 flex items-center gap-1">
+          <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
             <Cloud className="h-2.5 w-2.5" />
             {isServerSearching 
               ? t("graph.entityBrowser.searchingServer", "Searching full database...")
@@ -694,13 +696,13 @@ export function EntityBrowserPanel({ className }: EntityBrowserPanelProps) {
 
       {/* Sort Controls */}
       <div className="flex items-center gap-0.5 px-2 py-1.5 border-b shrink-0" role="group" aria-label={t("graph.entityBrowser.sortControls", "Sort controls")}>
-        <span className="text-[10px] text-muted-foreground mr-1" id="sort-label">
+        <span className="text-xs text-muted-foreground mr-1" id="sort-label">
           {t("common.sortBy", "Sort:")}
         </span>
         <Button
           variant={sortBy === "name" ? "secondary" : "ghost"}
           size="sm"
-          className="h-5 text-[10px] px-1.5"
+          className="h-5 text-xs px-1.5"
           onClick={() => setSortBy("name")}
           aria-pressed={sortBy === "name"}
           aria-describedby="sort-label"
@@ -710,7 +712,7 @@ export function EntityBrowserPanel({ className }: EntityBrowserPanelProps) {
         <Button
           variant={sortBy === "degree" ? "secondary" : "ghost"}
           size="sm"
-          className="h-5 text-[10px] px-1.5"
+          className="h-5 text-xs px-1.5"
           onClick={() => setSortBy("degree")}
           aria-pressed={sortBy === "degree"}
           aria-describedby="sort-label"
@@ -739,7 +741,7 @@ export function EntityBrowserPanel({ className }: EntityBrowserPanelProps) {
         <Button
           variant={viewMode === "grouped" ? "secondary" : "ghost"}
           size="sm"
-          className="flex-1 h-6 text-[10px]"
+          className="flex-1 h-6 text-xs"
           onClick={() => setViewMode("grouped")}
           role="tab"
           aria-selected={viewMode === "grouped"}
@@ -750,7 +752,7 @@ export function EntityBrowserPanel({ className }: EntityBrowserPanelProps) {
         <Button
           variant={viewMode === "list" ? "secondary" : "ghost"}
           size="sm"
-          className="flex-1 h-6 text-[10px]"
+          className="flex-1 h-6 text-xs"
           onClick={() => setViewMode("list")}
           role="tab"
           aria-selected={viewMode === "list"}
@@ -804,14 +806,14 @@ export function EntityBrowserPanel({ className }: EntityBrowserPanelProps) {
       <div className="p-3 border-t shrink-0 bg-muted/20">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Badge variant="secondary" className="text-[10px] px-2 py-0.5">
+            <Badge variant="secondary" className="text-xs px-2 py-0.5">
               {groupedNodes.length} {t("graph.entityBrowser.types", "types")}
             </Badge>
           </div>
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <Link2 className="h-3 w-3" />
             <span className="font-medium">
-              {Math.floor(filteredNodes.reduce((acc, n) => acc + (n.degree ?? 0), 0) / 2)}
+              {Math.floor(filteredNodes.reduce((acc, n) => acc + degreeTotal(n.degree), 0) / 2)}
             </span>
             <span>{t("graph.entityBrowser.connections", "connections")}</span>
           </div>

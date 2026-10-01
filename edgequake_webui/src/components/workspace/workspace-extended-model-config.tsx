@@ -99,7 +99,7 @@ export function WorkspaceExtendedModelConfig({
                 )}
               </>
             ) : (
-              <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg min-h-[3.75rem]">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-2 p-3 bg-muted/50 rounded-lg min-h-[3.75rem]">
                 <ProviderIcon
                   providerId={
                     workspace.vision_llm_provider ||
@@ -107,7 +107,7 @@ export function WorkspaceExtendedModelConfig({
                     visionDefaultId?.split("/")[0]
                   }
                 />
-                <div className="min-w-0 flex-1">
+                <div className="min-w-0 flex-1 basis-40">
                   <div className="font-medium truncate">
                     {hasVisionOverride
                       ? workspace.vision_llm_model
@@ -132,13 +132,15 @@ export function WorkspaceExtendedModelConfig({
                 </div>
                 <Badge
                   variant="outline"
-                  className="ml-auto font-mono text-xs shrink-0 max-w-[45%] truncate"
+                  className="ml-auto min-w-0 max-w-full shrink font-mono text-xs"
                   title={`source=${resolvedVision.source}`}
                   data-testid="vision-llm-resolves-to"
                 >
-                  {t("settings.pdfParser.resolvesTo", "Resolves to {{value}}", {
-                    value: resolvesToLabel,
-                  })}
+                  <span className="truncate">
+                    {t("settings.pdfParser.resolvesTo", "Resolves to {{value}}", {
+                      value: resolvesToLabel,
+                    })}
+                  </span>
                 </Badge>
               </div>
             )}

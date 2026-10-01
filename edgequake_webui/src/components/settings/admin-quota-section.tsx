@@ -193,19 +193,19 @@ export function AdminQuotaSection() {
                     className="flex items-center justify-between gap-2 rounded px-2 py-1.5 hover:bg-muted/50"
                   >
                     <div className="flex items-center gap-2 min-w-0">
-                      <span className="text-[11px] font-medium truncate">{tenant.name}</span>
-                      <Badge variant="outline" className="text-[10px] h-4 px-1 py-0 shrink-0">
+                      <span className="text-xs font-medium truncate">{tenant.name}</span>
+                      <Badge variant="outline" className="text-xs h-4 px-1 py-0 shrink-0">
                         {tenant.plan}
                       </Badge>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
-                      <span className="text-[11px] text-muted-foreground">
+                      <span className="text-xs text-muted-foreground">
                         {tenant.current_workspace_count ?? '?'}/{tenant.max_workspaces}
                       </span>
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="h-6 px-2 text-[11px]"
+                        className="h-6 px-2 text-xs"
                         onClick={() => setEditingTenant(tenant)}
                       >
                         Edit

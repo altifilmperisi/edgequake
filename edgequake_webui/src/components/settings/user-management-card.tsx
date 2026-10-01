@@ -245,7 +245,7 @@ function UsersTable({ users, onRoleChange, onToggleActive, onDelete }: UsersTabl
                   <UserCog className="h-3 w-3 text-muted-foreground shrink-0" aria-hidden="true" />
                   {u.username}
                   {u.is_anonymous ? (
-                    <Badge variant="outline" className="text-[10px] font-normal px-1.5 py-0">
+                    <Badge variant="outline" className="text-xs font-normal px-1.5 py-0">
                       Guest
                     </Badge>
                   ) : null}

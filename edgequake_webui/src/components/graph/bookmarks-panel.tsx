@@ -93,7 +93,7 @@ export function BookmarksPanel({ className, collapsed = false }: BookmarksPanelP
       >
         <Bookmark className="h-4 w-4" aria-hidden="true" />
         {bookmarks.length > 0 && (
-          <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-primary text-[10px] font-medium text-primary-foreground flex items-center justify-center">
+          <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-primary text-xs font-medium text-primary-foreground flex items-center justify-center">
             {bookmarks.length}
           </span>
         )}
@@ -183,7 +183,7 @@ export function BookmarksPanel({ className, collapsed = false }: BookmarksPanelP
                       >
                         {bookmark.name}
                       </button>
-                      <span className="text-[10px] text-muted-foreground shrink-0">
+                      <span className="text-xs text-muted-foreground shrink-0">
                         {new Date(bookmark.createdAt).toLocaleDateString()}
                       </span>
                       <DropdownMenu>

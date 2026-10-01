@@ -66,7 +66,8 @@ export function GraphDocumentFilterBar({
       role="region"
       aria-label={t("graph.documentFilter.region", "Graph document filter")}
       className={cn(
-        "flex items-center gap-2 px-2 sm:px-4 py-1.5 border-b shrink-0 min-h-[34px]",
+        "flex items-center gap-2 px-2 sm:px-4 py-1.5 border-b shrink-0 min-h-9",
+        "overflow-x-auto scrollbar-none whitespace-nowrap",
         "transition-colors duration-150",
         hasFilter && "bg-primary/5 ring-1 ring-inset ring-primary/10",
         disabled && "opacity-60 pointer-events-none",
@@ -76,7 +77,7 @@ export function GraphDocumentFilterBar({
         className="h-3.5 w-3.5 text-muted-foreground shrink-0"
         aria-hidden
       />
-      <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground shrink-0">
+      <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground shrink-0">
         {t("graph.documentFilter.label", "Document")}
       </span>
 
@@ -93,7 +94,7 @@ export function GraphDocumentFilterBar({
             trigger={
               <button
                 type="button"
-                className="text-[11px] text-muted-foreground hover:text-foreground underline-offset-2 hover:underline"
+                className="text-xs text-muted-foreground hover:text-foreground underline-offset-2 hover:underline shrink-0"
               >
                 {t("graph.documentFilter.change", "Change")}
               </button>
@@ -109,7 +110,7 @@ export function GraphDocumentFilterBar({
             <button
               type="button"
               className={cn(
-                "inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs",
+                "inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs shrink-0",
                 "text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors",
               )}
             >
@@ -124,7 +125,7 @@ export function GraphDocumentFilterBar({
         <button
           type="button"
           onClick={() => onDocumentChange(null)}
-          className="ml-auto text-[11px] text-muted-foreground hover:text-foreground"
+          className="ml-auto text-xs text-muted-foreground hover:text-foreground shrink-0"
         >
           {t("graph.documentFilter.showAll", "Show full graph")}
         </button>

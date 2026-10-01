@@ -72,6 +72,12 @@ export function focusCameraOnNode(
     if (highlight) {
       graph.setNodeAttribute(nodeId, "highlighted", true);
       sigmaInstance.refresh();
+      // Transient pulse: never leave a node permanently "highlighted".
+      setTimeout(() => {
+        if (!graph.hasNode(nodeId)) return;
+        graph.removeNodeAttribute(nodeId, "highlighted");
+        sigmaInstance.scheduleRefresh();
+      }, duration + 1200);
     }
 
     return true;
@@ -94,17 +100,77 @@ export function normalizeGraphCoordinates(
   x: number,
   y: number
 ): { x: number; y: number } {
-  // Get the bounding box of all nodes
-  const bbox = sigmaInstance.getBBox();
+  // Round-trip through the viewport so Sigma's own normalisation (square frame,
+  // centred, Y flipped) is used instead of re-deriving it from the bbox.
+  return sigmaInstance.viewportToFramedGraph(
+    sigmaInstance.graphToViewport({ x, y }),
+  );
+}
 
-  const graphWidth = bbox.x[1] - bbox.x[0];
-  const graphHeight = bbox.y[1] - bbox.y[0];
+export interface FitOptions {
+  /** Empty margin around the nodes, in CSS px (default 80). */
+  padding?: number;
+  /** Animation duration in ms (default 500). */
+  duration?: number;
+  /** Never zoom in further than this camera ratio (default 0.25). */
+  minRatio?: number;
+  /** Never zoom out further than this camera ratio (default 1.5). */
+  maxRatio?: number;
+}
 
-  // Handle edge cases (single node or all nodes at same position)
-  const normalizedX = graphWidth > 0 ? (x - bbox.x[0]) / graphWidth : 0.5;
-  const normalizedY = graphHeight > 0 ? (y - bbox.y[0]) / graphHeight : 0.5;
+/**
+ * Animate the camera so every node in `nodeIds` is visible with a margin.
+ * Works from the nodes' current on-screen box, so it is independent of how
+ * Sigma normalises graph coordinates and of the viewport's aspect ratio.
+ *
+ * @returns false when none of the ids exist in the graph.
+ */
+export function fitCameraToNodes(
+  sigmaInstance: Sigma,
+  nodeIds: Iterable<string>,
+  options: FitOptions = {},
+): boolean {
+  const {
+    padding = 80,
+    duration = 500,
+    minRatio = 0.25,
+    maxRatio = 1.5,
+  } = options;
+  const graph = sigmaInstance.getGraph();
 
-  return { x: normalizedX, y: normalizedY };
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minY = Infinity;
+  let maxY = -Infinity;
+  for (const id of nodeIds) {
+    if (!graph.hasNode(id)) continue;
+    const p = sigmaInstance.graphToViewport({
+      x: graph.getNodeAttribute(id, "x") as number,
+      y: graph.getNodeAttribute(id, "y") as number,
+    });
+    minX = Math.min(minX, p.x);
+    maxX = Math.max(maxX, p.x);
+    minY = Math.min(minY, p.y);
+    maxY = Math.max(maxY, p.y);
+  }
+  if (!Number.isFinite(minX)) return false;
+
+  const { width, height } = sigmaInstance.getDimensions();
+  const availW = Math.max(width - 2 * padding, 80);
+  const availH = Math.max(height - 2 * padding, 80);
+  const factor = Math.max((maxX - minX) / availW, (maxY - minY) / availH);
+
+  const camera = sigmaInstance.getCamera();
+  const ratio = Math.min(
+    maxRatio,
+    Math.max(minRatio, camera.getState().ratio * factor),
+  );
+  const center = sigmaInstance.viewportToFramedGraph({
+    x: (minX + maxX) / 2,
+    y: (minY + maxY) / 2,
+  });
+  camera.animate({ x: center.x, y: center.y, ratio }, { duration });
+  return true;
 }
 
 /**

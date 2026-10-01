@@ -396,7 +396,7 @@ function PageGroupNode({
           Page {page}
         </span>
         {/* Counts — right-aligned */}
-        <span className="text-[10px] text-muted-foreground ml-auto shrink-0 pr-1">
+        <span className="text-xs text-muted-foreground ml-auto shrink-0 pr-1">
           {chunks.length} chunk{chunks.length !== 1 ? 's' : ''} · {entityCount} ent
         </span>
         {/* Page deeplink badge — appears on hover; stops propagation so only the
@@ -404,7 +404,7 @@ function PageGroupNode({
         <Link
           href={pageUrl}
           className={cn(
-            'inline-flex items-center gap-0.5 text-[10px] font-medium',
+            'inline-flex items-center gap-0.5 text-xs font-medium',
             'text-primary hover:underline shrink-0',
             'opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity',
             'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50',
@@ -490,7 +490,7 @@ function ChunkTreeNode({ chunk, entities, documentId, depth, isSelected, onSelec
             <Link
               href={pageUrl}
               className={cn(
-                'inline-flex items-center gap-0.5 text-[10px] font-medium',
+                'inline-flex items-center gap-0.5 text-xs font-medium',
                 'text-primary hover:underline',
                 'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50',
                 'rounded-sm px-1 py-0.5 leading-none',
@@ -546,11 +546,11 @@ function EntityLeafNode({ entity, depth }: EntityLeafNodeProps) {
       <span className="font-medium truncate" title={entity.name}>
         {entity.name}
       </span>
-      <Badge variant="outline" className="text-[10px] px-1.5 py-0 shrink-0">
+      <Badge variant="outline" className="text-xs px-1.5 py-0 shrink-0">
         {entity.entity_type}
       </Badge>
       {entity.extraction_count > 1 && (
-        <Badge variant="secondary" className="text-[10px] px-1.5 py-0 shrink-0">
+        <Badge variant="secondary" className="text-xs px-1.5 py-0 shrink-0">
           ×{entity.extraction_count}
         </Badge>
       )}

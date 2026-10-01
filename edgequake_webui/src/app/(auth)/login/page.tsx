@@ -8,10 +8,9 @@ import { useSetupStatus } from '@/hooks/use-setup-status';
 import { login } from '@/lib/api/edgequake';
 import { getRuntimeConfig } from '@/lib/runtime-config';
 import { useAuthStore } from '@/stores/use-auth-store';
-import { AlertCircle, Loader2, Network } from 'lucide-react';
+import { AlertCircle, Eye, EyeOff, Loader2, Network } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useState } from 'react';
-import { toast } from 'sonner';
 
 /** Same-origin relative path only (blocks open redirects). */
 function safeRedirectPath(raw: string | null): string | null {
@@ -32,17 +31,18 @@ function LoginPageInner() {
 
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { authEnabled, disableDemoLogin } = getRuntimeConfig();
   const showDemoLogin = !disableDemoLogin && !authEnabled;
+  // SPEC-155: default landing is dashboard, not /graph (F-155-P12)
   const postLoginPath =
-    safeRedirectPath(searchParams.get('redirect')) ?? '/graph';
+    safeRedirectPath(searchParams.get('redirect') ?? searchParams.get('next')) ?? '/';
 
-  // SPEC-101: empty auth-on install → first-run wizard instead of login form
   if (!setupLoading && setupStatus?.needs_setup && setupStatus.auth_enabled) {
     return (
-      <div className="flex h-full min-h-0 items-center justify-center overflow-y-auto bg-gradient-to-br from-background to-muted/50 p-4">
+      <div className="flex h-full min-h-0 items-center justify-center overflow-y-auto bg-background p-4">
         <FirstRunWizard surface="login" />
       </div>
     );
@@ -56,24 +56,22 @@ function LoginPageInner() {
     try {
       const response = await login({ username, password });
       authLogin(response);
-      toast.success('Successfully logged in');
       router.push(postLoginPath);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Login failed';
+      // Single error surface — no toast + alert (SPEC-155 F-155-P12)
       setError(message);
-      toast.error(message);
     } finally {
       setIsLoading(false);
     }
   };
 
   const handleSkipLogin = () => {
-    // For development/demo mode without auth
     router.push(postLoginPath);
   };
 
   return (
-    <div className="flex h-full min-h-0 items-center justify-center overflow-y-auto bg-gradient-to-br from-background to-muted/50 p-4">
+    <div className="flex h-full min-h-0 items-center justify-center overflow-y-auto bg-background p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
@@ -85,8 +83,8 @@ function LoginPageInner() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <form 
-            onSubmit={handleSubmit} 
+          <form
+            onSubmit={handleSubmit}
             className="space-y-4"
             aria-describedby={error ? 'login-error' : undefined}
           >
@@ -96,7 +94,9 @@ function LoginPageInner() {
               </label>
               <Input
                 id="username"
+                name="username"
                 type="text"
+                autoComplete="username"
                 placeholder="Enter your username"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
@@ -110,27 +110,46 @@ function LoginPageInner() {
               <label htmlFor="password" className="text-sm font-medium">
                 Password
               </label>
-              <Input
-                id="password"
-                type="password"
-                placeholder="Enter your password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                disabled={isLoading}
-                required
-                aria-required="true"
-                aria-invalid={error ? 'true' : undefined}
-              />
+              <div className="relative">
+                <Input
+                  id="password"
+                  name="password"
+                  type={showPassword ? 'text' : 'password'}
+                  autoComplete="current-password"
+                  placeholder="Enter your password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  disabled={isLoading}
+                  required
+                  aria-required="true"
+                  aria-invalid={error ? 'true' : undefined}
+                  className="pr-10"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="absolute right-1 top-1/2 h-8 w-8 -translate-y-1/2"
+                  onClick={() => setShowPassword((v) => !v)}
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                >
+                  {showPassword ? (
+                    <EyeOff className="h-4 w-4" aria-hidden />
+                  ) : (
+                    <Eye className="h-4 w-4" aria-hidden />
+                  )}
+                </Button>
+              </div>
             </div>
 
             {error && (
-              <div 
+              <div
                 id="login-error"
                 role="alert"
                 aria-live="assertive"
-                className="rounded-md bg-destructive/10 p-3 text-sm text-destructive flex items-start gap-2"
+                className="flex items-start gap-2 rounded-md bg-destructive/10 p-3 text-sm text-destructive"
               >
-                <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" aria-hidden="true" />
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
                 <span>{error}</span>
               </div>
             )}
@@ -153,9 +172,7 @@ function LoginPageInner() {
                     <span className="w-full border-t" />
                   </div>
                   <div className="relative flex justify-center text-xs uppercase">
-                    <span className="bg-background px-2 text-muted-foreground">
-                      Or
-                    </span>
+                    <span className="bg-background px-2 text-muted-foreground">Or</span>
                   </div>
                 </div>
 
@@ -180,7 +197,7 @@ export default function LoginPage() {
   return (
     <Suspense
       fallback={
-        <div className="flex h-full min-h-0 items-center justify-center bg-gradient-to-br from-background to-muted/50 p-4">
+        <div className="flex h-full min-h-0 items-center justify-center bg-background p-4">
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         </div>
       }

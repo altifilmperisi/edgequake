@@ -11,6 +11,7 @@
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/shared/page-header";
 import { PipelineActivityLogCard } from "@/components/pipeline/pipeline-activity-log-card";
 import { PipelineChunkProgressCard } from "@/components/pipeline/pipeline-chunk-progress-card";
 import { PipelineProcessingDocumentsCard } from "@/components/pipeline/pipeline-processing-documents-card";
@@ -26,13 +27,15 @@ import { useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Building2, ChevronDown, RefreshCw } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 
 export function PipelineMonitor() {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const { selectedTenantId, selectedWorkspaceId, workspaces } = useTenantStore();
 
   const currentWorkspace = workspaces.find((w) => w.id === selectedWorkspaceId);
-  const workspaceName = currentWorkspace?.name || "All Workspaces";
+  const workspaceName = currentWorkspace?.name || t("pipeline.allWorkspaces", "All Workspaces");
 
   const workspaceContext = {
     selectedTenantId,
@@ -51,53 +54,51 @@ export function PipelineMonitor() {
         queryKey: scopedQueryKey(base, selectedTenantId, selectedWorkspaceId),
       });
     }
-    toast.success("Refreshed");
+    toast.success(t("common.refresh", "Refreshed"));
   };
 
   return (
     <PipelineWorkspaceContext.Provider value={workspaceContext}>
-      {/* WHY: h-full fits the actual available area from the dashboard layout
-          (main element is flex-1 min-h-0 overflow-hidden). Using a hardcoded
-          calc() here was brittle and broke whenever header/breadcrumb heights
-          changed. flex flex-col lets the sticky header pin at top-0 of this
-          container while overflow-y-auto scrolls the remaining content. */}
       <div
         className="flex h-full min-h-0 flex-col overflow-clip"
         data-testid="spec100-pipeline-shell"
       >
         <div className="flex-shrink-0 sticky top-0 z-10 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b">
           <div className="container mx-auto px-page py-3 max-w-7xl">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <Link href="/documents">
-                  <Button variant="ghost" size="sm">
-                    <ArrowLeft className="h-4 w-4 mr-2" />
-                    Back to Documents
+            <PageHeader
+              className="mb-0"
+              title={t("pipeline.title", "Pipeline Monitor")}
+              description={
+                <span className="inline-flex items-center gap-2">
+                  <Building2 className="h-4 w-4" />
+                  <span>{workspaceName}</span>
+                  {!selectedWorkspaceId && (
+                    <Badge variant="destructive" className="text-xs">
+                      {t("pipeline.noWorkspace", "No workspace selected")}
+                    </Badge>
+                  )}
+                </span>
+              }
+              actions={
+                <>
+                  <Link href="/documents">
+                    <Button variant="ghost" size="sm">
+                      <ArrowLeft className="h-4 w-4 mr-2" />
+                      {t("pipeline.backToDocuments", "Back to Documents")}
+                    </Button>
+                  </Link>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleRefresh}
+                    data-testid="pipeline-refresh-button"
+                  >
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                    {t("common.refresh", "Refresh")}
                   </Button>
-                </Link>
-                <div>
-                  <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Pipeline Monitor</h1>
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Building2 className="h-4 w-4" />
-                    <span>{workspaceName}</span>
-                    {!selectedWorkspaceId && (
-                      <Badge variant="destructive" className="text-xs">
-                        No workspace selected
-                      </Badge>
-                    )}
-                  </div>
-                </div>
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleRefresh}
-                data-testid="pipeline-refresh-button"
-              >
-                <RefreshCw className="h-4 w-4 mr-2" />
-                Refresh
-              </Button>
-            </div>
+                </>
+              }
+            />
           </div>
         </div>
 
@@ -124,7 +125,7 @@ export function PipelineMonitor() {
             <details className="mt-page mb-page group">
               <summary className="cursor-pointer list-none flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
                 <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
-                <span>Advanced Details</span>
+                <span>{t("pipeline.advancedDetails", "Advanced Details")}</span>
               </summary>
               <div className="mt-page">
                 <PipelineTaskQueueCard />

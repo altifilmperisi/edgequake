@@ -139,7 +139,7 @@ function PhaseIndicator({
             </span>
             {/* Progress for active phase */}
             {phase.status.type === "active" && (
-              <span className="text-[10px] text-muted-foreground">
+              <span className="text-xs text-muted-foreground">
                 {phase.status.current}/{phase.status.total}
               </span>
             )}
@@ -278,7 +278,7 @@ function LargeDocProgress({
       <Progress value={percent} className="h-1.5" />
       {/* Remaining pages hint */}
       {remainingPages > 0 && (
-        <p className="text-[10px] text-muted-foreground text-right">
+        <p className="text-xs text-muted-foreground text-right">
           {remainingPages.toLocaleString()} pages remaining
         </p>
       )}
@@ -538,7 +538,7 @@ export function PdfUploadProgress({
     if (view.kind === "nested_ended") {
       return (
         <div
-          className={cn("text-[10px] text-muted-foreground", className)}
+          className={cn("text-xs text-muted-foreground", className)}
           data-testid="spec086-pdf-progress-ended"
         >
           {view.message}
@@ -575,7 +575,7 @@ export function PdfUploadProgress({
           className={cn("space-y-0.5 w-full", className)}
           data-testid="spec086-pdf-page-detail"
         >
-          <div className="flex items-center justify-between gap-2 text-[10px] text-muted-foreground">
+          <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
             <span data-testid="spec086-pdf-page-label">{pageLabel}</span>
             <span className="tabular-nums">{overallPercent}%</span>
           </div>

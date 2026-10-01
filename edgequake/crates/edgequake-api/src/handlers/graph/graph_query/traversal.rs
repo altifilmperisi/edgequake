@@ -10,6 +10,10 @@ use axum::{
 use tracing::debug;
 
 use crate::error::ApiResult;
+use crate::handlers::graph::graph_dto::{
+    degrees_breakdown_batch, edge_response, graph_is_truncated, graph_node_response,
+    workspace_graph_totals,
+};
 use crate::handlers::graph_types::*;
 use crate::handlers::isolation::properties_match_tenant_context;
 use crate::middleware::TenantContext;
@@ -69,7 +73,7 @@ pub async fn get_graph(
 
     let _materialize_guard = admit_graph_materialization(&graph)?;
 
-    let (nodes, edges, is_truncated) = if let Some(start) = &params.start_node {
+    let (nodes, edges, bfs_truncated) = if let Some(start) = &params.start_node {
         let start = start.clone();
         let depth = params.depth;
         let max_nodes = params.max_nodes;
@@ -90,41 +94,37 @@ pub async fn get_graph(
         })
         .await?;
 
-        let nodes: Vec<GraphNodeResponse> = kg
+        let filtered_nodes: Vec<_> = kg
             .nodes
             .into_iter()
             .filter(|n| !scoped || properties_match_tenant_context(&n.properties, &tenant_ctx))
-            .map(|n| GraphNodeResponse {
-                id: n.id.clone(),
-                label: crate::handlers::graph::graph_node_label(&n),
-                node_type: n
-                    .properties
-                    .get("entity_type")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("UNKNOWN")
-                    .to_string(),
-                description: n
-                    .properties
-                    .get("description")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string(),
-                degree: 0,
-                properties: serde_json::to_value(&n.properties).unwrap_or_default(),
+            .collect();
+
+        let node_ids: Vec<String> = filtered_nodes.iter().map(|n| n.id.clone()).collect();
+        let degree_map = degrees_breakdown_batch(&storage.graph_storage, &node_ids).await;
+
+        let nodes: Vec<GraphNodeResponse> = filtered_nodes
+            .into_iter()
+            .map(|n| {
+                let degree = degree_map
+                    .get(&n.id)
+                    .copied()
+                    .unwrap_or_else(|| DegreeBreakdown::from_total(0));
+                graph_node_response(&n, degree)
             })
             .collect();
 
         // Also filter edges by tenant context
-        let node_ids: std::collections::HashSet<_> = nodes.iter().map(|n| &n.id).collect();
+        let node_id_set: std::collections::HashSet<_> = nodes.iter().map(|n| &n.id).collect();
         let edges: Vec<GraphEdgeResponse> = kg
             .edges
             .into_iter()
             .filter(|e| {
                 (!scoped || properties_match_tenant_context(&e.properties, &tenant_ctx))
-                    && node_ids.contains(&e.source)
-                    && node_ids.contains(&e.target)
+                    && node_id_set.contains(&e.source)
+                    && node_id_set.contains(&e.target)
             })
-            .map(GraphEdgeResponse::from_storage_edge)
+            .map(edge_response)
             .collect();
 
         (nodes, edges, kg.is_truncated)
@@ -147,26 +147,20 @@ pub async fn get_graph(
             })
             .await?;
 
-        // Convert to response format
+        let node_ids: Vec<String> = nodes_with_degrees
+            .iter()
+            .map(|(n, _)| n.id.clone())
+            .collect();
+        let degree_map = degrees_breakdown_batch(&storage.graph_storage, &node_ids).await;
+
         let nodes: Vec<GraphNodeResponse> = nodes_with_degrees
             .into_iter()
-            .map(|(node, degree)| GraphNodeResponse {
-                id: node.id.clone(),
-                label: crate::handlers::graph::graph_node_label(&node),
-                node_type: node
-                    .properties
-                    .get("entity_type")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("UNKNOWN")
-                    .to_string(),
-                description: node
-                    .properties
-                    .get("description")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string(),
-                degree,
-                properties: serde_json::to_value(&node.properties).unwrap_or_default(),
+            .map(|(node, total)| {
+                let degree = degree_map
+                    .get(&node.id)
+                    .copied()
+                    .unwrap_or_else(|| DegreeBreakdown::from_total(total));
+                graph_node_response(&node, degree)
             })
             .collect();
 
@@ -187,24 +181,17 @@ pub async fn get_graph(
             })
             .await?;
 
-        let edges: Vec<GraphEdgeResponse> = filtered_edges
-            .into_iter()
-            .map(GraphEdgeResponse::from_storage_edge)
-            .collect();
+        let edges: Vec<GraphEdgeResponse> =
+            filtered_edges.into_iter().map(edge_response).collect();
 
-        (nodes, edges, false) // is_truncated calculated after counts arrive
+        (nodes, edges, false)
     };
 
-    // SPEC-011 iter 02 Fix B: use planner estimate (O(1)) instead of exact
-    // `COUNT(*)` (O(N) — production logs showed 38 s / 5780 calls for the
-    // vertex count alone). The graph traversal endpoint is polled by the UI.
-    let (total_nodes_result, total_edges_result) = tokio::join!(
-        storage.graph_storage.node_count_fast(),
-        storage.graph_storage.edge_count_fast(),
-    );
-    let total_nodes = total_nodes_result.unwrap_or(nodes.len());
-    let total_edges = total_edges_result.unwrap_or(edges.len());
-    let is_truncated = is_truncated || total_nodes > params.max_nodes;
+    // SPEC-155 B01: workspace-exact totals (not shared AGE reltuples).
+    let (total_nodes, total_edges) =
+        workspace_graph_totals(&storage.graph_storage, &tenant_ctx).await?;
+    let is_truncated =
+        graph_is_truncated(nodes.len(), total_nodes, params.max_nodes, bfs_truncated);
 
     let elapsed_ms = request_start.elapsed().as_millis();
     debug!(
@@ -222,5 +209,6 @@ pub async fn get_graph(
         is_truncated,
         total_nodes,
         total_edges,
+        max_nodes: params.max_nodes,
     }))
 }

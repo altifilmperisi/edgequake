@@ -13,6 +13,14 @@
  *  - Viewport collision (flip/clamp) is handled by Radix Popper — no manual
  *    coordinate clamping.
  *
+ * Lifecycle (the pointer side lives in lib/graph/engine/pointer-fsm.ts):
+ *
+ *   CLOSED ── right-click node / Ctrl+click / Menu key / Shift+F10 ──► OPEN(node)
+ *   OPEN ── Esc | click outside | item chosen ──► CLOSED (focus → canvas)
+ *   OPEN: target node stays emphasised, selection is untouched, the canvas is
+ *         frozen (no hover, no drag); closing replays the pointer for hover.
+ *   Delete is a nested state: OPEN ──"Delete Entity"──► CONFIRM ──► CLOSED | OPEN.
+ *
  * Because the menu is opened programmatically from a canvas (not a DOM trigger),
  * a 1px `Anchor` is placed at the cursor to position the content.
  */
@@ -23,8 +31,7 @@ import {
     DropdownMenuItem,
     DropdownMenuLabel,
     DropdownMenuSeparator,
-    DropdownMenuShortcut,
-} from '@/components/ui/dropdown-menu';
+  } from '@/components/ui/dropdown-menu';
 import { useEntityTypeColors } from '@/hooks/use-entity-type-colors';
 import { formatEntityLabel, formatEntityType } from '@/lib/graph/label-utils';
 import type { GraphNode } from '@/types';
@@ -129,8 +136,14 @@ export function NodeContextMenu({
         collisionPadding={8}
         className="min-w-60"
         data-testid="node-context-menu"
-        // Focus returns to the canvas, not the 1px anchor, when the menu closes.
-        onCloseAutoFocus={(event) => event.preventDefault()}
+        // Focus returns to the canvas (not the 1px anchor / body) so the
+        // keyboard shortcuts keep working right after the menu closes.
+        onCloseAutoFocus={(event) => {
+          event.preventDefault();
+          document
+            .querySelector<HTMLElement>("[data-graph-engine]")
+            ?.focus({ preventScroll: true });
+        }}
       >
         {/* Header: formatted name + type with color dot */}
         <DropdownMenuLabel className="font-normal" data-testid="node-context-menu-header">
@@ -154,7 +167,6 @@ export function NodeContextMenu({
         <DropdownMenuItem onSelect={() => onViewDetails(node)}>
           <Eye />
           <span className="flex-1">{t('graph.contextMenu.viewDetails', 'View Details')}</span>
-          <DropdownMenuShortcut>↵</DropdownMenuShortcut>
         </DropdownMenuItem>
         <DropdownMenuItem onSelect={() => onExpandNeighborhood(node)}>
           <Network />
@@ -181,7 +193,6 @@ export function NodeContextMenu({
         <DropdownMenuItem onSelect={() => onCopyId(node)}>
           <Copy />
           <span className="flex-1">{t('graph.contextMenu.copyId', 'Copy Entity ID')}</span>
-          <DropdownMenuShortcut>⌘C</DropdownMenuShortcut>
         </DropdownMenuItem>
 
         {onDelete && (

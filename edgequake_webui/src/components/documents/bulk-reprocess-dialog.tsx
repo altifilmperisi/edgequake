@@ -153,7 +153,7 @@ export function BulkReprocessDialog({
         </RadioGroup>
 
         {!allowPages && count === 1 ? (
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-xs text-muted-foreground">
             {t(
               'documents.reprocessDialog.pagesUnavailableHint',
               'Partial page reprocess is available for a single PDF that is not currently processing.',
@@ -215,7 +215,7 @@ function BulkReprocessOption({
       <div className="flex-1 min-w-0 space-y-1">
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-sm font-medium leading-tight">{label}</span>
-          <span className="text-[10px] uppercase tracking-wide rounded-full border px-1.5 py-0.5 text-muted-foreground">
+          <span className="text-xs uppercase tracking-wide rounded-full border px-1.5 py-0.5 text-muted-foreground">
             {badge}
           </span>
         </div>

@@ -328,7 +328,7 @@ export function IngestionAlertBanner({
               data-testid="ingestion-banner-progress"
               data-progress-label={progressMeta.labelKey}
             >
-              <div className="flex items-center justify-between gap-2 text-[11px]">
+              <div className="flex items-center justify-between gap-2 text-xs">
                 <span className={ingestionAlertDetailClass(baseHeadline.variant)}>
                   {progressLabel}
                 </span>

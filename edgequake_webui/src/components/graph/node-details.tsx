@@ -54,6 +54,7 @@ import { cn } from '@/lib/utils';
 import { useGraphStore } from '@/stores/use-graph-store';
 import { useSelectedWorkspace } from '@/stores/use-tenant-store';
 import type { GraphEdge, GraphNode } from '@/types';
+import { degreeTotal } from '@/types/graph';
 import { useQueryClient } from '@tanstack/react-query';
 import { formatDistanceToNow } from 'date-fns';
 import {
@@ -108,11 +109,11 @@ function PropertyValue({
   
   return (
     <div className="flex justify-between text-xs gap-2 group py-1 min-w-0">
-      <span className="text-muted-foreground shrink-0 text-[11px]">{label}</span>
+      <span className="text-muted-foreground shrink-0 text-xs">{label}</span>
       <div className="flex items-center gap-1 min-w-0 flex-1 justify-end">
         <span
           className={cn(
-            "font-mono text-[10px] bg-background/50 px-1.5 py-0.5 rounded transition-all",
+            "font-mono text-xs bg-background/50 px-1.5 py-0.5 rounded transition-all",
             isLong && "cursor-pointer hover:bg-muted",
             isExpanded ? "break-all whitespace-normal" : "truncate min-w-0"
           )}
@@ -260,13 +261,13 @@ export function NodeDetails({ node }: NodeDetailsProps) {
           <div className="flex flex-wrap items-center gap-1.5">
             <Badge 
               variant="outline" 
-              className="text-[10px] font-medium px-2 py-0.5"
+              className="text-xs font-medium px-2 py-0.5"
               style={{ borderColor: typeColor, color: typeColor, backgroundColor: `${typeColor}10` }}
             >
               {formatEntityType(node.node_type || 'ENTITY')}
             </Badge>
             {mmSubtitle && (
-              <span className="text-[10px] text-muted-foreground truncate">
+              <span className="text-xs text-muted-foreground truncate">
                 {mmSubtitle}
               </span>
             )}
@@ -293,7 +294,7 @@ export function NodeDetails({ node }: NodeDetailsProps) {
               <div className="bg-muted/30 rounded-md p-2 border border-border/30">
                 <div className="flex items-center gap-1 mb-1">
                   <Info className="h-3 w-3 text-muted-foreground" />
-                  <h5 className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                  <h5 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                     Description
                   </h5>
                 </div>
@@ -307,7 +308,7 @@ export function NodeDetails({ node }: NodeDetailsProps) {
                 <div className="flex items-center justify-between mb-1.5">
                   <div className="flex items-center gap-1">
                     <Sparkles className="h-3 w-3 text-muted-foreground" />
-                    <h5 className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                    <h5 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                       Properties
                     </h5>
                   </div>
@@ -317,7 +318,7 @@ export function NodeDetails({ node }: NodeDetailsProps) {
                         <Button
                           variant="ghost"
                           size="sm"
-                          className="h-5 text-[9px] px-1.5"
+                          className="h-5 text-xs px-1.5"
                           onClick={() => {
                             const allProps = Object.entries(node.properties || {})
                               .map(([k, v]) => `${k}: ${v}`)
@@ -346,7 +347,7 @@ export function NodeDetails({ node }: NodeDetailsProps) {
             <div>
               <div className="flex items-center gap-1 mb-1.5">
                 <Hash className="h-3 w-3 text-muted-foreground" />
-                <h5 className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                <h5 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                   Metadata
                 </h5>
               </div>
@@ -356,7 +357,7 @@ export function NodeDetails({ node }: NodeDetailsProps) {
                     <Hash className="h-2.5 w-2.5" /> ID
                   </span>
                   <div className="flex items-center gap-1">
-                    <span className="font-mono text-[9px] bg-background/50 px-1.5 py-0.5 rounded">
+                    <span className="font-mono text-xs bg-background/50 px-1.5 py-0.5 rounded">
                       {node.id.slice(0, 10)}...
                     </span>
                     <Button
@@ -375,8 +376,8 @@ export function NodeDetails({ node }: NodeDetailsProps) {
                     <span className="text-muted-foreground flex items-center gap-1">
                       <Link2 className="h-2.5 w-2.5" /> Connections
                     </span>
-                    <Badge variant="secondary" className="h-4 text-[9px] font-semibold px-1.5">
-                      {node.degree}
+                    <Badge variant="secondary" className="h-4 text-xs font-semibold px-1.5">
+                      {degreeTotal(node.degree)}
                     </Badge>
                   </div>
                 )}
@@ -385,7 +386,7 @@ export function NodeDetails({ node }: NodeDetailsProps) {
                     <span className="text-muted-foreground flex items-center gap-1">
                       <Calendar className="h-2.5 w-2.5" /> Created
                     </span>
-                    <span className="text-[10px] font-medium">
+                    <span className="text-xs font-medium">
                       {formatDistanceToNow(new Date(node.created_at), { addSuffix: true })}
                     </span>
                   </div>
@@ -400,11 +401,11 @@ export function NodeDetails({ node }: NodeDetailsProps) {
               <div className="flex items-center justify-between mb-1.5">
                 <div className="flex items-center gap-1">
                   <Link2 className="h-3 w-3 text-muted-foreground" />
-                  <h5 className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                  <h5 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                     Relationships
                   </h5>
                 </div>
-                <Badge variant="outline" className="h-4 text-[9px] font-semibold px-1.5">
+                <Badge variant="outline" className="h-4 text-xs font-semibold px-1.5">
                   {connectedEdges.length}
                 </Badge>
               </div>
@@ -412,7 +413,7 @@ export function NodeDetails({ node }: NodeDetailsProps) {
                 <div className="max-h-40 overflow-y-auto">
                   <div className="p-1.5 space-y-0.5">
                     {relatedNodes.length === 0 ? (
-                      <p className="text-[10px] text-muted-foreground text-center py-4">
+                      <p className="text-xs text-muted-foreground text-center py-4">
                         No connections found
                       </p>
                     ) : (
@@ -422,7 +423,7 @@ export function NodeDetails({ node }: NodeDetailsProps) {
                         return (
                           <div
                             key={edge.id || `edge-${index}`}
-                            className="flex items-center gap-1.5 text-[10px] cursor-pointer hover:bg-muted/50 p-1.5 rounded-md transition-all group"
+                            className="flex items-center gap-1.5 text-xs cursor-pointer hover:bg-muted/50 p-1.5 rounded-md transition-all group"
                           >
                             <div className="flex items-center shrink-0">
                               {isSource ? (
@@ -437,7 +438,7 @@ export function NodeDetails({ node }: NodeDetailsProps) {
                             </div>
                             <button
                               type="button"
-                              className="h-4 max-w-17.5 shrink-0 truncate rounded-md bg-secondary px-1 text-[8px] font-normal text-secondary-foreground transition-colors hover:bg-secondary/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                              className="h-4 max-w-17.5 shrink-0 truncate rounded-md bg-secondary px-1 text-xs font-normal text-secondary-foreground transition-colors hover:bg-secondary/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                               aria-label={`Open relationship ${edge.relationship_type}`}
                               title={`Open relationship ${edge.relationship_type}`}
                               onClick={(e) => {

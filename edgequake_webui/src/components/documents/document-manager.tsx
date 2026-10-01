@@ -24,7 +24,7 @@
 import { useSelectedWorkspace, useTenantStore } from '@/stores/use-tenant-store';
 import type { Document } from '@/types';
 
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
@@ -368,6 +368,17 @@ export function DocumentManager() {
     sortField,
     sortDirection,
   });
+
+  const searchParams = useSearchParams();
+  // SPEC-155 W7: honour /documents?id= deep link
+  useEffect(() => {
+    const deepId = searchParams.get('id');
+    if (!deepId || !documents?.length) return;
+    const match = documents.find((d) => d.id === deepId);
+    if (!match) return;
+    setSelectedDocument(match);
+    setPreviewPanelOpen(true);
+  }, [searchParams, documents]);
 
   // CLS: remember prior live-work so refresh can reserve the feedback slot early.
   const [liveWorkHint, setLiveWorkHint] = useState(false);

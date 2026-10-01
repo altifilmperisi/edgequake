@@ -138,7 +138,7 @@ export function ServerStageStepper({
       {active && detailLine && !isCancelTerminal ? (
         <div
           className={cn(
-            "rounded-md border px-2 py-1.5 text-[11px] tabular-nums",
+            "rounded-md border px-2 py-1.5 text-xs tabular-nums",
             active.status === "failed"
               ? "border-rose-200 bg-rose-50/80 text-rose-800 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200"
               : "border-sky-200/80 bg-sky-50/60 text-sky-900 dark:border-sky-900 dark:bg-sky-950/30 dark:text-sky-100",

@@ -9,6 +9,8 @@ import { ProviderStatusCard } from '@/components/settings/provider-status-card';
 import { LangfuseObservabilityCard } from '@/components/settings/langfuse-observability-card';
 import { UserManagementCard } from '@/components/settings/user-management-card';
 import { VisionLLMSettingsCard } from '@/components/settings/vision-llm-settings-card';
+import { PageHeader } from '@/components/shared/page-header';
+import { PageShell } from '@/components/shared/page-shell';
 import {
     AlertDialog,
     AlertDialogAction,
@@ -113,9 +115,9 @@ export default function SettingsPage() {
     toast.success(t('settings.toasts.themeChanged', 'Theme updated'));
   };
 
-  const handleLanguageChange = (newLanguage: 'en' | 'zh' | 'ja' | 'ko') => {
+  const handleLanguageChange = (newLanguage: 'en' | 'zh' | 'fr') => {
     setLanguage(newLanguage);
-    const languageNames = { en: 'English', zh: '中文', ja: '日本語', ko: '한국어' };
+    const languageNames = { en: 'English', zh: '中文', fr: 'Français' };
     toast.success(t('settings.toasts.languageChanged', `Language changed to ${languageNames[newLanguage]}`));
   };
 
@@ -145,14 +147,11 @@ export default function SettingsPage() {
 
   return (
     <ScrollArea className="h-full">
-      <div className="p-page md:px-8 max-w-4xl mx-auto space-y-page">
-        {/* Header */}
-        <header className="space-y-1">
-          <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{t('settings.title', 'Settings')}</h1>
-          <p className="text-sm text-muted-foreground sm:text-base">
-            {t('settings.subtitle', 'Customize your EdgeQuake experience')}
-          </p>
-        </header>
+      <PageShell narrow className="space-y-page">
+        <PageHeader
+          title={t('settings.title', 'Settings')}
+          description={t('settings.subtitle', 'Customize your EdgeQuake experience')}
+        />
 
       {/* Appearance */}
       <Card>
@@ -169,13 +168,13 @@ export default function SettingsPage() {
           {/* Theme */}
           <div className="flex items-center justify-between gap-4">
             <div className="space-y-1">
-              <label className="text-sm font-medium">{t('settings.appearance.theme', 'Theme')}</label>
+              <label id="settings-field-0" className="text-sm font-medium">{t('settings.appearance.theme', 'Theme')}</label>
               <p className="text-sm text-muted-foreground">
                 {t('settings.appearance.themeDesc', 'Select your preferred color scheme')}
               </p>
             </div>
             <Select value={theme} onValueChange={handleThemeChange}>
-              <SelectTrigger className="w-[150px]">
+              <SelectTrigger className="w-[150px]" aria-labelledby="settings-field-0">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -206,20 +205,19 @@ export default function SettingsPage() {
           {/* Language */}
           <div className="flex items-center justify-between gap-4">
             <div className="space-y-1">
-              <label className="text-sm font-medium">{t('settings.appearance.language', 'Language')}</label>
+              <label id="settings-field-1" className="text-sm font-medium">{t('settings.appearance.language', 'Language')}</label>
               <p className="text-sm text-muted-foreground">
                 {t('settings.appearance.languageDesc', 'Select your preferred language')}
               </p>
             </div>
             <Select value={language} onValueChange={handleLanguageChange}>
-              <SelectTrigger className="w-[150px]">
+              <SelectTrigger className="w-[150px]" aria-labelledby="settings-field-1">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="en">English</SelectItem>
                 <SelectItem value="zh">中文</SelectItem>
-                <SelectItem value="ja">日本語</SelectItem>
-                <SelectItem value="ko">한국어</SelectItem>
+                <SelectItem value="fr">Français</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -265,12 +263,13 @@ export default function SettingsPage() {
           {/* Show Labels */}
           <div className="flex items-center justify-between">
             <div>
-              <label className="text-sm font-medium">{t('settings.graph.showNodeLabels', 'Show Node Labels')}</label>
+              <label id="settings-field-2" className="text-sm font-medium">{t('settings.graph.showNodeLabels', 'Show Node Labels')}</label>
               <p className="text-xs text-muted-foreground">
                 {t('settings.graph.showNodeLabelsDesc', 'Display labels on graph nodes')}
               </p>
             </div>
             <Switch
+              aria-labelledby="settings-field-2"
               checked={graphSettings.showLabels}
               onCheckedChange={(showLabels) => handleGraphSettingsChange('showLabels', showLabels)}
             />
@@ -281,12 +280,13 @@ export default function SettingsPage() {
           {/* Show Edge Labels */}
           <div className="flex items-center justify-between">
             <div>
-              <label className="text-sm font-medium">{t('settings.graph.showEdgeLabels', 'Show Edge Labels')}</label>
+              <label id="settings-field-3" className="text-sm font-medium">{t('settings.graph.showEdgeLabels', 'Show Edge Labels')}</label>
               <p className="text-xs text-muted-foreground">
                 {t('settings.graph.showEdgeLabelsDesc', 'Display relationship types on edges')}
               </p>
             </div>
             <Switch
+              aria-labelledby="settings-field-3"
               checked={graphSettings.showEdgeLabels}
               onCheckedChange={(showEdgeLabels) => handleGraphSettingsChange('showEdgeLabels', showEdgeLabels)}
             />
@@ -297,7 +297,7 @@ export default function SettingsPage() {
           {/* Node Size */}
           <div className="flex items-center justify-between">
             <div>
-              <label className="text-sm font-medium">{t('settings.graph.nodeSize', 'Node Size')}</label>
+              <label id="settings-field-4" className="text-sm font-medium">{t('settings.graph.nodeSize', 'Node Size')}</label>
               <p className="text-xs text-muted-foreground">
                 {t('settings.graph.nodeSizeDesc', 'Size of nodes in the graph')}
               </p>
@@ -306,7 +306,7 @@ export default function SettingsPage() {
               value={graphSettings.nodeSize}
               onValueChange={(nodeSize: 'small' | 'medium' | 'large') => handleGraphSettingsChange('nodeSize', nodeSize)}
             >
-              <SelectTrigger className="w-[120px]">
+              <SelectTrigger className="w-[120px]" aria-labelledby="settings-field-4">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -322,7 +322,7 @@ export default function SettingsPage() {
           {/* Layout */}
           <div className="flex items-center justify-between">
             <div>
-              <label className="text-sm font-medium">{t('settings.graph.defaultLayout', 'Default Layout')}</label>
+              <label id="settings-field-5" className="text-sm font-medium">{t('settings.graph.defaultLayout', 'Default Layout')}</label>
               <p className="text-xs text-muted-foreground">
                 {t('settings.graph.defaultLayoutDesc', 'Initial graph layout algorithm')}
               </p>
@@ -331,7 +331,7 @@ export default function SettingsPage() {
               value={graphSettings.layout}
               onValueChange={(layout: 'force' | 'circular' | 'random' | 'circlepack' | 'noverlaps' | 'force-directed' | 'hierarchical') => handleGraphSettingsChange('layout', layout)}
             >
-              <SelectTrigger className="w-[150px]">
+              <SelectTrigger className="w-[150px]" aria-labelledby="settings-field-5">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -363,7 +363,7 @@ export default function SettingsPage() {
           {/* Default Mode */}
           <div className="flex items-center justify-between">
             <div>
-              <label className="text-sm font-medium">{t('settings.query.defaultMode', 'Default Query Mode')}</label>
+              <label id="settings-field-6" className="text-sm font-medium">{t('settings.query.defaultMode', 'Default Query Mode')}</label>
               <p className="text-xs text-muted-foreground">
                 {t('settings.query.defaultModeDesc', 'Default retrieval mode for queries')}
               </p>
@@ -374,7 +374,7 @@ export default function SettingsPage() {
                 handleQuerySettingsChange('mode', mode)
               }
             >
-              <SelectTrigger className="w-[160px]">
+              <SelectTrigger className="w-[160px]" aria-labelledby="settings-field-6">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -388,7 +388,7 @@ export default function SettingsPage() {
                     {mode.recommended
                       ? t('query.modes.recommendedSuffix', ' · Recommended')
                       : ''}
-                    <span className="ml-1 text-[10px] text-muted-foreground">
+                    <span className="ml-1 text-xs text-muted-foreground">
                       ({mode.apiName})
                     </span>
                   </SelectItem>
@@ -402,12 +402,13 @@ export default function SettingsPage() {
           {/* Streaming */}
           <div className="flex items-center justify-between">
             <div>
-              <label className="text-sm font-medium">{t('settings.query.enableStreaming', 'Enable Streaming')}</label>
+              <label id="settings-field-7" className="text-sm font-medium">{t('settings.query.enableStreaming', 'Enable Streaming')}</label>
               <p className="text-xs text-muted-foreground">
                 {t('settings.query.enableStreamingDesc', 'Show responses as they are generated')}
               </p>
             </div>
             <Switch
+              aria-labelledby="settings-field-7"
               checked={querySettings.stream}
               onCheckedChange={(stream) => handleQuerySettingsChange('stream', stream)}
             />
@@ -418,12 +419,13 @@ export default function SettingsPage() {
           {/* Reranking - SOTA Feature */}
           <div className="flex items-center justify-between">
             <div>
-              <label className="text-sm font-medium">{t('settings.query.enableReranking', 'Enable Reranking')}</label>
+              <label id="settings-field-8" className="text-sm font-medium">{t('settings.query.enableReranking', 'Enable Reranking')}</label>
               <p className="text-xs text-muted-foreground">
                 {t('settings.query.enableRerankingDesc', 'Improve retrieval precision with semantic reranking')}
               </p>
             </div>
             <Switch
+              aria-labelledby="settings-field-8"
               checked={querySettings.enableRerank}
               onCheckedChange={(enableRerank) => handleQuerySettingsChange('enableRerank', enableRerank)}
             />
@@ -432,7 +434,7 @@ export default function SettingsPage() {
           {/* Rerank Top K */}
           <div className="flex items-center justify-between">
             <div>
-              <label className="text-sm font-medium">{t('settings.query.rerankTopK', 'Rerank Top K')}</label>
+              <label id="settings-field-9" className="text-sm font-medium">{t('settings.query.rerankTopK', 'Rerank Top K')}</label>
               <p className="text-xs text-muted-foreground">
                 {t('settings.query.rerankTopKDesc', 'Number of top results after reranking')}
               </p>
@@ -441,7 +443,7 @@ export default function SettingsPage() {
               value={String(querySettings.rerankTopK)}
               onValueChange={(value) => handleQuerySettingsChange('rerankTopK', Number(value))}
             >
-              <SelectTrigger className="w-[80px]">
+              <SelectTrigger className="w-[80px]" aria-labelledby="settings-field-9">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -470,12 +472,13 @@ export default function SettingsPage() {
           {/* Gleaning */}
           <div className="flex items-center justify-between">
             <div>
-              <label className="text-sm font-medium">{t('settings.ingestion.enableGleaning', 'Enable Gleaning')}</label>
+              <label id="settings-field-10" className="text-sm font-medium">{t('settings.ingestion.enableGleaning', 'Enable Gleaning')}</label>
               <p className="text-xs text-muted-foreground">
                 {t('settings.ingestion.enableGleaningDesc', 'Multiple extraction passes for higher quality entities')}
               </p>
             </div>
             <Switch
+              aria-labelledby="settings-field-10"
               checked={ingestionSettings.enableGleaning}
               onCheckedChange={(enableGleaning) => handleIngestionSettingsChange('enableGleaning', enableGleaning)}
             />
@@ -486,7 +489,7 @@ export default function SettingsPage() {
           {/* Max Gleaning Passes */}
           <div className="flex items-center justify-between">
             <div>
-              <label className="text-sm font-medium">{t('settings.ingestion.maxGleaning', 'Max Gleaning Passes')}</label>
+              <label id="settings-field-11" className="text-sm font-medium">{t('settings.ingestion.maxGleaning', 'Max Gleaning Passes')}</label>
               <p className="text-xs text-muted-foreground">
                 {t('settings.ingestion.maxGleaningDesc', 'Maximum number of extraction passes (1-3)')}
               </p>
@@ -495,7 +498,7 @@ export default function SettingsPage() {
               value={String(ingestionSettings.maxGleaning)}
               onValueChange={(value) => handleIngestionSettingsChange('maxGleaning', Number(value))}
             >
-              <SelectTrigger className="w-[80px]">
+              <SelectTrigger className="w-[80px]" aria-labelledby="settings-field-11">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -511,12 +514,13 @@ export default function SettingsPage() {
           {/* LLM Summarization */}
           <div className="flex items-center justify-between">
             <div>
-              <label className="text-sm font-medium">{t('settings.ingestion.llmSummarization', 'LLM Summarization')}</label>
+              <label id="settings-field-12" className="text-sm font-medium">{t('settings.ingestion.llmSummarization', 'LLM Summarization')}</label>
               <p className="text-xs text-muted-foreground">
                 {t('settings.ingestion.llmSummarizationDesc', 'Use LLM to merge entity descriptions intelligently')}
               </p>
             </div>
             <Switch
+              aria-labelledby="settings-field-12"
               checked={ingestionSettings.useLLMSummarization}
               onCheckedChange={(useLLMSummarization) => handleIngestionSettingsChange('useLLMSummarization', useLLMSummarization)}
             />
@@ -632,14 +636,12 @@ export default function SettingsPage() {
           </div>
         </CardContent>
       </Card>
-      </div>
 
       {/* Admin section — only fetches and renders for admin users (SPEC-0001) */}
-      <div className="p-page md:px-8 max-w-4xl mx-auto space-y-page pt-0">
-        <AdminQuotaSection />
-        {/* User management — Issue #205: admin-only user CRUD */}
-        <UserManagementCard />
-      </div>
+      <AdminQuotaSection />
+      {/* User management — Issue #205: admin-only user CRUD */}
+      <UserManagementCard />
+      </PageShell>
     </ScrollArea>
   );
 }

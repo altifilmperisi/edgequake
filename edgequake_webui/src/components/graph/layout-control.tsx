@@ -65,7 +65,7 @@ export function LayoutControl() {
         <TooltipContent side="bottom">
           <div className="space-y-1">
             <div className="font-medium text-xs">{t('graph.layouts.title', 'Graph Layout')}</div>
-            <p className="text-[10px] text-muted-foreground">Rearrange nodes with different algorithms</p>
+            <p className="text-xs text-muted-foreground">Rearrange nodes with different algorithms</p>
           </div>
         </TooltipContent>
       </Tooltip>

@@ -14,6 +14,10 @@ interface MinimapProps {
   position?: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
 }
 
+// Sigma draws graph-Y upward (screen-Y downward), so the minimap works in
+// Y-flipped space to stay a faithful, un-mirrored thumbnail of the canvas.
+const flipY = (y: number) => -y;
+
 /**
  * Graph Minimap Component
  * 
@@ -45,7 +49,7 @@ export function GraphMinimap({
     
     graph.forEachNode((nodeId) => {
       const x = graph.getNodeAttribute(nodeId, 'x');
-      const y = graph.getNodeAttribute(nodeId, 'y');
+      const y = flipY(graph.getNodeAttribute(nodeId, 'y'));
       if (x < minX) minX = x;
       if (x > maxX) maxX = x;
       if (y < minY) minY = y;
@@ -107,9 +111,9 @@ export function GraphMinimap({
     ctx.lineWidth = 0.5;
     graph.forEachEdge((edge, attrs, source, target) => {
       const sourceX = graph.getNodeAttribute(source, 'x');
-      const sourceY = graph.getNodeAttribute(source, 'y');
+      const sourceY = flipY(graph.getNodeAttribute(source, 'y'));
       const targetX = graph.getNodeAttribute(target, 'x');
-      const targetY = graph.getNodeAttribute(target, 'y');
+      const targetY = flipY(graph.getNodeAttribute(target, 'y'));
       
       const p1 = transform(sourceX, sourceY);
       const p2 = transform(targetX, targetY);
@@ -123,7 +127,7 @@ export function GraphMinimap({
     // Draw nodes
     graph.forEachNode((nodeId) => {
       const x = graph.getNodeAttribute(nodeId, 'x');
-      const y = graph.getNodeAttribute(nodeId, 'y');
+      const y = flipY(graph.getNodeAttribute(nodeId, 'y'));
       const color = graph.getNodeAttribute(nodeId, 'color') || nodeColor;
       const size = Math.max(1.5, (graph.getNodeAttribute(nodeId, 'size') || 5) * scale * 0.3);
       
@@ -135,23 +139,18 @@ export function GraphMinimap({
       ctx.fill();
     });
 
-    // Calculate and draw viewport rectangle
-    const camera = sigma.getCamera();
-    const cameraState = camera.getState();
-    
-    // Get visible area in graph coordinates
+    // Visible area: project the canvas corners into graph space. (Camera x/y are
+    // *normalized* coordinates, not graph units, so they cannot be used directly.)
     const container = sigma.getContainer();
-    const viewWidth = container.clientWidth / cameraState.ratio;
-    const viewHeight = container.clientHeight / cameraState.ratio;
-    
-    // Viewport position in graph coords
-    const viewX = cameraState.x - viewWidth / 2;
-    const viewY = cameraState.y - viewHeight / 2;
+    const topLeftGraph = sigma.viewportToGraph({ x: 0, y: 0 });
+    const bottomRightGraph = sigma.viewportToGraph({
+      x: container.clientWidth,
+      y: container.clientHeight,
+    });
 
-    // Transform to minimap coords
-    const vpTopLeft = transform(viewX, viewY);
-    const vpBottomRight = transform(viewX + viewWidth, viewY + viewHeight);
-    
+    const vpTopLeft = transform(topLeftGraph.x, flipY(topLeftGraph.y));
+    const vpBottomRight = transform(bottomRightGraph.x, flipY(bottomRightGraph.y));
+
     const vpRect = {
       x: vpTopLeft.x,
       y: vpTopLeft.y,
@@ -198,11 +197,11 @@ export function GraphMinimap({
     const graphX = (clickX - offsetX) / scale + bbox.x;
     const graphY = (clickY - offsetY) / scale + bbox.y;
 
-    // Animate camera to this position
-    sigmaInstance.getCamera().animate(
-      { x: graphX, y: graphY },
-      { duration: 300 }
+    // Camera works in framed-graph space: graph → viewport → framed graph.
+    const target = sigmaInstance.viewportToFramedGraph(
+      sigmaInstance.graphToViewport({ x: graphX, y: flipY(graphY) }),
     );
+    sigmaInstance.getCamera().animate(target, { duration: 300 });
   }, [sigmaInstance, width, height, getGraphBBox]);
 
   // Handle drag navigation
@@ -228,10 +227,18 @@ export function GraphMinimap({
   useEffect(() => {
     if (!sigmaInstance) return;
 
-    const redraw = () => drawMinimap(sigmaInstance);
+    // Coalesce bursts (a layout pass fires one event per node attribute).
+    let frame: number | null = null;
+    const redraw = () => {
+      if (frame !== null) return;
+      frame = requestAnimationFrame(() => {
+        frame = null;
+        drawMinimap(sigmaInstance);
+      });
+    };
 
     // Initial draw
-    redraw();
+    drawMinimap(sigmaInstance);
 
     // Listen to camera updates
     sigmaInstance.getCamera().on('updated', redraw);
@@ -252,6 +259,7 @@ export function GraphMinimap({
 
     // Cleanup
     return () => {
+      if (frame !== null) cancelAnimationFrame(frame);
       sigmaInstance.getCamera().off('updated', redraw);
       Object.entries(handlers).forEach(([event, handler]) => {
         graph.off(event as keyof typeof handlers, handler);

@@ -40,7 +40,9 @@
     "optional": "Optionnel",
     "retry": "Réessayer",
     "unknownError": "Erreur inconnue",
-    "waiting": "En attente..."
+    "waiting": "En attente...",
+    "enabled": "Enabled",
+    "disabled": "Disabled"
   },
   "nav": {
     "dashboard": "Tableau de bord",
@@ -52,7 +54,8 @@
     "costs": "Coûts",
     "apiExplorer": "Explorateur API",
     "settings": "Paramètres",
-    "pipeline": "Pipeline"
+    "pipeline": "Pipeline",
+    "home": "Dashboard"
   },
   "dashboard": {
     "title": "Tableau de bord",
@@ -100,7 +103,15 @@
     "query": "Requête",
     "settings": "Paramètres",
     "language": "Langue",
-    "apiVersion": "API v{{version}}"
+    "apiVersion": "API v{{version}}",
+    "apiBusy": "Occupé",
+    "apiBusyHint": "L'API est occupée — les compteurs de documents peuvent être en retard",
+    "apiOfflineHint": "Impossible de se connecter à l'API EdgeQuake",
+    "apiCheckingHint": "Vérification de la connexion...",
+    "toggleTheme": "Changer le thème",
+    "userMenu": "Menu utilisateur",
+    "logout": "Déconnexion",
+    "signIn": "Connexion"
   },
   "documents": {
     "title": "Documents",
@@ -133,7 +144,19 @@
       "partial": "{{success}} fichier(s) admis ; {{failed}} en échec — traitement en file pour les réussites",
       "viewInGraph": "Ouvrir le graphe",
       "duplicateSkipped": "Doublon (ignoré)",
-      "uploadFailed": "Échec de l'envoi"
+      "uploadFailed": "Échec de l'envoi",
+      "sending": "Sending {{sent}} / {{total}} MB",
+      "saving": "Saving to workspace...",
+      "uploadDrop": "Upload files by clicking or dragging",
+      "uploadDropActive": "Drop files here",
+      "uploadDropWithLimit": "Drag & drop or click to upload • TXT, MD, JSON, PDF, PNG, JPG, GIF, WEBP (max {{limit}}) · DOCX/Excel not supported",
+      "uploadWhileWorking": "Add more files anytime · max {{limit}}",
+      "pdfParserHint": "Choose a PDF parser override for this upload, or keep the workspace default.",
+      "pdfParser": "Parser for this upload",
+      "pdfParserDefault": "Workspace Default",
+      "pdfParserDefaultWithValue": "Workspace Default ({{value}})",
+      "pdfParserVision": "Vision",
+      "pdfParserEdgeParse": "EdgeParse"
     },
     "duplicateDialog": {
       "titleSingle": "Document doublon détecté",
@@ -277,7 +300,11 @@
     "reprocess": {
       "failed": "Échec du retraitement",
       "success": "Document mis en file d'attente pour retraitement",
-      "successDesc": "Le document sera entièrement retraité."
+      "successDesc": "Le document sera entièrement retraité.",
+      "action": "Reprocess",
+      "queuing": "Queuing reprocess…",
+      "skipped": "Skipped {{count}} documents",
+      "skippedHint": "Some documents were already processing or ineligible."
     },
     "pageHealth": {
       "title": "Santé des pages · {{count}} pages",
@@ -520,7 +547,40 @@
       "typeList": "Contrôles de visibilité par type",
       "entities": "entités",
       "clickToHide": "Cliquer pour masquer",
-      "clickToShow": "Cliquer pour afficher"
+      "clickToShow": "Cliquer pour afficher",
+      "communities": "Communautés",
+      "communitiesLoading": "Chargement des communautés…",
+      "communitiesEmpty": "Aucune communauté disponible"
+    },
+    "table": {
+      "title": "Graphe en tableau",
+      "nodes": "Nœuds",
+      "edges": "Arêtes",
+      "edgesForSelection": "Arêtes (sélection)",
+      "label": "Libellé",
+      "type": "Type",
+      "degree": "Degré",
+      "community": "Communauté",
+      "source": "Source",
+      "relation": "Relation",
+      "target": "Cible",
+      "emptyNodes": "Aucun nœud chargé",
+      "emptyEdges": "Aucune arête"
+    },
+    "ego": {
+      "depth": "Profondeur ego",
+      "hint": "Garde lumineux les nœuds à N sauts du nœud sélectionné ; atténue le reste",
+      "selectFirst": "Sélectionnez un nœud pour activer le focus ego",
+      "title": "Voisinage",
+      "hops_one": "{{count}} saut",
+      "hops_other": "{{count}} sauts",
+      "summary_one": "{{count}} nœud à portée",
+      "summary_other": "{{count}} nœuds à portée",
+      "selectPrompt": "Cliquez sur un nœud pour voir son voisinage",
+      "highlightOff": "La mise en évidence des voisins est désactivée.",
+      "enable": "Activer",
+      "clear": "Effacer la sélection",
+      "fit": "Cadrer le voisinage"
     },
     "export": {
       "title": "Exporter le graphe",
@@ -546,7 +606,8 @@
       "event": "Événement",
       "location": "Lieu",
       "organization": "Organisation",
-      "person": "Personne"
+      "person": "Personne",
+      "technology": "Technology"
     },
     "resetZoom": "Réinitialiser la vue",
     "rotateClockwise": "Rotation horaire",
@@ -560,6 +621,8 @@
     "subtitle": "Posez des questions sur votre graphe de connaissances",
     "placeholder": "Posez une question...",
     "submit": "Envoyer",
+    "showOnGraph": "Afficher sur le graphe",
+    "showOnGraphHint": "Mettre en évidence les entités de la réponse sur le graphe",
     "startConversation": "Commencer une conversation",
     "startConversationSubtitle": "Posez des questions sur votre graphe de connaissances",
     "modes": {
@@ -612,6 +675,10 @@
   },
   "pipeline": {
     "title": "État du pipeline",
+    "allWorkspaces": "Tous les espaces",
+    "noWorkspace": "Aucun espace sélectionné",
+    "backToDocuments": "Retour aux documents",
+    "advancedDetails": "Détails avancés",
     "idle": "Pipeline inactif",
     "busy": "Pipeline occupé",
     "job": "Tâche : {{name}}",
@@ -619,7 +686,30 @@
     "progress": "Progression",
     "messages": "Messages",
     "cancel": "Annuler le pipeline",
-    "processed": "{{current}} sur {{total}} documents traités"
+    "processed": "{{current}} sur {{total}} documents traités",
+    "workingCount": "Working · {{count}}",
+    "clickForDetails": "Details →",
+    "graphMergeProgress": "Graph save progress",
+    "extractionProgress": "Extraction progress",
+    "embeddingProgress": "Embedding progress",
+    "conversionProgress": "Conversion progress",
+    "stageProgress": "Stage progress",
+    "processing": "Processing {{count}} document(s)",
+    "processingDocument": "Processing document",
+    "waitingToStart": "{{count}} document(s) waiting to start",
+    "stuckHeadline": "{{count}} document(s) need attention",
+    "stuckHint": "No worker is processing these documents. Reprocess to create a new task.",
+    "stuckBadge": "Needs attention",
+    "stuckDocuments": "Stuck documents",
+    "reprocessStuck": "Reprocess",
+    "processingAndWaiting": "{{processing}} processing · {{waiting}} waiting",
+    "waitingHint": "Workers are idle but documents are queued. Processing will resume automatically.",
+    "waitingDocuments": "Waiting documents",
+    "waitingForSlot": "Waiting for a processing slot",
+    "queuedBadge": "Queued",
+    "pendingLabel": "Pending",
+    "completedLabel": "Completed",
+    "failedLabel": "Failed"
   },
   "settings": {
     "title": "Paramètres",
@@ -738,6 +828,18 @@
       "serverDefault": "Par defaut du serveur",
       "updateSuccess": "Configuration Vision LLM mise a jour",
       "updateFailed": "Echec de la mise a jour de la configuration Vision LLM"
+    },
+    "pdfParser": {
+      "edgeparse": "EdgeParse",
+      "vision": "Vision",
+      "serverDefault": "Server Default",
+      "serverDefaultWithValue": "Server Default ({{value}})",
+      "serverDefaultHint": "Uses the server fallback when no workspace override is set",
+      "serverDefaultHintWithValue": "Uses server config when no workspace override is set (currently {{value}}).",
+      "edgeparseHint": "Fast, CPU-only, best for digital-native PDFs",
+      "visionHint": "Best for scanned and image-heavy PDFs",
+      "fallbackVision": "Fallback: Vision",
+      "resolvesTo": "Resolves to {{value}}"
     }
   },
   "websocket": {
@@ -912,7 +1014,19 @@
     "updateFailed": "Échec de la mise à jour de l'espace de travail",
     "updateSuccess": "Espace de travail mis à jour avec succès",
     "updated": "Mis à jour",
-    "workspace": "Espace de travail"
+    "workspace": "Espace de travail",
+    "serverDefaultWithValue": "Server Default ({{value}})",
+    "inheritedDefault": "Inherited default",
+    "notConfigured": "not configured",
+    "extractionLanguage": {
+      "title": "Extraction Language",
+      "description": "Language used for entity names, descriptions, and relationship text during extraction.",
+      "serverDefault": "Server default",
+      "serverDefaultWithValue": "Server default ({{value}})",
+      "futureOnlyHint": "Applies to future document ingestions. Use Rebuild Knowledge Graph to re-extract existing documents.",
+      "typesRemappedToast": "Entity types updated to match extraction language. Applies to future ingestions.",
+      "changedToast": "Extraction language updated. Reprocess documents to refresh the graph."
+    }
   },
   "onboarding": {
     "stepOf": "Étape {{current}} sur {{total}}",
@@ -977,7 +1091,13 @@
     "impactRebuildKg": "Reconstruire le graphe de connaissances pour le nouveau LLM.",
     "impactRebuildVision": "Reconstruire le graphe pour les changements vision/PDF.",
     "impactZeroDocs": "Aucun document — les changements s'appliquent aux prochaines ingestions.",
-    "impactFutureOnly": "Langue et types d'entités s'appliquent aux prochaines ingestions."
+    "impactFutureOnly": "Langue et types d'entités s'appliquent aux prochaines ingestions.",
+    "customModels": "Custom model selection",
+    "backToServerDefaults": "Use server defaults",
+    "usingServerDefaults": "Using server defaults",
+    "serverDefaultsMissing": "Server defaults not fully configured",
+    "wizardDialogHint": "Multi-step creation wizard",
+    "pdfParserHintWithValue": "Choose how PDFs are converted to text. Server default resolves to {{value}}."
   },
   "entityTypes": {
     "title": "Types d'entités",
@@ -1000,6 +1120,66 @@
       "research": "Recherche",
       "finance": "Finance",
       "custom": "Personnalisé"
+    }
+  },
+  "connection": {
+    "online": "Connecté",
+    "checking": "Vérification…",
+    "degraded": "Dégradé",
+    "offline": "Hors ligne"
+  },
+  "costs": {
+    "title": "Tableau des coûts",
+    "subtitle": "Surveillez les coûts et l'usage LLM de votre espace",
+    "period": {
+      "7d": "7 derniers jours",
+      "30d": "30 derniers jours",
+      "90d": "90 derniers jours",
+      "all": "Tout"
+    }
+  },
+  "command": {
+    "placeholder": "Search pages and actions…",
+    "empty": "No results",
+    "navigate": "Navigate",
+    "actions": "Actions",
+    "shortcuts": "Keyboard shortcuts"
+  },
+  "theme": {
+    "light": "Light theme",
+    "dark": "Dark theme"
+  },
+  "ingestion": {
+    "stage": {
+      "queued": "Queued",
+      "uploading": "Uploading",
+      "converting": "Converting PDF",
+      "preprocessing": "Preprocessing",
+      "chunking": "Chunking",
+      "extracting": "Extracting Entities",
+      "gleaning": "Gleaning",
+      "merging": "Merging Graph",
+      "summarizing": "Summarizing",
+      "embedding": "Generating Embeddings",
+      "storing": "Storing",
+      "completed": "Completed",
+      "failed": "Failed"
+    },
+    "busy": {
+      "working": "Working",
+      "idle": "Idle"
+    },
+    "mode": {
+      "full": "full",
+      "entities": "entities",
+      "merge": "merge"
+    },
+    "counts": {
+      "chunks": "chunks",
+      "pages": "pages"
+    },
+    "banner": {
+      "working": "Working"
     }
   }
 }

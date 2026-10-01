@@ -89,7 +89,7 @@ export function PdfPageOverlay({ regions, chips, empty }: PdfPageOverlayProps) {
           data-testid="pdf-layout-empty"
           className="pointer-events-none absolute inset-x-0 top-2 flex justify-center"
         >
-          <span className="rounded bg-background/80 px-2 py-1 text-[11px] text-muted-foreground">
+          <span className="rounded bg-background/80 px-2 py-1 text-xs text-muted-foreground">
             {t('documents.viewer.layout.empty', 'No regions on this page')}
           </span>
         </div>
@@ -135,7 +135,7 @@ export function PdfPageOverlay({ regions, chips, empty }: PdfPageOverlayProps) {
           >
             <span
               data-testid="pdf-layout-label"
-              className="pointer-events-none absolute left-0 top-0 max-w-full truncate px-0.5 text-[11px] leading-tight text-foreground"
+              className="pointer-events-none absolute left-0 top-0 max-w-full truncate px-0.5 text-xs leading-tight text-foreground"
               style={{ background: overlayBoxColor(r.class).replace('0.28', '0.85').replace('0.22', '0.85') }}
             >
               {r.class}

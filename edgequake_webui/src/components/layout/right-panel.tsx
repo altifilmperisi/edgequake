@@ -156,7 +156,7 @@ export const RightPanel = forwardRef<HTMLDivElement, RightPanelProps>(
                   <h3 className="text-xs font-semibold truncate">{title}</h3>
                 )}
                 {subtitle && (
-                  <p className="text-[10px] text-muted-foreground truncate">{subtitle}</p>
+                  <p className="text-xs text-muted-foreground truncate">{subtitle}</p>
                 )}
               </div>
             </div>

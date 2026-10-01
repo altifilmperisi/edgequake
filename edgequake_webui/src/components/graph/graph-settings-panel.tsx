@@ -233,7 +233,7 @@ export function GraphSettingsPanel({ onSettingsChange }: GraphSettingsPanelProps
                 ))}
               </div>
             )}
-            <p className="text-[10px] text-muted-foreground">
+            <p className="text-xs text-muted-foreground">
               {startNode ? `Focused on: ${startNode}` : 'Leave empty to show most connected nodes.'}
             </p>
           </div>
@@ -246,7 +246,7 @@ export function GraphSettingsPanel({ onSettingsChange }: GraphSettingsPanelProps
                   <Zap className="h-3.5 w-3.5 text-amber-500" />
                   <Label className="text-xs font-medium">Auto-Optimize</Label>
                 </div>
-                <span className="text-[10px] text-muted-foreground capitalize">
+                <span className="text-xs text-muted-foreground capitalize">
                   {deviceTier} perf device
                 </span>
               </div>
@@ -259,7 +259,7 @@ export function GraphSettingsPanel({ onSettingsChange }: GraphSettingsPanelProps
                 <Sparkles className="h-3.5 w-3.5" />
                 Apply Optimal Settings
               </Button>
-              <p className="text-[10px] text-muted-foreground">
+              <p className="text-xs text-muted-foreground">
                 Workspace: {formatNodeCount(totalNodesInStorage)} nodes → Recommended: {formatNodeCount(optimizedSettings.maxNodes)} max
               </p>
             </div>
@@ -282,7 +282,7 @@ export function GraphSettingsPanel({ onSettingsChange }: GraphSettingsPanelProps
               step={50}
               className="w-full"
             />
-            <p className="text-[10px] text-muted-foreground">
+            <p className="text-xs text-muted-foreground">
               Limit the number of nodes fetched from the server.
             </p>
           </div>
@@ -302,7 +302,7 @@ export function GraphSettingsPanel({ onSettingsChange }: GraphSettingsPanelProps
               step={1}
               className="w-full"
             />
-            <p className="text-[10px] text-muted-foreground">
+            <p className="text-xs text-muted-foreground">
               Depth of relationship traversal from the focus node.
             </p>
           </div>
@@ -311,7 +311,7 @@ export function GraphSettingsPanel({ onSettingsChange }: GraphSettingsPanelProps
           <div className="flex items-center justify-between">
             <div className="space-y-0.5">
               <Label className="text-xs">Include Orphans</Label>
-              <p className="text-[10px] text-muted-foreground">
+              <p className="text-xs text-muted-foreground">
                 Show nodes with no connections.
               </p>
             </div>

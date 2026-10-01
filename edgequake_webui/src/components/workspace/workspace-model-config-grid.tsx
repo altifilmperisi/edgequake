@@ -99,7 +99,7 @@ function ModelDisplayRow({
   const badgeValue = resolvesToLabel || fullId || (usingDefault ? resolvedDefaultId : undefined);
 
   return (
-    <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg">
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 p-3 bg-muted/50 rounded-lg">
       <ProviderIcon
         providerId={
           providerId ||
@@ -108,8 +108,8 @@ function ModelDisplayRow({
             : undefined)
         }
       />
-      <div className="min-w-0 flex-1">
-        <div className="font-medium truncate">{title}</div>
+      <div className="min-w-0 flex-1 basis-40">
+        <div className="font-medium truncate" title={typeof title === "string" ? title : undefined}>{title}</div>
         <div className="text-sm text-muted-foreground capitalize truncate">
           {subtitle}
           {dimension != null && (
@@ -120,13 +120,15 @@ function ModelDisplayRow({
       {badgeValue && (
         <Badge
           variant="outline"
-          className="ml-auto font-mono text-xs shrink-0 max-w-[45%] truncate"
-          title={resolutionSource ? `source=${resolutionSource}` : undefined}
+          className="ml-auto min-w-0 max-w-full shrink font-mono text-xs"
+          title={resolutionSource ? `source=${resolutionSource}` : badgeValue}
           data-testid={testId}
         >
-          {t("settings.pdfParser.resolvesTo", "Resolves to {{value}}", {
-            value: badgeValue,
-          })}
+          <span className="truncate">
+            {t("settings.pdfParser.resolvesTo", "Resolves to {{value}}", {
+              value: badgeValue,
+            })}
+          </span>
         </Badge>
       )}
     </div>
@@ -316,7 +318,7 @@ export function WorkspaceModelConfigGrid({
                   : `Auto → ${extractEffectiveAuto}`}
               </div>
               <div
-                className="text-[11px]"
+                className="text-xs"
                 data-testid="workspace-extract-effective-hint"
               >
                 {formatEffectiveBestPracticeHint(extractEffectiveAuto)}
@@ -328,7 +330,7 @@ export function WorkspaceModelConfigGrid({
                   : `Auto → ${queryEffectiveAuto}`}
               </div>
               <div
-                className="text-[11px]"
+                className="text-xs"
                 data-testid="workspace-query-effective-hint"
               >
                 {formatEffectiveBestPracticeHint(queryEffectiveAuto)}

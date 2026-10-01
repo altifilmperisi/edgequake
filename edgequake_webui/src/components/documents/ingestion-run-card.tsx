@@ -210,7 +210,7 @@ export function IngestionRunCard({
       ) : cancelTerminal ? (
         <div className="space-y-1.5" data-testid="spec086-cancel-progress-frozen">
           <div className="space-y-0.5" data-testid="spec048-overall-progress">
-            <div className="flex items-center justify-between gap-2 text-[10px] text-muted-foreground">
+            <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
               <span>Overall (frozen)</span>
               <span
                 className="tabular-nums"
@@ -220,6 +220,7 @@ export function IngestionRunCard({
               </span>
             </div>
             <Progress
+              aria-label="Overall progress (frozen)"
               value={overallPct}
               className="h-1 [&_[data-slot=progress-indicator]]:bg-orange-400/70"
             />
@@ -229,7 +230,7 @@ export function IngestionRunCard({
         <div className="space-y-1.5">
           {hasStageCounts && typeof stagePct === "number" ? (
             <div className="space-y-0.5" data-testid="spec048-stage-progress">
-              <div className="flex items-center justify-between gap-2 text-[10px] text-muted-foreground">
+              <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
                 <span>
                   This stage
                   {timeline.stageCountsLabel
@@ -239,6 +240,7 @@ export function IngestionRunCard({
                 <span className="tabular-nums">{stagePct}%</span>
               </div>
               <Progress
+              aria-label="Current stage progress"
                 value={stagePct}
                 className="h-1.5 [&_[data-slot=progress-indicator]]:bg-sky-500"
               />
@@ -255,7 +257,7 @@ export function IngestionRunCard({
           {/* LAW-IS2: overall only when stage has no determinate N/M (one primary meter). */}
           {showOverall ? (
             <div className="space-y-0.5" data-testid="spec048-overall-progress">
-              <div className="flex items-center justify-between gap-2 text-[10px] text-muted-foreground">
+              <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
                 <span>Overall (est.)</span>
                 <span
                   className="tabular-nums"
@@ -265,6 +267,7 @@ export function IngestionRunCard({
                 </span>
               </div>
               <Progress
+              aria-label="Overall progress"
                 value={overallPct}
                 className="h-1 [&_[data-slot=progress-indicator]]:bg-sky-400/80"
               />
@@ -283,7 +286,7 @@ export function IngestionRunCard({
 
       {run.message && (!compact || detailsOpen) ? (
         <p
-          className="text-[11px] text-muted-foreground line-clamp-2"
+          className="text-xs text-muted-foreground line-clamp-2"
           data-testid="spec086-run-message"
         >
           {run.message}
@@ -293,7 +296,7 @@ export function IngestionRunCard({
       {compact && run.message && !detailsOpen ? (
         <button
           type="button"
-          className="text-[10px] text-muted-foreground underline-offset-2 hover:underline"
+          className="text-xs text-muted-foreground underline-offset-2 hover:underline"
           onClick={() => setDetailsOpen(true)}
           data-testid="spec099-run-expand-details"
         >
@@ -303,7 +306,7 @@ export function IngestionRunCard({
 
       {run.mode && run.mode !== "full" ? (
         <div
-          className="text-[11px] text-muted-foreground"
+          className="text-xs text-muted-foreground"
           data-testid="spec048-run-mode"
         >
           Reprocess mode: {run.mode}
@@ -313,7 +316,7 @@ export function IngestionRunCard({
       {/* IS3: optional cost chip when spend is non-zero. */}
       {typeof run.costUsd === "number" && run.costUsd > 0 ? (
         <div
-          className="text-[11px] tabular-nums text-muted-foreground"
+          className="text-xs tabular-nums text-muted-foreground"
           data-testid="spec091-run-cost"
         >
           Cost so far ${run.costUsd.toFixed(2)}

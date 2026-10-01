@@ -38,6 +38,7 @@ import {
     Clock,
     Copy,
     Gauge,
+    Network,
     RefreshCw,
     Sparkles,
     User,
@@ -49,6 +50,11 @@ import { useTranslation } from 'react-i18next';
 import { StreamingMarkdownRenderer } from './markdown';
 import { SourceCitations } from './source-citations';
 import { parseCOTContent } from './thinking-display';
+import {
+  mapSubgraphToAnswerFocus,
+  useAnswerGraphStore,
+} from '@/stores/use-answer-graph-store';
+import type { SubgraphBundle } from '@/lib/utils/subgraph-types';
 
 export interface ChatMessageData {
   id: string;
@@ -207,6 +213,7 @@ const MetadataBar = memo(function MetadataBar({
   copied,
   onCopy,
   onRegenerate,
+  onShowOnGraph,
   isLast,
   isVisible,
 }: {
@@ -220,6 +227,7 @@ const MetadataBar = memo(function MetadataBar({
   copied: boolean;
   onCopy: () => void;
   onRegenerate?: () => void;
+  onShowOnGraph?: () => void;
   isLast?: boolean;
   isVisible: boolean;
 }) {
@@ -341,6 +349,29 @@ const MetadataBar = memo(function MetadataBar({
 
       {/* Actions */}
       <div className="flex items-center gap-1 ml-auto">
+        {onShowOnGraph && (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 px-2 text-xs gap-1"
+                  onClick={onShowOnGraph}
+                  data-testid="show-on-graph"
+                >
+                  <Network className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline">
+                    {t('query.showOnGraph', 'Show on graph')}
+                  </span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                {t('query.showOnGraphHint', 'Highlight answer entities on the knowledge graph')}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
@@ -447,6 +478,49 @@ const AssistantMessage = memo(function AssistantMessage({
     }
   }, [message.content, onCopy]);
 
+  const hasGraphEntities =
+    (message.context?.entities?.length ?? 0) > 0 ||
+    (message.context?.subgraph?.entities?.length ?? 0) > 0;
+
+  const handleShowOnGraph = useCallback(() => {
+    const subgraph =
+      (message.context?.subgraph as SubgraphBundle | undefined) ??
+      ({
+        entities: (message.context?.entities ?? []).map((e) => ({
+          id: e.id,
+          name: e.label,
+          entity_type: e.entity_type ?? 'OTHER',
+          description: '',
+          score: e.relevance ?? 0,
+          degree: e.degree ?? 0,
+          graph_node_id: e.id,
+        })),
+        relationships: (message.context?.relationships ?? []).map((r) => ({
+          id: `${r.source}-${r.target}`,
+          source: r.source,
+          target: r.target,
+          relation_type: r.type,
+          description: '',
+          score: r.relevance ?? 0,
+        })),
+      } satisfies SubgraphBundle);
+
+    const mapped = mapSubgraphToAnswerFocus(subgraph);
+    useAnswerGraphStore.getState().setAnswerSubgraph({
+      messageId: message.id,
+      nodeIds: mapped.nodeIds.length
+        ? mapped.nodeIds
+        : (message.context?.entities ?? []).map((e) => e.id),
+      entityNames: mapped.entityNames.length
+        ? mapped.entityNames
+        : (message.context?.entities ?? []).map((e) => e.label),
+      subgraph,
+    });
+    router.push(
+      `/graph?answerMessage=${encodeURIComponent(message.id)}&focus=answer`,
+    );
+  }, [message, router]);
+
   const toggleThinking = useCallback(() => {
     setThinkingExpanded(prev => !prev);
   }, []);
@@ -549,6 +623,7 @@ const AssistantMessage = memo(function AssistantMessage({
               copied={copied}
               onCopy={handleCopy}
               onRegenerate={onRegenerate}
+              onShowOnGraph={hasGraphEntities ? handleShowOnGraph : undefined}
               isLast={isLast}
               isVisible={!!isLast}
             />
