@@ -923,7 +923,8 @@ impl DocumentTaskProcessor {
             edgequake_pdf::PdfParserBackend::Vision | edgequake_pdf::PdfParserBackend::Auto => {
                 ExtractionMethod::Vision
             }
-            edgequake_pdf::PdfParserBackend::EdgeParse => ExtractionMethod::EdgeParse,
+            edgequake_pdf::PdfParserBackend::EdgeParse
+            | edgequake_pdf::PdfParserBackend::EdgeParseOcr => ExtractionMethod::EdgeParse,
         };
 
         let mut fallback_warning: Option<String> = None;
@@ -1102,7 +1103,8 @@ impl DocumentTaskProcessor {
                         }
                     }
                 }
-                edgequake_pdf::PdfParserBackend::EdgeParse => {
+                edgequake_pdf::PdfParserBackend::EdgeParse
+                | edgequake_pdf::PdfParserBackend::EdgeParseOcr => {
                     edgequake_pdf::create_pdf_converter(backend)
                 }
             }

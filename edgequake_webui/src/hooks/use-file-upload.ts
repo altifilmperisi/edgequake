@@ -62,7 +62,7 @@ export interface UseFileUploadOptions {
   /** Callback when upload starts (e.g., to switch filter) */
   onUploadStart?: () => void;
   /** Optional per-upload PDF parser backend override. */
-  pdfParserBackend?: "vision" | "edgeparse" | "auto";
+  pdfParserBackend?: "vision" | "edgeparse" | "edgeparse-ocr" | "auto";
   /** SPEC-109: vision convert reasoning effort (multipart). */
   visionReasoningEffort?: string;
   /** SPEC-015V */
@@ -89,7 +89,7 @@ export interface UseFileUploadReturn {
   handleFilesUpload: (
     files: File[],
     uploadOptions?: {
-      pdfParserBackend?: "vision" | "edgeparse" | "auto";
+      pdfParserBackend?: "vision" | "edgeparse" | "edgeparse-ocr" | "auto";
       visionReasoningEffort?: string;
     },
   ) => Promise<void>;
@@ -178,7 +178,7 @@ export function useFileUpload(
     async (
       files: File[],
       uploadOptions?: {
-        pdfParserBackend?: "vision" | "edgeparse" | "auto";
+        pdfParserBackend?: "vision" | "edgeparse" | "edgeparse-ocr" | "auto";
         visionReasoningEffort?: string;
       },
     ) => {

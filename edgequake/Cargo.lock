@@ -1780,9 +1780,9 @@ dependencies = [
 
 [[package]]
 name = "edgeparse-core"
-version = "0.2.5"
+version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1657f75717556317e4aaa1a537110cd0ab78682d15d4f958e8a3d702ed585d6d"
+checksum = "fa77afc5bb69b816acc35c661898b9e1878864dbe3f156587e1d772f4832d079"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -1804,7 +1804,7 @@ dependencies = [
 
 [[package]]
 name = "edgequake"
-version = "0.28.5"
+version = "0.29.0"
 dependencies = [
  "anyhow",
  "axum",
@@ -1834,7 +1834,7 @@ dependencies = [
 
 [[package]]
 name = "edgequake-api"
-version = "0.28.5"
+version = "0.29.0"
 dependencies = [
  "async-stream",
  "async-trait",
@@ -1891,7 +1891,7 @@ dependencies = [
 
 [[package]]
 name = "edgequake-audit"
-version = "0.28.5"
+version = "0.29.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1907,7 +1907,7 @@ dependencies = [
 
 [[package]]
 name = "edgequake-auth"
-version = "0.28.5"
+version = "0.29.0"
 dependencies = [
  "argon2",
  "async-trait",
@@ -1925,7 +1925,7 @@ dependencies = [
 
 [[package]]
 name = "edgequake-core"
-version = "0.28.5"
+version = "0.29.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -1952,9 +1952,9 @@ dependencies = [
 
 [[package]]
 name = "edgequake-llm"
-version = "0.10.8"
+version = "0.10.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1d332ba38ba030762f3f6816d6d1be072799bbd59b5f96781fb3d15b00e96eed"
+checksum = "da4c830cf0e5d601146292b3ca6eacc6e2d800f14e781cbb51cf2ba3ad27ff9b"
 dependencies = [
  "anyhow",
  "async-openai",
@@ -1989,7 +1989,7 @@ dependencies = [
 
 [[package]]
 name = "edgequake-migrate-manifest"
-version = "0.28.5"
+version = "0.29.0"
 dependencies = [
  "serde",
  "sha2 0.10.9",
@@ -1999,7 +1999,7 @@ dependencies = [
 
 [[package]]
 name = "edgequake-observability"
-version = "0.28.5"
+version = "0.29.0"
 dependencies = [
  "futures",
  "http 1.4.2",
@@ -2020,7 +2020,7 @@ dependencies = [
 
 [[package]]
 name = "edgequake-pdf"
-version = "0.28.5"
+version = "0.29.0"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -2068,7 +2068,7 @@ dependencies = [
 
 [[package]]
 name = "edgequake-pipeline"
-version = "0.28.5"
+version = "0.29.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2094,7 +2094,7 @@ dependencies = [
 
 [[package]]
 name = "edgequake-query"
-version = "0.28.5"
+version = "0.29.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2120,7 +2120,7 @@ dependencies = [
 
 [[package]]
 name = "edgequake-rate-limiter"
-version = "0.28.5"
+version = "0.29.0"
 dependencies = [
  "anyhow",
  "axum",
@@ -2140,7 +2140,7 @@ dependencies = [
 
 [[package]]
 name = "edgequake-storage"
-version = "0.28.5"
+version = "0.29.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2165,7 +2165,7 @@ dependencies = [
 
 [[package]]
 name = "edgequake-storage-contracts"
-version = "0.28.5"
+version = "0.29.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2178,7 +2178,7 @@ dependencies = [
 
 [[package]]
 name = "edgequake-tasks"
-version = "0.28.5"
+version = "0.29.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3817,7 +3817,7 @@ version = "5.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "51e219e79014df21a225b1860a479e2dcd7cbd9130f4defd4bd0e191ea31d67d"
 dependencies = [
- "base64 0.22.1",
+ "base64 0.21.7",
  "chrono",
  "getrandom 0.2.17",
  "http 1.4.2",
@@ -4167,7 +4167,7 @@ dependencies = [
  "console_error_panic_hook",
  "console_log",
  "image",
- "itertools 0.14.0",
+ "itertools 0.10.5",
  "js-sys",
  "libloading",
  "log",
@@ -4451,7 +4451,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b570b25f7617e43d59005d0990ccb79e950a423952cea19671b7a876da390adf"
 dependencies = [
  "anyhow",
- "itertools 0.14.0",
+ "itertools 0.10.5",
  "proc-macro2",
  "quote",
  "syn",

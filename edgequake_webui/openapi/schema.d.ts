@@ -5697,8 +5697,7 @@ export interface components {
             max_documents?: number | null;
             /** @description Workspace name. */
             name: string;
-            /** @description Default PDF parser backend for this workspace ("vision" or "edgeparse"). */
-            pdf_parser_backend?: string | null;
+            pdf_parser_backend?: null | components["schemas"]["PdfParserBackendName"];
             /** @description Typed edge constraints (SPEC-114b). Empty/omit → unconstrained endpoints. */
             relation_edges?: components["schemas"]["RelationEdgeDto"][] | null;
             /** @description Relation type allow-list for extraction (SPEC-114). Empty/omit → free-form. */
@@ -10010,8 +10009,7 @@ export interface components {
             allow_fallback?: boolean | null;
             /** @description Force async job even under sync ceiling. */
             async?: boolean | null;
-            /** @description `"vision"` or `"edgeparse"`. Default: server `EDGEQUAKE_PDF_PARSER_BACKEND` or vision. */
-            backend?: string | null;
+            backend?: null | components["schemas"]["PdfParserBackendName"];
             /** @description Vision concurrency (1–16). */
             concurrency?: number | null;
             /**
@@ -10279,6 +10277,21 @@ export interface components {
             /** @description Total pages. */
             total_pages: number;
         };
+        /**
+         * @description Canonical PDF parser backend wire values (OpenAPI / Swagger enum).
+         *
+         *     Runtime also accepts aliases (`llm`, `edge-parse`, `edgeparse_ocr`, …) via
+         *     [`edgequake_pdf::PdfParserBackend::from_env_str`].
+         * @example {}
+         * @enum {string}
+         */
+        PdfParserBackendName: "vision" | "edgeparse" | "edgeparse-ocr" | "auto";
+        /**
+         * @description Workspace/tenant update wire values including clear sentinel `none`.
+         * @example {}
+         * @enum {string}
+         */
+        PdfParserBackendUpdateName: "vision" | "edgeparse" | "edgeparse-ocr" | "auto" | "none";
         /**
          * @description PDF status metadata.
          * @example {
@@ -12706,7 +12719,7 @@ export interface components {
             extract_max_records?: number | null;
             extraction_language?: string | null;
             kg_schema_preset?: string | null;
-            pdf_parser_backend?: string | null;
+            pdf_parser_backend?: null | components["schemas"]["PdfParserBackendName"];
             relation_edges?: components["schemas"]["RelationEdgeDto"][] | null;
             relation_types?: string[] | null;
             relation_types_strict?: boolean | null;
@@ -13478,8 +13491,7 @@ export interface components {
             max_workspaces: number;
             /** @description Tenant name. */
             name: string;
-            /** @description SPEC-123: tenant default PDF parser (`vision` | `edgeparse` | `auto`). */
-            pdf_parser_backend?: string | null;
+            pdf_parser_backend?: null | components["schemas"]["PdfParserBackendName"];
             /** @description Plan type. */
             plan: string;
             /** @description URL-friendly slug. */
@@ -13881,8 +13893,7 @@ export interface components {
             is_active?: boolean | null;
             /** @description New tenant name. */
             name?: string | null;
-            /** @description SPEC-123: tenant default PDF parser (`vision` | `edgeparse` | `auto` | `none`). */
-            pdf_parser_backend?: string | null;
+            pdf_parser_backend?: null | components["schemas"]["PdfParserBackendUpdateName"];
             /** @description New plan. */
             plan?: string | null;
         };
@@ -14021,8 +14032,7 @@ export interface components {
             max_documents?: number | null;
             /** @description New workspace name. */
             name?: string | null;
-            /** @description Default PDF parser backend for this workspace ("vision" or "edgeparse"). */
-            pdf_parser_backend?: string | null;
+            pdf_parser_backend?: null | components["schemas"]["PdfParserBackendUpdateName"];
             /** @description Typed edge constraints (SPEC-114b). Omit = leave unchanged; empty clears. */
             relation_edges?: components["schemas"]["RelationEdgeDto"][] | null;
             /** @description Relation type allow-list (SPEC-114). Omit = leave unchanged; empty clears. */
@@ -14310,8 +14320,7 @@ export interface components {
             max_documents?: number | null;
             /** @description Workspace name. */
             name: string;
-            /** @description Default PDF parser backend for this workspace (None means server default). */
-            pdf_parser_backend?: string | null;
+            pdf_parser_backend?: null | components["schemas"]["PdfParserBackendName"];
             /** @description Typed edge constraints (SPEC-114b). Absent/empty ⇒ unconstrained endpoints. */
             relation_edges?: components["schemas"]["RelationEdgeDto"][] | null;
             /** @description Relation type allow-list (SPEC-114). None/empty means free-form relations. */
@@ -16196,6 +16205,7 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
+        /** @description Multipart fields: `file` (required PDF), optional `pdf_parser_backend` (`vision` | `edgeparse` | `edgeparse-ocr` | `auto`), `vision_provider`, `vision_model`, `title`. */
         requestBody?: {
             content: {
                 "multipart/form-data": unknown;
@@ -16253,6 +16263,7 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
+        /** @description Multipart fields: `file`/`files` (required PDFs), optional `pdf_parser_backend` (`vision` | `edgeparse` | `edgeparse-ocr` | `auto`), `vision_provider`, `vision_model`. */
         requestBody?: {
             content: {
                 "multipart/form-data": unknown;

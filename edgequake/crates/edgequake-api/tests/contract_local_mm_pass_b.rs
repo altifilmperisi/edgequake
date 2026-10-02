@@ -307,8 +307,8 @@ async fn contract_local_progress_every_figure() {
 
     let messages: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
     let msgs = Arc::clone(&messages);
-    let reporter: ConvertingSubstepReporter = Arc::new(move |message, _| {
-        msgs.lock().unwrap().push(message);
+    let reporter: ConvertingSubstepReporter = Arc::new(move |update| {
+        msgs.lock().unwrap().push(update.message);
     });
 
     let _ = analyze_multimodal_images_with_substep(

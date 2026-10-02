@@ -60,5 +60,5 @@ export interface KnowledgeGraph {
   max_nodes?: number;
 }
 
-export type PdfParserBackend = "vision" | "edgeparse" | "auto";
+export type PdfParserBackend = "vision" | "edgeparse" | "edgeparse-ocr" | "auto";
 export type WorkspacePdfParserBackendUpdate = PdfParserBackend | "none";

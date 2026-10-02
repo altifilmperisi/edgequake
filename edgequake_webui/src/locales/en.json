@@ -168,7 +168,9 @@
       "pdfParserDefault": "Workspace Default",
       "pdfParserDefaultWithValue": "Workspace Default ({{value}})",
       "pdfParserVision": "Vision",
-      "pdfParserEdgeParse": "EdgeParse"
+      "pdfParserEdgeParse": "EdgeParse",
+      "pdfParserEdgeParseOcr": "EdgeParse + OCR",
+      "pdfParserAuto": "Auto"
     },
     "duplicateDialog": {
       "titleSingle": "Duplicate document detected",
@@ -846,6 +848,45 @@
       "chips": "Scoped documents",
       "unknownDoc": "Document",
       "removeDoc": "Remove {{title}} from scope"
+    },
+    "companion": {
+      "title": "Companion pane",
+      "source": "Source",
+      "graph": "Graph",
+      "close": "Close pane",
+      "openFullPage": "Open full page",
+      "openStudio": "Open in Graph Studio",
+      "resize": "Resize companion pane",
+      "announceOpenSource": "Source opened beside the chat",
+      "announceOpenGraph": "Answer graph opened beside the chat",
+      "announceClosed": "Pane closed",
+      "entities": "Entities",
+      "relationships": "Relationships",
+      "context": "context",
+      "collapsePassage": "Collapse passage",
+      "expandPassage": "Expand passage",
+      "askAboutThis": "Ask about this",
+      "inScope": "In scope",
+      "scopeToDoc": "Scope to this document",
+      "viewMode": "View",
+      "viewPage": "Page",
+      "viewText": "Text",
+      "viewCanvas": "Graph",
+      "viewList": "List",
+      "sourceGone": "This document is no longer available",
+      "sourceGoneHint": "It may have been deleted since this answer was written.",
+      "errorSource": "Couldn't load this source",
+      "errorSourceHint": "Check your connection and try again.",
+      "loading": "Loading…",
+      "emptyGraph": "No graph for this answer",
+      "emptyGraphHint": "This answer didn't retrieve any entities from the knowledge graph.",
+      "expandFailed": "Couldn't load neighbours for this entity",
+      "expandNone": "No new neighbours to show",
+      "graphSummary": "{{nodes}} entities · {{edges}} relationships",
+      "moreInStudio": "+{{count}} more in Studio",
+      "deselect": "Clear selection",
+      "expanded": "Neighbours shown",
+      "expand": "Show neighbours"
     }
   },
   "pipeline": {
@@ -1039,15 +1080,20 @@
     },
     "pdfParser": {
       "edgeparse": "EdgeParse",
+      "edgeparseOcr": "EdgeParse + OCR",
       "vision": "Vision",
+      "auto": "Auto",
       "serverDefault": "Server Default",
       "serverDefaultWithValue": "Server Default ({{value}})",
       "serverDefaultHint": "Uses the server fallback when no workspace override is set",
       "serverDefaultHintWithValue": "Uses server config when no workspace override is set (currently {{value}}).",
       "edgeparseHint": "Fast, CPU-only, best for digital-native PDFs",
+      "edgeparseOcrHint": "EdgeParse with Tesseract OCR for image tables (requires tesseract on PATH)",
       "visionHint": "Best for scanned and image-heavy PDFs",
+      "autoHint": "May use EdgeParse for born-digital PDFs, otherwise Vision",
       "fallbackVision": "Fallback: Vision",
-      "resolvesTo": "Resolves to {{value}}"
+      "resolvesTo": "Resolves to {{value}}",
+      "resolvesToAuto": "May use EdgeParse"
     }
   },
   "context": {

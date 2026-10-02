@@ -125,14 +125,23 @@ export function documentPathFromHref(href: string): string {
   return href;
 }
 
+/**
+ * Parse a 1-indexed page query value. SSOT for `?page=` across the document
+ * viewer, citation hrefs and the Query companion pane (SPEC-157 LAW-157-4).
+ */
+export function parsePageParam(
+  value: string | null | undefined,
+): number | undefined {
+  if (!value) return undefined;
+  const n = Number.parseInt(value, 10);
+  return Number.isFinite(n) && n >= 1 ? n : undefined;
+}
+
 /** Parse 1-indexed page from `?page=N` in a citation href. */
 export function parsePageFromHref(href: string): number | undefined {
   try {
     const qs = href.includes('?') ? href.slice(href.indexOf('?') + 1) : '';
-    const page = new URLSearchParams(qs).get('page');
-    if (!page) return undefined;
-    const n = Number.parseInt(page, 10);
-    return Number.isFinite(n) && n >= 1 ? n : undefined;
+    return parsePageParam(new URLSearchParams(qs).get('page'));
   } catch {
     return undefined;
   }

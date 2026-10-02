@@ -2,7 +2,8 @@
 
 import { BookOpen, ExternalLink } from 'lucide-react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useOpenSource } from '@/hooks/use-open-source';
+import { locationFromChunk } from '@/lib/query/companion-pane';
 import { useTranslation } from 'react-i18next';
 
 import { getConfidenceLabel } from '@/lib/citations/confidence';
@@ -10,6 +11,7 @@ import type { Chunks } from '@/lib/citations/group-passages';
 import { formatPassagePreview, stripMarkdownSyntax } from '@/lib/citations/passage-text';
 import type { OnDocumentClick } from '@/lib/citations/types';
 import { invokeDocumentClick } from '@/lib/citations/types';
+import { isPlainActivation } from '@/lib/citations/citation-href';
 import { buildDocumentPageUrl, formatChunkPageBadge } from '@/lib/utils/document-url';
 
 export interface PassageRowProps {
@@ -30,7 +32,7 @@ export function PassageRow({
   onDocumentClick,
 }: PassageRowProps) {
   const { t } = useTranslation();
-  const router = useRouter();
+  const openSource = useOpenSource();
   const score = normalizeScore(chunk.score);
   const { color: scoreColor, labelKey, defaultLabel } = getConfidenceLabel(score);
 
@@ -66,7 +68,7 @@ export function PassageRow({
 
   const navigateToPage = (e: React.MouseEvent | React.KeyboardEvent) => {
     e.stopPropagation();
-    if (pageUrl) router.push(pageUrl);
+    if (pageUrl) openSource(locationFromChunk(chunk));
   };
 
   return (
@@ -170,6 +172,7 @@ export function PagePassageGroup({
   onDocumentClick,
 }: PagePassageGroupProps) {
   const { t } = useTranslation();
+  const openSource = useOpenSource();
   const firstChunkDocId = passages[0]?.document_id;
   const pageDeeplink =
     page !== null && firstChunkDocId
@@ -192,6 +195,11 @@ export function PagePassageGroup({
           {pageDeeplink && (
             <Link
               href={pageDeeplink}
+              onClick={(e) => {
+                if (!isPlainActivation(e)) return;
+                e.preventDefault();
+                openSource({ documentId: firstChunkDocId as string, page: page as number });
+              }}
               className="inline-flex items-center gap-0.5 text-xs font-medium text-primary/70 hover:text-primary transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/40 rounded-sm"
               aria-label={t('query.citations.openPdfAtPageAria', 'Open PDF at page {{page}}', { page })}
               title={t('query.citations.jumpToPageTitle', 'Jump to page {{page}} in the document viewer', {

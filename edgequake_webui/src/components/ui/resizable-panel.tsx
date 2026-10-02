@@ -15,6 +15,11 @@ interface ResizablePanelProps {
   storageKey?: string;
   /** ARIA label for the resize handle */
   ariaLabel?: string;
+  /**
+   * Controlled width (px). When set the panel renders exactly this width and
+   * reports drags/keys through `onWidthChange`; no localStorage involved.
+   */
+  width?: number;
 }
 
 /**
@@ -32,6 +37,7 @@ export function ResizablePanel({
   onWidthChange,
   storageKey,
   ariaLabel = 'Resize panel',
+  width: controlledWidth,
 }: ResizablePanelProps) {
   // Load persisted width from localStorage
   const getInitialWidth = useCallback(() => {
@@ -50,7 +56,9 @@ export function ResizablePanel({
     return defaultWidth;
   }, [defaultWidth, minWidth, maxWidth, storageKey]);
 
-  const [width, setWidth] = useState(defaultWidth);
+  const [internalWidth, setWidth] = useState(defaultWidth);
+  // Visual clamp only: a temporarily lower maxWidth never rewrites the stored width.
+  const width = Math.min(maxWidth, Math.max(minWidth, controlledWidth ?? internalWidth));
   const [isResizing, setIsResizing] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
   const startXRef = useRef(0);
@@ -59,25 +67,25 @@ export function ResizablePanel({
 
   // Initialize width from localStorage on mount
   useEffect(() => {
-    if (!initializedRef.current) {
+    if (!initializedRef.current && controlledWidth === undefined) {
       const initial = getInitialWidth();
       // Intentional: One-time initialization from localStorage
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setWidth(initial);
       initializedRef.current = true;
     }
-  }, [getInitialWidth]);
+  }, [getInitialWidth, controlledWidth]);
 
   // Persist width to localStorage when it changes
   useEffect(() => {
-    if (storageKey && initializedRef.current && typeof window !== 'undefined') {
+    if (storageKey && controlledWidth === undefined && initializedRef.current && typeof window !== 'undefined') {
       try {
         localStorage.setItem(storageKey, width.toString());
       } catch {
         // Ignore localStorage errors
       }
     }
-  }, [width, storageKey]);
+  }, [width, storageKey, controlledWidth]);
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();

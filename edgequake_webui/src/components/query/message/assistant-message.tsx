@@ -2,13 +2,11 @@
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useActiveConversationId } from "@/stores/use-query-ui-store";
-import { buildDocumentCitationUrl } from "@/lib/utils/document-url";
+import { useOpenAnswerGraph } from "@/hooks/use-open-answer-graph";
+import { useOpenSource } from "@/hooks/use-open-source";
+import { hasAnswerGraph } from "@/lib/query/answer-graph";
+import { locationFromDocumentClick } from "@/lib/query/companion-pane";
 import { cn } from "@/lib/utils";
-import {
-  mapSubgraphToAnswerFocus,
-  useAnswerGraphStore,
-} from "@/stores/use-answer-graph-store";
-import type { SubgraphBundle } from "@/lib/utils/subgraph-types";
 import { Sparkles } from "lucide-react";
 import { buildCitationResolver } from "@/lib/citations/resolve-citation";
 import { memo, useCallback, useEffect, useMemo, useReducer, useState } from "react";
@@ -65,6 +63,8 @@ export const AssistantMessage = memo(function AssistantMessage({
 }: ChatMessageProps) {
   const { t, i18n } = useTranslation();
   const router = useRouter();
+  const openSource = useOpenSource();
+  const openAnswerGraph = useOpenAnswerGraph();
   const sessionId = useActiveConversationId();
   const [copied, setCopied] = useState(false);
   const [reasoningUi, dispatchReasoning] = useReducer(
@@ -109,48 +109,12 @@ export const AssistantMessage = memo(function AssistantMessage({
     }
   }, [message.content, onCopy]);
 
-  const hasGraphEntities =
-    (message.context?.entities?.length ?? 0) > 0 ||
-    (message.context?.subgraph?.entities?.length ?? 0) > 0;
+  const hasGraphEntities = hasAnswerGraph(message.context);
 
-  const handleShowOnGraph = useCallback(() => {
-    const subgraph =
-      (message.context?.subgraph as SubgraphBundle | undefined) ??
-      ({
-        entities: (message.context?.entities ?? []).map((e) => ({
-          id: e.id,
-          name: e.label,
-          entity_type: e.entity_type ?? "OTHER",
-          description: "",
-          score: e.relevance ?? 0,
-          degree: e.degree ?? 0,
-          graph_node_id: e.id,
-        })),
-        relationships: (message.context?.relationships ?? []).map((r) => ({
-          id: `${r.source}-${r.target}`,
-          source: r.source,
-          target: r.target,
-          relation_type: r.type,
-          description: "",
-          score: r.relevance ?? 0,
-        })),
-      } satisfies SubgraphBundle);
-
-    const mapped = mapSubgraphToAnswerFocus(subgraph);
-    useAnswerGraphStore.getState().setAnswerSubgraph({
-      messageId: message.id,
-      nodeIds: mapped.nodeIds.length
-        ? mapped.nodeIds
-        : (message.context?.entities ?? []).map((e) => e.id),
-      entityNames: mapped.entityNames.length
-        ? mapped.entityNames
-        : (message.context?.entities ?? []).map((e) => e.label),
-      subgraph,
-    });
-    router.push(
-      `/graph?answerMessage=${encodeURIComponent(message.id)}&focus=answer`,
-    );
-  }, [message, router]);
+  const handleShowOnGraph = useCallback(
+    () => openAnswerGraph(message.id, message.context),
+    [message.id, message.context, openAnswerGraph],
+  );
 
   const parsedLive = parseCOTStreaming(message.content);
   const parsed = parseCOTContent(message.content);
@@ -308,17 +272,9 @@ export const AssistantMessage = memo(function AssistantMessage({
                       `/graph?entity=${encodeURIComponent(entityId)}`,
                     );
                   }}
-                  onDocumentClick={(opts) => {
-                    const url = buildDocumentCitationUrl({
-                      documentId: encodeURIComponent(opts.documentId),
-                      chunkId: opts.chunkId,
-                      page: opts.page,
-                      chunkContent: opts.chunkContent,
-                      startLine: opts.startLine,
-                      endLine: opts.endLine,
-                    });
-                    router.push(url);
-                  }}
+                  onDocumentClick={(opts) =>
+                    openSource(locationFromDocumentClick(opts))
+                  }
                   onExploreGraph={(entityLabels) => {
                     const params = new URLSearchParams();
                     if (entityLabels.length > 0) {

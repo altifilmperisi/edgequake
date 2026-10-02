@@ -14,15 +14,18 @@ pub use vision::VisionPdfConverter;
 
 /// PDF parser backend / config choice.
 ///
-/// `Vision` and `EdgeParse` are runtime converters. `Auto` is a **config-only**
-/// choice (SPEC-123): start as Vision intent and allow SPEC-038 EdgeParse
-/// fast-path when text density is sufficient.
+/// `Vision`, `EdgeParse`, and `EdgeParseOcr` are runtime converters. `Auto` is a
+/// **config-only** choice (SPEC-123): start as Vision intent and allow SPEC-038
+/// EdgeParse fast-path when text density is sufficient.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum PdfParserBackend {
     #[default]
     Vision,
     EdgeParse,
+    /// EdgeParse with raster-table OCR (Tesseract CLI).
+    #[serde(rename = "edgeparse-ocr", alias = "edgeparse_ocr")]
+    EdgeParseOcr,
     /// Explicit opt-in for SPEC-038 auto-routing (never inferred from unset).
     Auto,
 }
@@ -98,6 +101,9 @@ impl PdfParserBackend {
         match value.trim().to_ascii_lowercase().as_str() {
             "vision" | "llm" => Some(Self::Vision),
             "edgeparse" | "edge-parse" | "edge_parse" => Some(Self::EdgeParse),
+            "edgeparse-ocr" | "edgeparse_ocr" | "edge-parse-ocr" | "edgeparseocr" => {
+                Some(Self::EdgeParseOcr)
+            }
             "auto" => Some(Self::Auto),
             _ => None,
         }
@@ -114,6 +120,7 @@ impl PdfParserBackend {
         match self {
             Self::Vision => "vision",
             Self::EdgeParse => "edgeparse",
+            Self::EdgeParseOcr => "edgeparse-ocr",
             Self::Auto => "auto",
         }
     }
@@ -128,6 +135,11 @@ impl PdfParserBackend {
 
     pub fn is_auto(self) -> bool {
         matches!(self, Self::Auto)
+    }
+
+    /// True for EdgeParse (fast) and EdgeParseOcr (Tesseract).
+    pub fn is_edgeparse_family(self) -> bool {
+        matches!(self, Self::EdgeParse | Self::EdgeParseOcr)
     }
 }
 
@@ -338,7 +350,8 @@ pub trait PdfConverter: Send + Sync {
 
 pub fn create_pdf_converter(backend: PdfParserBackend) -> Arc<dyn PdfConverter> {
     match backend.runtime_backend() {
-        PdfParserBackend::EdgeParse => Arc::new(EdgeParsePdfConverter),
+        PdfParserBackend::EdgeParse => Arc::new(EdgeParsePdfConverter::new()),
+        PdfParserBackend::EdgeParseOcr => Arc::new(EdgeParsePdfConverter::with_ocr()),
         // Vision and Auto (config-only) both start on the Vision converter.
         PdfParserBackend::Vision | PdfParserBackend::Auto => Arc::new(VisionPdfConverter::new()),
     }
@@ -361,12 +374,24 @@ mod tests {
             Some(PdfParserBackend::EdgeParse)
         );
         assert_eq!(
+            PdfParserBackend::from_env_str("edgeparse-ocr"),
+            Some(PdfParserBackend::EdgeParseOcr)
+        );
+        assert_eq!(
+            PdfParserBackend::from_env_str("edgeparse_ocr"),
+            Some(PdfParserBackend::EdgeParseOcr)
+        );
+        assert_eq!(
             PdfParserBackend::from_env_str("auto"),
             Some(PdfParserBackend::Auto)
         );
         assert_eq!(PdfParserBackend::Vision.as_str(), "vision");
         assert_eq!(PdfParserBackend::EdgeParse.as_str(), "edgeparse");
+        assert_eq!(PdfParserBackend::EdgeParseOcr.as_str(), "edgeparse-ocr");
         assert_eq!(PdfParserBackend::Auto.as_str(), "auto");
+        assert!(PdfParserBackend::EdgeParse.is_edgeparse_family());
+        assert!(PdfParserBackend::EdgeParseOcr.is_edgeparse_family());
+        assert!(!PdfParserBackend::Vision.is_edgeparse_family());
     }
 
     #[test]

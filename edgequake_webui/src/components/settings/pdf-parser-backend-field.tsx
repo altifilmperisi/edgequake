@@ -13,10 +13,10 @@ import {
   getServerDefaultPdfParserBackend,
   pdfParserBackendDisplayName,
 } from '@/lib/pdf/resolve-pdf-parser-backend';
-import { Eye, Gauge, Sparkles } from 'lucide-react';
+import { Eye, Gauge, ScanText, Sparkles } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
-export type PdfParserBackendChoice = 'none' | 'vision' | 'edgeparse' | 'auto';
+export type PdfParserBackendChoice = 'none' | 'vision' | 'edgeparse' | 'edgeparse-ocr' | 'auto';
 
 function backendLabel(
   value: PdfParserBackendChoice,
@@ -25,6 +25,8 @@ function backendLabel(
   switch (value) {
     case 'edgeparse':
       return t('settings.pdfParser.edgeparse', 'EdgeParse');
+    case 'edgeparse-ocr':
+      return t('settings.pdfParser.edgeparseOcr', 'EdgeParse + OCR');
     case 'vision':
       return t('settings.pdfParser.vision', 'Vision');
     case 'auto':
@@ -66,6 +68,9 @@ export function PdfParserBackendField({
           <SelectItem value="edgeparse">
             {t('settings.pdfParser.edgeparse', 'EdgeParse')}
           </SelectItem>
+          <SelectItem value="edgeparse-ocr" data-testid="pdf-parser-option-edgeparse-ocr">
+            {t('settings.pdfParser.edgeparseOcr', 'EdgeParse + OCR')}
+          </SelectItem>
           <SelectItem value="auto" data-testid="pdf-parser-option-auto">
             {t('settings.pdfParser.auto', 'Auto')}
           </SelectItem>
@@ -79,6 +84,9 @@ export function PdfParserBackendField({
       <Sparkles className="h-4 w-4 text-sky-600 shrink-0" />
     ) : value === 'vision' || (value === 'none' && serverBackend === 'vision') ? (
       <Eye className="h-4 w-4 text-orange-600 shrink-0" />
+    ) : value === 'edgeparse-ocr' ||
+      (value === 'none' && serverBackend === 'edgeparse-ocr') ? (
+      <ScanText className="h-4 w-4 text-violet-600 shrink-0" />
     ) : (
       <Gauge className="h-4 w-4 text-amber-600 shrink-0" />
     );
@@ -96,6 +104,11 @@ export function PdfParserBackendField({
                 'settings.pdfParser.edgeparseHint',
                 'Fast, CPU-only, best for digital-native PDFs',
               )
+            : value === 'edgeparse-ocr'
+              ? t(
+                  'settings.pdfParser.edgeparseOcrHint',
+                  'EdgeParse with Tesseract OCR for image tables (requires tesseract on PATH)',
+                )
             : value === 'vision'
               ? t(
                   'settings.pdfParser.visionHint',

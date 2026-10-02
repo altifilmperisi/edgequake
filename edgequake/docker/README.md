@@ -102,6 +102,21 @@ Canonical `EDGEQUAKE_*` variables take precedence when both are set.
 | `frontend` | `3000` | Next.js web UI |
 | `postgres` | `5432` | PostgreSQL (PG18 default) with `pgvector` 0.8.5, Apache AGE 1.8.0 |
 
+## API image — OCR / ML runtime deps
+
+The API runtime stays **distroless** (no shell/apt). Stage `libs` harvests:
+
+| Artifact | Purpose |
+| --- | --- |
+| `/usr/local/bin/tesseract` | EdgeParse `edgeparse-ocr` raster-table OCR |
+| `/usr/share/tesseract-ocr/5/tessdata/*.traineddata` | LSTM language models (`eng`, `osd`, `fra`, `deu`, `spa`, `por`, `chi_sim`) |
+| `/opt/edgequake-ocr/lib` | Shared libs for Tesseract / Leptonica |
+| pdfium (compile-time) | Vision page render via `edgequake-pdf2md` |
+| `./models.toml` | LLM provider / model catalog (not OCR weights) |
+
+Vision LLM weights are **not** bundled — configure Ollama / OpenAI / etc. at runtime.
+`TESSDATA_PREFIX=/usr/share/tesseract-ocr/5/tessdata` is set in the image.
+
 ## PostgreSQL Image (extensions)
 
 Built from `Dockerfile.postgres.pg18` (default), `.pg17`, or `Dockerfile.postgres` (PG16):

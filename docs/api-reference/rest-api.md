@@ -417,7 +417,7 @@ Stateless **PDF → Markdown** conversion with **no document residue** — nothi
 | Endpoint | Description |
 | -------- | ----------- |
 | `POST /api/v1/parse` | Parse a PDF (multipart `file` field or raw `application/pdf` body) |
-| `GET /api/v1/parse/backends` | List available parse backends (`vision`, `edgeparse`, …) |
+| `GET /api/v1/parse/backends` | List available parse backends (`vision`, `edgeparse`, `edgeparse-ocr`, …) |
 | `GET /api/v1/parse/jobs/{id}` | Poll an async parse job (in-memory TTL) |
 
 **Sync vs async:**
@@ -451,6 +451,14 @@ Example — parse a PDF synchronously:
 ```bash
 curl -X POST http://localhost:8080/api/v1/parse \
   -F "file=@document.pdf"
+```
+
+Example — EdgeParse + Tesseract OCR backend:
+
+```bash
+curl -X POST http://localhost:8080/api/v1/parse \
+  -F "file=@document.pdf" \
+  -F 'options={"backend":"edgeparse-ocr"}'
 ```
 
 Example — request async processing:

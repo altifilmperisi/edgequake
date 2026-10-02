@@ -12,6 +12,7 @@ import {
 import { useQueryInterface } from "@/hooks/use-query-interface";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { useQueryScope } from "@/hooks/use-query-scope";
+import { useCompanionLayout } from "@/hooks/use-companion-layout";
 import { ArrowDown, PanelRight, Plus } from "lucide-react";
 import { useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -23,6 +24,7 @@ import { useQueryComposerShortcuts } from "./composer/use-query-composer-shortcu
 import { ConversationHistoryPanelV2 } from "./conversation-history-panel-v2";
 import { MobileHistoryPanel } from "./mobile-history-panel";
 import { QueryEmptyState } from "./query-empty-state";
+import { CompanionShell } from "./companion/companion-shell";
 import { QuerySettingsSheet } from "./query-settings-sheet";
 import { useQueryUIStore } from "@/stores/use-query-ui-store";
 
@@ -72,12 +74,33 @@ export function QueryInterface() {
   const [scopePickerOpen, setScopePickerOpen] = useState(false);
   const [slashMenuOpen, setSlashMenuOpen] = useState(false);
   const scope = useQueryScope();
+  const { rootRef, layout, history, companionOpen } = useCompanionLayout(isXl);
+  const historyDock = history !== "overlay";
 
   const focusComposer = useCallback(() => {
     inputRef.current?.focus();
   }, [inputRef]);
 
   const openSlashMenu = useCallback(() => setSlashMenuOpen(true), []);
+
+  // SPEC-157 W4: quote a verified passage into the composer, ready to ask.
+  const quotePassage = useCallback(
+    (text: string) => {
+      const quoted = text
+        .split("\n")
+        .map((line) => `> ${line}`)
+        .join("\n");
+      const lead = input && !input.endsWith("\n") ? "\n" : "";
+      handleInputChange(`${input}${lead}${quoted}\n\n`);
+      requestAnimationFrame(() => {
+        const el = inputRef.current;
+        if (!el) return;
+        el.focus();
+        el.setSelectionRange(el.value.length, el.value.length);
+      });
+    },
+    [handleInputChange, input, inputRef],
+  );
 
   // Global `@`: focus the composer and seed a mention token (menu opens from the text).
   const startMention = useCallback(() => {
@@ -130,14 +153,14 @@ export function QueryInterface() {
 
   return (
     <TooltipProvider delayDuration={200}>
-      <div className="flex h-full min-h-0">
-        <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+      <div ref={rootRef} className="flex h-full min-h-0">
+        <div className="flex-1 min-w-0 flex flex-col min-h-0 overflow-hidden">
           <header
             className="flex items-center justify-between border-b px-page py-2 shrink-0 bg-background/80 backdrop-blur-sm gap-2"
             role="banner"
           >
             <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-              {!isXl ? <MobileHistoryPanel /> : null}
+              {!historyDock ? <MobileHistoryPanel /> : null}
               <h1 className="shrink-0 text-base sm:text-lg font-semibold tracking-tight">
                 {t("query.title", "Query")}
               </h1>
@@ -167,7 +190,7 @@ export function QueryInterface() {
                 </span>
               </Button>
 
-              {isXl ? (
+              {historyDock ? (
                 <Button
                   variant="ghost"
                   size="icon"
@@ -342,8 +365,19 @@ export function QueryInterface() {
           </div>
         </div>
 
-        {/* History: docked only at xl+ (Q21); mobile uses sheet */}
-        {isXl ? <ConversationHistoryPanelV2 /> : null}
+        {/* SPEC-157: companion pane sits between chat and history */}
+        <CompanionShell
+          layout={layout}
+          messages={messages}
+          isMessagesLoading={isLoading}
+          onQuote={quotePassage}
+          onRestoreFocus={focusComposer}
+        />
+
+        {/* History: docked at xl+ when it fits (Q21); otherwise the sheet */}
+        {historyDock ? (
+          <ConversationHistoryPanelV2 maxWidth={companionOpen ? 340 : 500} />
+        ) : null}
       </div>
     </TooltipProvider>
   );

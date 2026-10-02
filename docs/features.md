@@ -101,7 +101,7 @@ Workspace-scoped `entity_types` with preset-driven and custom configuration, nor
 **Released**: v0.10.0 (2026-04-10)  
 **Status**: ✅ Completed
 
-Runtime PDF extraction backends: `vision` (VLM) and `edgeparse` (CPU). Resolution: per-upload → workspace default → `EDGEQUAKE_PDF_PARSER_BACKEND` env → `vision`.
+Runtime PDF extraction backends: `vision` (VLM), `edgeparse` (CPU), `edgeparse-ocr` (EdgeParse + Tesseract), and `auto`. Resolution: per-upload → workspace default → `EDGEQUAKE_PDF_PARSER_BACKEND` env → `vision`.
 
 ---
 

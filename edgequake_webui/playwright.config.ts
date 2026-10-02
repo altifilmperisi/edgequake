@@ -71,7 +71,7 @@ export default defineConfig({
     {
       name: "chromium",
       use: { ...devices["Desktop Chrome"] },
-      grepInvert: [/@audit/, /@load/, /@debug/, /@spec155/, /@a11y/, /@visual/],
+      grepInvert: [/@audit/, /@load/, /@debug/, /@spec155/, /@spec157/, /@a11y/, /@visual/],
     },
     {
       name: "audit",
@@ -107,7 +107,7 @@ export default defineConfig({
           ],
         },
       },
-      grep: /@spec155/,
+      grep: /@spec155|@spec157/,
       workers: 1,
       timeout: 180_000,
     },

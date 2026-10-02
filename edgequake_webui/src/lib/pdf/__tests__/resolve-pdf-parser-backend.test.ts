@@ -83,6 +83,20 @@ describe("resolvePdfParserBackend", () => {
     expect(resolvePdfParserBackend(ctx).source).toBe("server");
   });
 
+  it("upload edgeparse-ocr is explicit runtime OCR mode", () => {
+    const resolved = resolvePdfParserBackend({
+      uploadChoice: "edgeparse-ocr",
+      workspaceBackend: "vision",
+      serverBackend: "vision",
+    });
+    expect(resolved.backend).toBe("edgeparse-ocr");
+    expect(resolved.runtimeBackend).toBe("edgeparse-ocr");
+    expect(resolved.source).toBe("upload");
+    expect(resolved.isExplicit).toBe(true);
+    expect(resolved.allowsAutoRoute).toBe(false);
+    expect(pdfParserBackendDisplayName("edgeparse-ocr")).toBe("EdgeParse + OCR");
+  });
+
   it("getServerDefaultPdfParserBackend defaults to vision", () => {
     expect(getServerDefaultPdfParserBackend()).toBe("vision");
   });

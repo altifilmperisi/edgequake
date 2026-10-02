@@ -4,13 +4,13 @@ title: "Release & CD Cycle"
 
 # Release & CD Cycle
 
-> **Product: v0.28.5** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+> **Product: v0.29.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
 >
-> Upgrade: [upgrade-to-0.28.5.md](upgrade-to-0.28.5.md) (docs/CI honesty; schema still **162**). Prior: [upgrade-to-0.28.4.md](upgrade-to-0.28.4.md) (SPEC-154; schema **162**), [upgrade-to-0.28.3.md](upgrade-to-0.28.3.md), [upgrade-to-0.28.2.md](upgrade-to-0.28.2.md).
+> Upgrade: [upgrade-to-0.29.0.md](upgrade-to-0.29.0.md) (SPEC-157/155/156; schema **163**). Prior: [upgrade-to-0.28.5.md](upgrade-to-0.28.5.md) (docs/CI honesty; schema **162**), [upgrade-to-0.28.4.md](upgrade-to-0.28.4.md) (SPEC-154; schema **162**), [upgrade-to-0.28.3.md](upgrade-to-0.28.3.md).
 >
-> **SPEC-001 Acc (this cut):** attested existing [`publish/latest`](../../specs/001-benchmark/e2e/artifacts/publish/latest/) (`valid: true`, medical-mid, `2026-08-15T11:02:18Z`) — no fresh n=200 run; **PDF geometry not re-scored**.
+> **SPEC-001 Acc (this cut):** attested existing [`publish/latest`](../../specs/001-benchmark/e2e/artifacts/publish/latest/) (`valid: true`, medical-mid, `2026-08-15T11:02:18Z`) — no fresh n=200 run; **query, ingestion, and PDF geometry not re-scored**.
 >
-> **crates.io deps:** `edgequake-llm` **0.10.8**, `edgequake-pdf2md` **0.9.11**, `edgeparse-core` **0.2.5**, `edgequake-sdk` **0.4.0** (workspace crates remain GHCR-only).
+> **crates.io deps:** `edgequake-llm` **0.10.9**, `edgequake-pdf2md` **0.9.11**, `edgeparse-core` **0.3.2**, `edgequake-sdk` **0.4.0** (workspace crates remain GHCR-only).
 
 This document describes how to cut a release, run quality gates, and verify the published Docker images.
 

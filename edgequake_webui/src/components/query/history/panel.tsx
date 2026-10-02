@@ -42,10 +42,13 @@ import { HistorySelectionToolbar } from "./selection-toolbar";
 
 interface ConversationHistoryPanelV2Props {
   className?: string;
+  /** Upper bound while the Query companion pane shares the row (SPEC-157). */
+  maxWidth?: number;
 }
 
 export function ConversationHistoryPanelV2({
   className,
+  maxWidth = 500,
 }: ConversationHistoryPanelV2Props) {
   const { t } = useTranslation();
   const historyOpen = useHistoryPanelOpen();
@@ -178,7 +181,7 @@ export function ConversationHistoryPanelV2({
       side="right"
       defaultWidth={280}
       minWidth={240}
-      maxWidth={500}
+      maxWidth={maxWidth}
       storageKey="conversation-history-panel-width"
       ariaLabel={t("query.history.resize", "Resize history panel")}
       className="flex"

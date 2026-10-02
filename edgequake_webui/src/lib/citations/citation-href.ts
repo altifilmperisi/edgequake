@@ -39,3 +39,14 @@ export function formatMatchPercent(score: number): number {
   if (!Number.isFinite(score)) return 0;
   return Math.round(Math.min(1, Math.max(0, score)) * 100);
 }
+
+/** True for a plain left click (no modifier) — i.e. not "open in new tab". */
+export function isPlainActivation(e: {
+  metaKey: boolean;
+  ctrlKey: boolean;
+  shiftKey: boolean;
+  altKey?: boolean;
+  button: number;
+}): boolean {
+  return !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey && e.button === 0;
+}

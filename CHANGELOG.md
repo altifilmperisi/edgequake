@@ -4,7 +4,47 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.29.0] — 2026-10-02
+
+Minor: **SPEC-157** side-by-side query companion, **SPEC-155** documents
+workspace + query composer, **SPEC-156** ingestion first-principles, and
+`edgeparse-ocr` (Tesseract harvested into the distroless API image). Schema
+train moves **162 → 163** (`messages.feedback_rating` / `feedback_reason` /
+`finish_reason`; manifest now registers 161–163). Operators must run
+`edgequake migrate` (or the compose / Helm migrate Job) before `/ready` is
+200. Upgrade:
+[`docs/operations/upgrade-to-0.29.0.md`](docs/operations/upgrade-to-0.29.0.md).
+
+**Deps (crates.io):** `edgequake-llm` **0.10.9**, `edgeparse-core` **0.3.2**,
+`edgequake-pdf2md` **0.9.11**; `edgequake-sdk` **0.4.0**.
+
+**SPEC-001 Acc:** attested from existing
+[`publish/latest`](specs/001-benchmark/e2e/artifacts/publish/latest/)
+(`valid: true`, medical-mid, `2026-08-15T11:02:18Z`) — no fresh n=200 run;
+**query, ingestion, and PDF geometry not re-scored**.
+
+### Added
+- **Side-by-side Query (SPEC-157)** — clicking a citation docks the cited PDF
+  page (or highlighted text) beside the chat; "Show on graph" docks the answer
+  subgraph (canvas or accessible list, expand neighbours, Open in Graph Studio).
+  One companion pane at a time, URL-addressable (`?pane=pdf&doc=…&page=…` /
+  `?pane=graph&msg=…`), resizable splitter, bottom sheet when narrow, history
+  yields width, "Ask about this" quote-to-ask and "Scope to this document".
+  Kill switch: `NEXT_PUBLIC_QUERY_COMPANION=0` or localStorage
+  `edgequake.query.companion.enabled=0`. Hermetic E2E: `bun run test:e2e:spec157`.
+
 ### Changed
+- **crates.io deps** — `edgequake-llm` **0.10.9**, `edgeparse-core` **0.3.2**
+  (`edgequake-pdf2md` remains **0.9.11**). EdgeParse fast path keeps
+  `raster_table_ocr: false` so born-digital conversion stays CPU-only.
+- **PDF parser backend `edgeparse-ocr`** — EdgeParse with Tesseract raster-table
+  OCR (`EDGEQUAKE_PDF_PARSER_BACKEND=edgeparse-ocr`, upload/workspace selector,
+  `POST /api/v1/parse` `options.backend`, OpenAPI/Swagger enums). Local/dev still
+  needs `tesseract` on PATH (or RapidOCR via `EDGEPARSE_OCR_ENGINE=rapidocr`).
+  **API Docker image** harvests Tesseract 5 + tessdata
+  (`eng`/`osd`/`fra`/`deu`/`spa`/`por`/`chi_sim`) into the distroless runtime
+  (`TESSDATA_PREFIX` set).
+
 - **Documents layout density (SPEC-155)** — Library-left/right presets give
   Library ~74% width; when Runs is railed the Upload dock auto-narrows (~18–28%).
   Inventory columns hide progressively (Updated → Created → Entities/Cost) and
@@ -18,6 +58,8 @@ All notable changes to this project will be documented in this file.
 
 
 ### Fixed
+- Workspace URL sync no longer throws when a workspace has no `name`/`slug`
+  after a reload.
 - **Documents crash "Cannot read properties of undefined (reading 'find')"** —
   `clampMonotonic` now treats a malformed `run_progress` ledger (missing
   `phases` / `tasks`) as absent instead of throwing inside the documents

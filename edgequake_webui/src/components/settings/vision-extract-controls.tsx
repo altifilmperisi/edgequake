@@ -449,10 +449,18 @@ export function VisionSettingsPanel({
 
 /** Whether resolved parser choice shows Vision extract controls. */
 export function shouldShowVisionExtractControls(
-  parserChoice: 'none' | 'default' | 'vision' | 'edgeparse' | 'auto',
+  parserChoice:
+    | 'none'
+    | 'default'
+    | 'vision'
+    | 'edgeparse'
+    | 'edgeparse-ocr'
+    | 'auto',
   serverOrWorkspaceIsVision: boolean,
 ): boolean {
-  if (parserChoice === 'edgeparse') return false;
+  if (parserChoice === 'edgeparse' || parserChoice === 'edgeparse-ocr') {
+    return false;
+  }
   if (parserChoice === 'vision' || parserChoice === 'auto') return true;
   return serverOrWorkspaceIsVision;
 }

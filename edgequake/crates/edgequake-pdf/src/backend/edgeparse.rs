@@ -13,6 +13,13 @@ use crate::page_marker::PageMarkerWriter;
 
 /// Fast CPU-only PDF converter powered by EdgeParse.
 ///
+/// # Modes
+///
+/// - `raster_table_ocr: false` (default / `edgeparse`) — born-digital extraction
+///   only; no Tesseract. Vision covers scanned pages.
+/// - `raster_table_ocr: true` (`edgeparse-ocr`) — enables EdgeParse raster-table
+///   OCR via Tesseract CLI when image tables need recovery.
+///
 /// # Page marker injection (SPEC-032 W-09)
 ///
 /// EdgeParse produces a `PdfDocument` where each `ContentElement` in
@@ -23,8 +30,25 @@ use crate::page_marker::PageMarkerWriter;
 ///
 /// This ensures the `PageAwareChunking` strategy can split at hard page
 /// boundaries so **no chunk ever spans two pages**.
-#[derive(Debug, Default)]
-pub struct EdgeParsePdfConverter;
+#[derive(Debug, Clone, Copy, Default)]
+pub struct EdgeParsePdfConverter {
+    /// When true, EdgeParse runs raster-table OCR (Tesseract / RapidOCR).
+    pub raster_table_ocr: bool,
+}
+
+impl EdgeParsePdfConverter {
+    /// Born-digital fast path (no Tesseract).
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// EdgeParse with raster-table OCR via Tesseract.
+    pub fn with_ocr() -> Self {
+        Self {
+            raster_table_ocr: true,
+        }
+    }
+}
 
 #[async_trait]
 impl PdfConverter for EdgeParsePdfConverter {
@@ -39,6 +63,7 @@ impl PdfConverter for EdgeParsePdfConverter {
             .clone()
             .unwrap_or_else(|| "document.pdf".to_string());
         let table_method = config.table_method.clone();
+        let raster_table_ocr = self.raster_table_ocr;
 
         tokio::task::spawn_blocking(move || {
             let processing = ProcessingConfig {
@@ -46,6 +71,7 @@ impl PdfConverter for EdgeParsePdfConverter {
                     Some("cluster") => TableMethod::Cluster,
                     _ => TableMethod::Default,
                 },
+                raster_table_ocr,
                 ..Default::default()
             };
 
@@ -56,7 +82,7 @@ impl PdfConverter for EdgeParsePdfConverter {
 
             info!(
                 pages = total_pages,
-                "EdgeParse conversion completed, injecting page markers"
+                raster_table_ocr, "EdgeParse conversion completed, injecting page markers"
             );
 
             let markdown_with_markers =
@@ -81,7 +107,11 @@ impl PdfConverter for EdgeParsePdfConverter {
     }
 
     fn backend_name(&self) -> &'static str {
-        "edgeparse"
+        if self.raster_table_ocr {
+            "edgeparse-ocr"
+        } else {
+            "edgeparse"
+        }
     }
 }
 

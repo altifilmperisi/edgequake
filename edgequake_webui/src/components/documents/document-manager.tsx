@@ -81,6 +81,7 @@ import {
 } from '@/hooks/use-reprocess-tracking';
 import { useStuckDetection } from '@/hooks/use-stuck-detection';
 import type { PdfParserResolutionContext } from '@/lib/pdf/large-pdf-admission';
+import type { UploadPdfParserChoice } from '@/lib/pdf/resolve-pdf-parser-backend';
 import {
   filterLargePdfFiles,
   type LargePdfAdmissionPreview,
@@ -162,7 +163,7 @@ export function DocumentManager() {
   // Search state
   const [searchQuery, setSearchQuery] = useState('');
   const [pdfParserBackend, setPdfParserBackend] = useState<
-    'default' | 'vision' | 'edgeparse' | 'auto'
+    UploadPdfParserChoice
   >('default');
   const [visionReasoningEffort, setVisionReasoningEffort] = useState<string | undefined>();
   const [visionExtract, setVisionExtract] = useState<VisionExtractDraft>(

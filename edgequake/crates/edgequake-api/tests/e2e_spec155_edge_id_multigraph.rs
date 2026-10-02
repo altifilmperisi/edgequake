@@ -10,7 +10,6 @@ use edgequake_api::{AppState, Server, ServerConfig};
 use edgequake_core::{CreateWorkspaceRequest, Tenant, TenantPlan};
 use serde_json::{json, Value};
 use tower::ServiceExt;
-use uuid::Uuid;
 
 fn test_config() -> ServerConfig {
     ServerConfig {

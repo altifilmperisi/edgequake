@@ -402,7 +402,7 @@ pub async fn update_tenant(
             tenant.pdf_parser_backend = Some(parsed);
         } else {
             return Err(ApiError::BadRequest(format!(
-                "Invalid pdf_parser_backend '{}'. Expected 'vision', 'edgeparse', 'auto', or 'none'",
+                "Invalid pdf_parser_backend '{}'. Expected 'vision', 'edgeparse', 'edgeparse-ocr', 'auto', or 'none'",
                 pdf_parser_backend
             )));
         }

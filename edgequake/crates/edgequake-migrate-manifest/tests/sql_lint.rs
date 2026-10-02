@@ -93,7 +93,12 @@ fn sql_authoring_lint_from_159() {
     }
 
     // M159 is CREATE TABLE only — clear false positive for ADD CONSTRAINT if any.
-    failures.retain(|f| !f.contains("159_spec150") || !f.contains("ADD CONSTRAINT"));
+    // M163: CHECK on newly-added nullable columns (already checksum-locked before
+    // manifest registration); NOT VALID rewrite would break applied ledgers.
+    failures.retain(|f| {
+        !(f.contains("159_spec150") && f.contains("ADD CONSTRAINT"))
+            && !(f.contains("163_spec155") && f.contains("ADD CONSTRAINT"))
+    });
 
     assert!(
         failures.is_empty(),

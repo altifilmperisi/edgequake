@@ -57,6 +57,14 @@ grep -q 'edgequake", "healthcheck"' "$DOCKERFILE" \
   || grep -q "edgequake', 'healthcheck'" "$DOCKERFILE" \
   || fail "Dockerfile HEALTHCHECK must invoke edgequake healthcheck"
 
+# edgeparse-ocr: Tesseract CLI + tessdata must be packaged into the distroless image.
+grep -q 'tesseract-ocr-eng' "$DOCKERFILE" \
+  || fail "Dockerfile must install tesseract-ocr-eng (edgeparse-ocr)"
+grep -q 'TESSDATA_PREFIX=' "$DOCKERFILE" \
+  || fail "Dockerfile must set TESSDATA_PREFIX for tessdata models"
+grep -q '/usr/local/bin/tesseract' "$DOCKERFILE" \
+  || fail "Dockerfile must COPY tesseract into /usr/local/bin/tesseract"
+
 # Parse-only check (no compile) — same failure mode as the Docker builder stage.
 (cd "$EQ" && cargo metadata --format-version 1 --no-deps >/dev/null)
 

@@ -96,7 +96,10 @@ echo "== WebUI unit tests (observability + runtime-config via bun; SPEC-154 via 
   src/lib/__tests__/runtime-config.test.ts)
 (cd "$WEBUI" && bunx vitest run \
   src/lib/api/__tests__/auth-storage-spec154.test.ts \
-  src/lib/websocket/__tests__/progress-websocket.test.ts)
+  src/lib/websocket/__tests__/progress-websocket.test.ts \
+  src/lib/query/__tests__/answer-graph.test.ts \
+  src/lib/query/__tests__/companion-layout.test.ts \
+  src/lib/query/__tests__/companion-pane.test.ts)
 
 echo "== WebUI locale parity (SPEC-155) =="
 (cd "$WEBUI" && bun run test:locale-parity)
@@ -104,8 +107,9 @@ echo "== WebUI locale parity (SPEC-155) =="
 echo "== WebUI perf budget stub (SPEC-155; skips OK without .next) =="
 (cd "$WEBUI" && bun run test:perf-budget)
 
-# SPEC-155 mock-api Playwright: optional — run via:
+# SPEC-155 / SPEC-157 mock-api Playwright: optional — run via:
 #   cd edgequake_webui && PLAYWRIGHT_SKIP_STACK_CHECK=1 bun run test:e2e:spec155
+#   cd edgequake_webui && PLAYWRIGHT_SKIP_STACK_CHECK=1 bun run test:e2e:spec157
 # (not hard-gated here to keep release-gates offline-friendly)
 
 echo "== Docker API context (cargo manifest + COPY/dockerignore) =="

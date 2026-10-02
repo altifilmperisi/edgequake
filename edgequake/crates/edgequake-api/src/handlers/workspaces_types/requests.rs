@@ -134,8 +134,10 @@ pub struct UpdateTenantRequest {
     /// Whether the tenant is active.
     pub is_active: Option<bool>,
 
-    /// SPEC-123: tenant default PDF parser (`vision` | `edgeparse` | `auto` | `none`).
+    /// SPEC-123: tenant default PDF parser
+    /// (`vision` | `edgeparse` | `edgeparse-ocr` | `auto` | `none`).
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(value_type = Option<crate::handlers::PdfParserBackendUpdateName>, example = "edgeparse-ocr")]
     pub pdf_parser_backend: Option<String>,
 
     // === Default model cascade seeds (SPEC-032 / SPEC-041 / SPEC-123) ===
@@ -228,8 +230,10 @@ pub struct CreateWorkspaceApiRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub vision_llm_provider: Option<String>,
 
-    /// Default PDF parser backend for this workspace ("vision" or "edgeparse").
+    /// Default PDF parser backend for this workspace
+    /// (`vision` | `edgeparse` | `edgeparse-ocr` | `auto`).
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(value_type = Option<crate::handlers::PdfParserBackendName>, example = "edgeparse-ocr")]
     pub pdf_parser_backend: Option<String>,
 
     // === Entity Type Configuration (SPEC-085) ===
@@ -368,8 +372,10 @@ pub struct UpdateWorkspaceApiRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub vision_llm_provider: Option<String>,
 
-    /// Default PDF parser backend for this workspace ("vision" or "edgeparse").
+    /// Default PDF parser backend for this workspace
+    /// (`vision` | `edgeparse` | `edgeparse-ocr` | `auto` | `none` to clear).
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(value_type = Option<crate::handlers::PdfParserBackendUpdateName>, example = "edgeparse-ocr")]
     pub pdf_parser_backend: Option<String>,
 
     /// Entity types for future ingestions (does not rewrite existing graph nodes).

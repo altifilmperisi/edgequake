@@ -5,6 +5,9 @@
  */
 'use client';
 
+import { useOpenSource } from '@/hooks/use-open-source';
+import { isPlainActivation } from '@/lib/citations/citation-href';
+import { locationFromDocumentHref } from '@/lib/query/companion-pane';
 import { cn } from '@/lib/utils';
 import {
   documentPathFromHref,
@@ -104,6 +107,7 @@ export const MarkdownInlineTokens = memo(function MarkdownInlineTokens({
   resolveCitation,
 }: MarkdownInlineTokensProps) {
   const router = useRouter();
+  const openSource = useOpenSource();
   // Merge split HTML tag tokens (e.g. <sup>, <sub>) before rendering
   const normalizedTokens = mergeInlineHtmlTokens(tokens);
 
@@ -222,8 +226,11 @@ export const MarkdownInlineTokens = memo(function MarkdownInlineTokens({
                   ? `Open cited document, ${pageLabel}`
                   : 'Open cited document';
               const onClick = (e: MouseEvent<HTMLAnchorElement>) => {
+                if (!isPlainActivation(e)) return; // new-tab keeps native link
                 e.preventDefault();
-                router.push(path);
+                const location = locationFromDocumentHref(path);
+                if (location) openSource(location);
+                else router.push(path);
               };
               return (
                 <a

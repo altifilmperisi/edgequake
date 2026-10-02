@@ -35,10 +35,7 @@ import {
 } from "@/lib/query/stream-session-reducer";
 import { buildQueryContextFromRetrieval } from "@/lib/utils/source-mapper";
 import { generateUUID } from "@/lib/utils/uuid";
-import {
-  mapSubgraphToAnswerFocus,
-  useAnswerGraphStore,
-} from "@/stores/use-answer-graph-store";
+import { useAnswerGraphStore } from "@/stores/use-answer-graph-store";
 import type { useQueryUIStore } from "@/stores/use-query-ui-store";
 import type { useSettingsStore } from "@/stores/use-settings-store";
 import { useQueryClient } from "@tanstack/react-query";
@@ -225,13 +222,9 @@ export function useQueryStreamSession({
                 );
               }
               if (hasSubgraph && chunk.subgraph) {
-                const mapped = mapSubgraphToAnswerFocus(chunk.subgraph);
-                useAnswerGraphStore.getState().setAnswerSubgraph({
-                  messageId,
-                  nodeIds: mapped.nodeIds,
-                  entityNames: mapped.entityNames,
-                  subgraph: chunk.subgraph,
-                });
+                useAnswerGraphStore
+                  .getState()
+                  .recordSubgraph(messageId, chunk.subgraph);
               }
               break;
             }

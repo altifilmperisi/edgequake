@@ -2,7 +2,6 @@
 
 import { ExternalLink, FileText } from 'lucide-react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { useCallback, useId, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -15,8 +14,11 @@ import {
 import {
   buildCitationHref,
   formatMatchPercent,
+  isPlainActivation,
   resolveClickIntent,
 } from '@/lib/citations/citation-href';
+import { useOpenSource } from '@/hooks/use-open-source';
+import { locationFromChunk } from '@/lib/query/companion-pane';
 import { getConfidenceLabel } from '@/lib/citations/confidence';
 import { formatPassagePreview } from '@/lib/citations/passage-text';
 import { formatChunkPageBadge } from '@/lib/utils/document-url';
@@ -37,7 +39,7 @@ export interface InlineCitationProps {
  */
 export function InlineCitation({ index, chunk, className }: InlineCitationProps) {
   const { t } = useTranslation();
-  const router = useRouter();
+  const openSource = useOpenSource();
   const { open, show, hide, setOpen } = useHoverIntent();
   const triggerRef = useRef<HTMLButtonElement>(null);
   const contentId = useId();
@@ -72,7 +74,7 @@ export function InlineCitation({ index, chunk, className }: InlineCitationProps)
       window.open(href, '_blank', 'noopener,noreferrer');
     } else {
       setOpen(false);
-      router.push(href);
+      openSource(locationFromChunk(chunk));
     }
   };
 
@@ -159,7 +161,13 @@ export function InlineCitation({ index, chunk, className }: InlineCitationProps)
           href={href}
           className="group flex items-center justify-between gap-2 border-t bg-muted/30 px-3.5 py-2 text-xs font-medium text-primary transition-colors hover:bg-primary/10 focus-visible:bg-primary/10 focus-visible:outline-none"
           data-testid="query-citation-open-source"
-          onClick={() => setOpen(false)}
+          onClick={(e) => {
+            setOpen(false);
+            if (isPlainActivation(e)) {
+              e.preventDefault();
+              openSource(locationFromChunk(chunk));
+            }
+          }}
         >
           <span>
             {pageBadge

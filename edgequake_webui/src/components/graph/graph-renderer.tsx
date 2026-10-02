@@ -42,7 +42,20 @@ interface GraphRendererProps {
   onNodeRightClick?: (nodeId: string, x: number, y: number) => void;
   /** Node whose context menu is open (emphasised until dismissed). */
   contextTargetId?: string | null;
+  /**
+   * Standalone mode (SPEC-157 LAW-157-9): selection comes from this prop and
+   * the renderer neither reads focus/ego state from, nor publishes sigma to,
+   * the workspace graph store — so embedding it cannot disturb Graph Studio.
+   */
+  isolated?: { selectedNodeId: string | null };
+  /** Replaces the default WebGL-failure overlay (e.g. an accessible list). */
+  errorSlot?: React.ReactNode;
 }
+
+const ISOLATED_FOCUS: { mode: string; ids: string[]; depth?: number } = {
+  mode: 'none',
+  ids: [],
+};
 
 export function GraphRenderer({
   nodes,
@@ -54,12 +67,18 @@ export function GraphRenderer({
   onNodeHover,
   onNodeRightClick,
   contextTargetId = null,
+  isolated,
+  errorSlot,
 }: GraphRendererProps) {
   const setSigmaInstance = useGraphStore((s) => s.setSigmaInstance);
-  const selectedNodeId = useGraphStore((s) => s.selectedNodeId);
+  const storeSelectedNodeId = useGraphStore((s) => s.selectedNodeId);
   const colorMode = useGraphStore((s) => s.colorMode);
-  const engineFocus = useGraphStore((s) => s.engineFocus);
-  const egoDepth = useGraphStore((s) => s.egoDepth);
+  const storeEngineFocus = useGraphStore((s) => s.engineFocus);
+  const storeEgoDepth = useGraphStore((s) => s.egoDepth);
+  const selectedNodeId = isolated ? isolated.selectedNodeId : storeSelectedNodeId;
+  const engineFocus = isolated ? ISOLATED_FOCUS : storeEngineFocus;
+  const egoDepth = isolated ? 1 : storeEgoDepth;
+  const isIsolated = Boolean(isolated);
   const { graphSettings } = useSettingsStore();
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === 'dark';
@@ -104,14 +123,14 @@ export function GraphRenderer({
 
   // Publish sigma to store for zoom/minimap/keyboard (stable across filters)
   useEffect(() => {
-    if (!engine) return;
+    if (!engine || isIsolated) return;
     const sigma = engine.getSigma();
     setSigmaInstance(sigma);
     // E2E probe: only exposed when a test opts in via window.__EQ_E2E__.
     const probe = window as unknown as { __EQ_E2E__?: boolean; __eqSigma?: unknown };
     if (probe.__EQ_E2E__) probe.__eqSigma = sigma;
     return () => setSigmaInstance(null);
-  }, [engine, setSigmaInstance]);
+  }, [engine, setSigmaInstance, isIsolated]);
 
   // Data sync — applyDelta only (G01 / G05 MultiGraph inside engine).
   // The engine positions new nodes with the selected layout (LayoutScheduler),
@@ -231,7 +250,9 @@ export function GraphRenderer({
       role="application"
       aria-label="Knowledge graph canvas"
     >
-      {error ? (
+      {error && errorSlot ? (
+        <div className="absolute inset-0 z-10 bg-background">{errorSlot}</div>
+      ) : error ? (
         <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/95 p-4">
           <ErrorState
             title="Graph visualization unavailable"

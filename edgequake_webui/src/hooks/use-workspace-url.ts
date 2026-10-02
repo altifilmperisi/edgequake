@@ -93,7 +93,7 @@ export function useWorkspaceUrl() {
 
       const slug =
         workspace.slug ||
-        workspace.name
+        (workspace.name ?? '')
           .toLowerCase()
           .replace(/[^a-z0-9]+/g, '-')
           .replace(/^-|-$/g, '') ||

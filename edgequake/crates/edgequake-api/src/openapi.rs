@@ -463,6 +463,8 @@ use crate::handlers;
         handlers::ParseJobStatusResponse,
         handlers::ParseBackendsResponse,
         handlers::ParseOptions,
+        handlers::PdfParserBackendName,
+        handlers::PdfParserBackendUpdateName,
         handlers::ParseMetrics,
         // Documents (extended schemas)
         handlers::DeleteAllDocumentsResponse,

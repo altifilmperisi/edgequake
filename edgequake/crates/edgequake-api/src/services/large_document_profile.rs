@@ -83,6 +83,11 @@ impl LargeDocumentProfile {
         60_u64.saturating_add(self.page_count as u64 / 2)
     }
 
+    /// EdgeParse + Tesseract OCR: ~3 s/page + 90 s overhead.
+    pub fn edgeparse_ocr_convert_secs(&self) -> u64 {
+        90_u64.saturating_add((self.page_count as u64).saturating_mul(3))
+    }
+
     /// Entity extraction estimate: ⌈pages / 16⌉ × 25 s (mock/cloud median).
     pub fn extract_secs(&self) -> u64 {
         let chunks = self.page_count;
@@ -110,6 +115,7 @@ impl LargeDocumentProfile {
         }
         let convert = match backend.runtime_backend() {
             PdfParserBackend::EdgeParse => self.edgeparse_convert_secs(),
+            PdfParserBackend::EdgeParseOcr => self.edgeparse_ocr_convert_secs(),
             PdfParserBackend::Vision | PdfParserBackend::Auto => self.vision_convert_secs(provider),
         };
         let pass_b = LocalMmProfile::resolve(provider).pass_b_task_budget_secs();
@@ -198,6 +204,7 @@ impl LargeDocumentProfile {
     ) -> IngestionEstimate {
         let convert = match backend.runtime_backend() {
             PdfParserBackend::EdgeParse => self.edgeparse_convert_secs(),
+            PdfParserBackend::EdgeParseOcr => self.edgeparse_ocr_convert_secs(),
             PdfParserBackend::Vision | PdfParserBackend::Auto => self.vision_convert_secs(provider),
         };
         let extract = self.extract_secs();

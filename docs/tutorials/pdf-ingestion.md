@@ -109,7 +109,9 @@ Runtime backends (see `PdfParserBackend` in `edgequake-pdf`):
 | Value | Behavior |
 | ----- | -------- |
 | `vision` (default) | Render pages → vision LLM markdown (`EDGEQUAKE_VISION_PROVIDER` / `EDGEQUAKE_VISION_MODEL`) |
-| `edgeparse` | CPU EdgeParse fallback when vision is unavailable or for cost control |
+| `edgeparse` | CPU EdgeParse born-digital extraction (no Tesseract) |
+| `edgeparse-ocr` | EdgeParse + Tesseract raster-table OCR |
+| `auto` | Vision start; SPEC-038 may fast-path EdgeParse when text density allows |
 
 Per-upload override:
 
@@ -124,7 +126,7 @@ curl -X POST http://localhost:8080/api/v1/documents/pdf \
   -F "vision_model=gemma4:latest"
 ```
 
-Global default: `EDGEQUAKE_PDF_PARSER_BACKEND=vision|edgeparse`.
+Global default: `EDGEQUAKE_PDF_PARSER_BACKEND=vision|edgeparse|edgeparse-ocr|auto`.
 
 Vision provider resolution chain: per-request fields → `EDGEQUAKE_VISION_*` env → LLM defaults. Mismatch diagnostics: `GET /api/v1/config/effective`. Details: [FAQ — vision configuration](/docs/faq/#how-does-edgequake-decide-which-vision-provider-and-model-to-use).
 
@@ -235,7 +237,7 @@ Prefer the official SDK: `pip install edgequake-sdk` — see [Python SDK](/docs/
 | `enable_vision` | bool | Default `true` for vision path |
 | `vision_provider` | string | Override vision LLM provider |
 | `vision_model` | string | Override vision model |
-| `pdf_parser_backend` | `vision` \| `edgeparse` | Parser backend |
+| `pdf_parser_backend` | `vision` \| `edgeparse` \| `edgeparse-ocr` \| `auto` | Parser backend |
 | `process_options` | string | Multimodal process options tag |
 | `force_reindex` | bool | Re-process duplicate checksum |
 | `track_id` | string | Client batch correlation only |

@@ -54,8 +54,10 @@ pub struct TenantResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub default_reasoning_effort: Option<String>,
 
-    /// SPEC-123: tenant default PDF parser (`vision` | `edgeparse` | `auto`).
+    /// SPEC-123: tenant default PDF parser
+    /// (`vision` | `edgeparse` | `edgeparse-ocr` | `auto`).
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(value_type = Option<crate::handlers::PdfParserBackendName>, example = "edgeparse-ocr")]
     pub pdf_parser_backend: Option<String>,
 
     /// Creation timestamp.
@@ -137,8 +139,10 @@ pub struct WorkspaceResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub vision_llm_resolution_source: Option<String>,
 
-    /// Default PDF parser backend for this workspace (None means server default).
+    /// Default PDF parser backend for this workspace
+    /// (`vision` | `edgeparse` | `edgeparse-ocr` | `auto`; None means server default).
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(value_type = Option<crate::handlers::PdfParserBackendName>, example = "edgeparse-ocr")]
     pub pdf_parser_backend: Option<String>,
 
     // === Entity Type Configuration (SPEC-085) ===

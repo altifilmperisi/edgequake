@@ -168,7 +168,9 @@
       "pdfParserDefault": "Workspace Default",
       "pdfParserDefaultWithValue": "Workspace Default ({{value}})",
       "pdfParserVision": "Vision",
-      "pdfParserEdgeParse": "EdgeParse"
+      "pdfParserEdgeParse": "EdgeParse",
+      "pdfParserEdgeParseOcr": "EdgeParse + OCR",
+      "pdfParserAuto": "Auto"
     },
     "duplicateDialog": {
       "titleSingle": "Document doublon détecté",
@@ -846,6 +848,45 @@
       "chips": "Documents ciblés",
       "unknownDoc": "Document",
       "removeDoc": "Retirer {{title}} du périmètre"
+    },
+    "companion": {
+      "title": "Volet compagnon",
+      "source": "Source",
+      "graph": "Graphe",
+      "close": "Fermer le volet",
+      "openFullPage": "Ouvrir en pleine page",
+      "openStudio": "Ouvrir dans Graph Studio",
+      "resize": "Redimensionner le volet compagnon",
+      "announceOpenSource": "Source ouverte à côté du chat",
+      "announceOpenGraph": "Graphe de la réponse ouvert à côté du chat",
+      "announceClosed": "Volet fermé",
+      "entities": "Entités",
+      "relationships": "Relations",
+      "context": "contexte",
+      "collapsePassage": "Réduire le passage",
+      "expandPassage": "Développer le passage",
+      "askAboutThis": "Poser une question",
+      "inScope": "Dans le périmètre",
+      "scopeToDoc": "Limiter à ce document",
+      "viewMode": "Vue",
+      "viewPage": "Page",
+      "viewText": "Texte",
+      "viewCanvas": "Graphe",
+      "viewList": "Liste",
+      "sourceGone": "Ce document n'est plus disponible",
+      "sourceGoneHint": "Il a peut-être été supprimé depuis cette réponse.",
+      "errorSource": "Impossible de charger cette source",
+      "errorSourceHint": "Vérifiez votre connexion et réessayez.",
+      "loading": "Chargement…",
+      "emptyGraph": "Aucun graphe pour cette réponse",
+      "emptyGraphHint": "Cette réponse n'a récupéré aucune entité du graphe de connaissances.",
+      "expandFailed": "Impossible de charger les voisins de cette entité",
+      "expandNone": "Aucun nouveau voisin à afficher",
+      "graphSummary": "{{nodes}} entités · {{edges}} relations",
+      "moreInStudio": "+{{count}} de plus dans Studio",
+      "deselect": "Effacer la sélection",
+      "expanded": "Voisins affichés",
+      "expand": "Afficher les voisins"
     }
   },
   "pipeline": {
@@ -1006,15 +1047,20 @@
     },
     "pdfParser": {
       "edgeparse": "EdgeParse",
+      "edgeparseOcr": "EdgeParse + OCR",
       "vision": "Vision",
+      "auto": "Auto",
       "serverDefault": "Server Default",
       "serverDefaultWithValue": "Server Default ({{value}})",
       "serverDefaultHint": "Uses the server fallback when no workspace override is set",
       "serverDefaultHintWithValue": "Uses server config when no workspace override is set (currently {{value}}).",
-      "edgeparseHint": "Fast, CPU-only, best for digital-native PDFs",
-      "visionHint": "Best for scanned and image-heavy PDFs",
+      "edgeparseHint": "Rapide, CPU uniquement, idéal pour les PDF natifs numériques",
+      "edgeparseOcrHint": "EdgeParse avec OCR Tesseract pour les tableaux image (tesseract requis sur le PATH)",
+      "visionHint": "Idéal pour les PDF scannés et riches en images",
+      "autoHint": "Peut utiliser EdgeParse pour les PDF natifs, sinon Vision",
       "fallbackVision": "Fallback: Vision",
-      "resolvesTo": "Resolves to {{value}}"
+      "resolvesTo": "Resolves to {{value}}",
+      "resolvesToAuto": "May use EdgeParse"
     }
   },
   "websocket": {

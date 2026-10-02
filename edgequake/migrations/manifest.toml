@@ -4,7 +4,7 @@
 
 schema_version = 1
 compat_serve_min = 149
-compat_serve_max = 160
+compat_serve_max = 163
 irreversible_drop = [125, 126, 131]
 legacy_cutover_assert = 142
 
@@ -1163,6 +1163,27 @@ lock_class = "ddl_access_exclusive"
 [[migration]]
 version = 160
 file = "160_spec151_document_page_states.sql"
+phase = "expand"
+no_transaction = false
+lock_class = "ddl_access_exclusive"
+
+[[migration]]
+version = 161
+file = "161_oauth_refresh_grants.sql"
+phase = "expand"
+no_transaction = false
+lock_class = "ddl_access_exclusive"
+
+[[migration]]
+version = 162
+file = "162_spec154_jti_denylist_refresh_family.sql"
+phase = "expand"
+no_transaction = false
+lock_class = "ddl_access_exclusive"
+
+[[migration]]
+version = 163
+file = "163_spec155_message_feedback.sql"
 phase = "expand"
 no_transaction = false
 lock_class = "ddl_access_exclusive"

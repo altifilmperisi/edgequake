@@ -38,7 +38,7 @@ pub fn resolve_options(
         None => server_default_backend,
         Some(raw) => PdfParserBackend::from_env_str(raw).ok_or_else(|| {
             ParseErrorCode::InvalidRequest.into_api_error(format!(
-                "Unknown backend '{raw}'; expected 'vision' or 'edgeparse'"
+                "Unknown backend '{raw}'; expected 'vision', 'edgeparse', 'edgeparse-ocr', or 'auto'"
             ))
         })?,
     };

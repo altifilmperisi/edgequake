@@ -78,6 +78,11 @@ pub async fn list_parse_backends(
                 available: true,
                 providers: vec![],
             },
+            ParseBackendInfo {
+                name: "edgeparse-ocr".into(),
+                available: true,
+                providers: vec![],
+            },
         ],
         limits: ParseLimitsInfo {
             sync_max_pages: limits.sync_max_pages,

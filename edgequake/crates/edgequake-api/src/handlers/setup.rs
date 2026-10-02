@@ -114,7 +114,9 @@ pub struct SetupInitializeRequest {
     #[serde(default)]
     pub default_vision_llm_provider: Option<String>,
     // Workspace ingest (SPEC-101 parity with create/reconfigure wizards)
+    /// PDF parser backend (`vision` | `edgeparse` | `edgeparse-ocr` | `auto`).
     #[serde(default)]
+    #[schema(value_type = Option<crate::handlers::PdfParserBackendName>, example = "edgeparse-ocr")]
     pub pdf_parser_backend: Option<String>,
     #[serde(default)]
     pub extraction_language: Option<String>,

@@ -9,7 +9,7 @@
     "license": {
       "name": "Apache-2.0"
     },
-    "version": "0.28.5"
+    "version": "0.29.0"
   },
   "servers": [
     {
@@ -2644,6 +2644,7 @@
           }
         ],
         "requestBody": {
+          "description": "Multipart fields: `file` (required PDF), optional `pdf_parser_backend` (`vision` | `edgeparse` | `edgeparse-ocr` | `auto`), `vision_provider`, `vision_model`, `title`.",
           "content": {
             "multipart/form-data": {}
           }
@@ -2720,6 +2721,7 @@
           }
         ],
         "requestBody": {
+          "description": "Multipart fields: `file`/`files` (required PDFs), optional `pdf_parser_backend` (`vision` | `edgeparse` | `edgeparse-ocr` | `auto`), `vision_provider`, `vision_model`.",
           "content": {
             "multipart/form-data": {}
           }
@@ -3215,8 +3217,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
-        "x-edgequake-v2-job-type": "recover_stuck"
+        "x-edgequake-v2-job-type": "recover_stuck",
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
       }
     },
     "/api/v1/documents/reprocess": {
@@ -4529,8 +4531,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-job-type": "reanalyze_multimodal",
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
+        "x-edgequake-v2-job-type": "reanalyze_multimodal"
       }
     },
     "/api/v1/documents/{document_id}/retry-chunks": {
@@ -10236,8 +10238,8 @@
             "description": "WebSocket upgrade failed"
           }
         },
-        "x-edgequake-transport": "websocket",
-        "x-edgequake-upgrade": "RFC6455"
+        "x-edgequake-upgrade": "RFC6455",
+        "x-edgequake-transport": "websocket"
       }
     },
     "/ws/progress/{track_id}": {
@@ -14218,11 +14220,15 @@
             "description": "Workspace name."
           },
           "pdf_parser_backend": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Default PDF parser backend for this workspace (\"vision\" or \"edgeparse\")."
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PdfParserBackendName",
+                "description": "Default PDF parser backend for this workspace\n(`vision` | `edgeparse` | `edgeparse-ocr` | `auto`)."
+              }
+            ]
           },
           "relation_edges": {
             "type": [
@@ -22640,11 +22646,15 @@
             "description": "Force async job even under sync ceiling."
           },
           "backend": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "`\"vision\"` or `\"edgeparse\"`. Default: server `EDGEQUAKE_PDF_PARSER_BACKEND` or vision."
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PdfParserBackendName",
+                "description": "PDF parser backend. Default: server `EDGEQUAKE_PDF_PARSER_BACKEND` or vision.\n\n- `vision` — VLM page OCR\n- `edgeparse` — CPU born-digital extraction (no Tesseract)\n- `edgeparse-ocr` — EdgeParse + Tesseract raster-table OCR\n- `auto` — Vision start with SPEC-038 EdgeParse fast-path when dense"
+              }
+            ]
           },
           "concurrency": {
             "type": [
@@ -23218,6 +23228,29 @@
           "total_count": {},
           "total_pages": {}
         }
+      },
+      "PdfParserBackendName": {
+        "type": "string",
+        "description": "Canonical PDF parser backend wire values (OpenAPI / Swagger enum).\n\nRuntime also accepts aliases (`llm`, `edge-parse`, `edgeparse_ocr`, …) via\n[`edgequake_pdf::PdfParserBackend::from_env_str`].",
+        "enum": [
+          "vision",
+          "edgeparse",
+          "edgeparse-ocr",
+          "auto"
+        ],
+        "example": {}
+      },
+      "PdfParserBackendUpdateName": {
+        "type": "string",
+        "description": "Workspace/tenant update wire values including clear sentinel `none`.",
+        "enum": [
+          "vision",
+          "edgeparse",
+          "edgeparse-ocr",
+          "auto",
+          "none"
+        ],
+        "example": {}
       },
       "PdfStatusMetadata": {
         "type": "object",
@@ -27785,9 +27818,14 @@
             ]
           },
           "pdf_parser_backend": {
-            "type": [
-              "string",
-              "null"
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PdfParserBackendName",
+                "description": "PDF parser backend (`vision` | `edgeparse` | `edgeparse-ocr` | `auto`)."
+              }
             ]
           },
           "relation_edges": {
@@ -29292,11 +29330,15 @@
             "description": "Tenant name."
           },
           "pdf_parser_backend": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "SPEC-123: tenant default PDF parser (`vision` | `edgeparse` | `auto`)."
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PdfParserBackendName",
+                "description": "SPEC-123: tenant default PDF parser\n(`vision` | `edgeparse` | `edgeparse-ocr` | `auto`)."
+              }
+            ]
           },
           "plan": {
             "type": "string",
@@ -30097,11 +30139,15 @@
             "description": "New tenant name."
           },
           "pdf_parser_backend": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "SPEC-123: tenant default PDF parser (`vision` | `edgeparse` | `auto` | `none`)."
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PdfParserBackendUpdateName",
+                "description": "SPEC-123: tenant default PDF parser\n(`vision` | `edgeparse` | `edgeparse-ocr` | `auto` | `none`)."
+              }
+            ]
           },
           "plan": {
             "type": [
@@ -30358,11 +30404,15 @@
             "description": "New workspace name."
           },
           "pdf_parser_backend": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Default PDF parser backend for this workspace (\"vision\" or \"edgeparse\")."
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PdfParserBackendUpdateName",
+                "description": "Default PDF parser backend for this workspace\n(`vision` | `edgeparse` | `edgeparse-ocr` | `auto` | `none` to clear)."
+              }
+            ]
           },
           "relation_edges": {
             "type": [
@@ -31075,11 +31125,15 @@
             "description": "Workspace name."
           },
           "pdf_parser_backend": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Default PDF parser backend for this workspace (None means server default)."
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PdfParserBackendName",
+                "description": "Default PDF parser backend for this workspace\n(`vision` | `edgeparse` | `edgeparse-ocr` | `auto`; None means server default)."
+              }
+            ]
           },
           "relation_edges": {
             "type": [
@@ -31468,7 +31522,7 @@
     "asyncapi": "2.6.0",
     "info": {
       "title": "EdgeQuake WebSocket Progress",
-      "version": "0.28.5",
+      "version": "0.29.0",
       "description": "Real-time pipeline and document processing progress over WebSocket (RFC 6455). SPEC-149: clients subscribe to owned track_ids on the global channel; events use a tagged {type,data} envelope."
     },
     "defaultContentType": "application/json",

@@ -1,9 +1,11 @@
 /**
- * Answer-on-graph store (SPEC-155 W6 / LAW-155-11).
- * Holds the last chat answer subgraph so Graph Studio can highlight it.
+ * Answer-on-graph store (SPEC-155 W6 / LAW-155-11, SSOT per SPEC-157 LAW-157-10).
+ * Holds the chat answer subgraphs so Graph Studio can highlight them. The
+ * Query companion pane does NOT depend on this store (it reads the message).
  */
 import { create } from "zustand";
 import type { SubgraphBundle } from "@/lib/utils/subgraph-types";
+import { mapSubgraphToAnswerFocus } from "@/lib/query/answer-graph";
 
 export interface AnswerGraphEntry {
   messageId: string;
@@ -19,25 +21,10 @@ interface AnswerGraphState {
   lastAnswer: AnswerGraphEntry | null;
   byMessageId: Record<string, AnswerGraphEntry>;
   setAnswerSubgraph: (entry: Omit<AnswerGraphEntry, "createdAt">) => void;
+  /** Map a subgraph to focus ids and store it (single write path). */
+  recordSubgraph: (messageId: string, subgraph: SubgraphBundle) => void;
   getAnswer: (messageId: string) => AnswerGraphEntry | null;
   clear: () => void;
-}
-
-/** Map API subgraph entities → graph node ids + name fallbacks. */
-export function mapSubgraphToAnswerFocus(subgraph: SubgraphBundle): {
-  nodeIds: string[];
-  entityNames: string[];
-} {
-  const nodeIds: string[] = [];
-  const entityNames: string[] = [];
-  for (const e of subgraph.entities ?? []) {
-    const graphId = e.graph_node_id || e.node_id || "";
-    if (graphId) nodeIds.push(graphId);
-    if (e.name) entityNames.push(e.name);
-    // Also keep API entity id as a weak candidate
-    if (e.id && !graphId) entityNames.push(e.id);
-  }
-  return { nodeIds: [...new Set(nodeIds)], entityNames: [...new Set(entityNames)] };
 }
 
 export const useAnswerGraphStore = create<AnswerGraphState>((set, get) => ({
@@ -49,6 +36,10 @@ export const useAnswerGraphStore = create<AnswerGraphState>((set, get) => ({
       lastAnswer: full,
       byMessageId: { ...state.byMessageId, [entry.messageId]: full },
     }));
+  },
+  recordSubgraph: (messageId, subgraph) => {
+    const { nodeIds, entityNames } = mapSubgraphToAnswerFocus(subgraph);
+    get().setAnswerSubgraph({ messageId, nodeIds, entityNames, subgraph });
   },
   getAnswer: (messageId) => get().byMessageId[messageId] ?? null,
   clear: () => set({ lastAnswer: null, byMessageId: {} }),

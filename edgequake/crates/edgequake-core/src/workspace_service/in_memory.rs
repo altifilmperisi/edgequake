@@ -706,7 +706,7 @@ impl WorkspaceService for InMemoryWorkspaceService {
                 );
             } else {
                 return Err(Error::validation(format!(
-                    "Invalid pdf_parser_backend '{}'. Expected 'vision', 'edgeparse', 'auto', or 'none'",
+                    "Invalid pdf_parser_backend '{}'. Expected 'vision', 'edgeparse', 'edgeparse-ocr', 'auto', or 'none'",
                     pdf_parser_backend
                 )));
             }

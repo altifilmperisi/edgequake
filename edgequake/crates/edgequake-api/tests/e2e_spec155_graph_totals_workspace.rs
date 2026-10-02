@@ -146,7 +146,7 @@ async fn e2e_spec155_graph_totals_workspace() {
     let is_truncated = body["is_truncated"].as_bool().unwrap_or(true);
     assert_eq!(
         is_truncated,
-        returned < total || (returned >= 10 && total > returned),
+        returned < total,
         "is_truncated must follow SPEC-155 contract"
     );
 

@@ -113,7 +113,7 @@ name = "graphrag_bench"
 harness = false
 
 [workspace.package]
-version = "0.28.5"
+version = "0.29.0"
 edition = "2021"
 rust-version = "1.95"
 license = "Apache-2.0"
@@ -193,15 +193,17 @@ edgequake-pdf = { path = "crates/edgequake-pdf" }
 # SSOT with pdf2md 0.9.11 (llm ≥0.10.8 / OTEL 0.32 — no 0.6.x diamond).
 # SPEC-113/extract: Ollama think:false for effort=none (crates.io 0.10.7+).
 # SPEC-126: provider KV / prompt-cache (prompt_cache_key + Anthropic cache_control).
-# SPEC-131: omit-temperature / Responses API (crates.io 0.10.8).
-edgequake-llm = "0.10.8"
+# SPEC-131: omit-temperature / Responses API (crates.io 0.10.8+).
+# 0.10.9: GPT-6 / Claude 5.5 / Gemini 3.8 / Grok 4.7 registry + Azure Foundry URL.
+edgequake-llm = "0.10.9"
 edgequake-pipeline = { path = "crates/edgequake-pipeline" }
 edgequake-query = { path = "crates/edgequake-query" }
 edgequake-storage = { path = "crates/edgequake-storage" }
 edgequake-storage-contracts = { path = "crates/edgequake-storage-contracts" }
 edgequake-tasks = { path = "crates/edgequake-tasks" }
 edgequake-observability = { path = "crates/edgequake-observability" }
-edgeparse-core = "0.2.5"
+# 0.3.2: Type 3 / Skia widths, ActualText, CID fallback, header/footer, OCG.
+edgeparse-core = "0.3.2"
 # SSOT with published pdf2md 0.9.11 (SPEC-128 page geometry + text layout).
 edgequake-pdf2md = { version = "0.9.11", default-features = false, features = [
     "bundled",

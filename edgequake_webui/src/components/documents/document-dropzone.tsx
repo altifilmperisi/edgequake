@@ -25,6 +25,7 @@ import {
   modelSupportsThinking,
   supportedReasoningEffortsForModel,
 } from '@/lib/settings/reasoning-effort-supported';
+import type { UploadPdfParserChoice } from '@/lib/pdf/resolve-pdf-parser-backend';
 import type { PdfParserBackend } from '@/types/graph';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -45,11 +46,9 @@ export interface DocumentDropzoneProps {
   /** Function to programmatically open file dialog (explicit click handler) */
   openFileDialog: () => void;
   /** Per-upload PDF parser backend override. */
-  pdfParserBackend: 'default' | 'vision' | 'edgeparse' | 'auto';
+  pdfParserBackend: UploadPdfParserChoice;
   /** Change handler for the PDF parser override selector. */
-  onPdfParserBackendChange: (
-    value: 'default' | 'vision' | 'edgeparse' | 'auto',
-  ) => void;
+  onPdfParserBackendChange: (value: UploadPdfParserChoice) => void;
   /**
    * Workspace default `pdf_parser_backend` — shown in the inherit option label
    * (e.g. Workspace Default (Vision)). Falls back to server → Vision when unset.
@@ -89,10 +88,8 @@ function ParserSelect({
   hideSideLabel,
   triggerClassName,
 }: {
-  pdfParserBackend: 'default' | 'vision' | 'edgeparse' | 'auto';
-  onPdfParserBackendChange: (
-    value: 'default' | 'vision' | 'edgeparse' | 'auto',
-  ) => void;
+  pdfParserBackend: UploadPdfParserChoice;
+  onPdfParserBackendChange: (value: UploadPdfParserChoice) => void;
   workspacePdfParserBackend?: PdfParserBackend | null;
   compact: boolean;
   hideSideLabel?: boolean;
@@ -123,7 +120,7 @@ function ParserSelect({
       )}
       <Select
         value={pdfParserBackend}
-        onValueChange={(value: 'default' | 'vision' | 'edgeparse' | 'auto') =>
+        onValueChange={(value: UploadPdfParserChoice) =>
           onPdfParserBackendChange(value)
         }
       >
@@ -149,6 +146,9 @@ function ParserSelect({
           </SelectItem>
           <SelectItem value="edgeparse">
             {t('documents.upload.pdfParserEdgeParse', 'EdgeParse')}
+          </SelectItem>
+          <SelectItem value="edgeparse-ocr">
+            {t('documents.upload.pdfParserEdgeParseOcr', 'EdgeParse + OCR')}
           </SelectItem>
           <SelectItem value="auto">
             {t('documents.upload.pdfParserAuto', 'Auto')}

@@ -9,6 +9,9 @@
 # Runtime: atomic extract + size integrity under PDFIUM_AUTO_CACHE_DIR.
 # Hardened deploys may set PDFIUM_LIB_PATH to a pre-placed read-only library.
 #
+# edgeparse-ocr: Tesseract OCR CLI + tessdata language packs are harvested from
+# Debian into the distroless runtime (no apt/shell in the final image).
+#
 # Runtime is distroless (no curl/wget/shell) so Trivy HIGH from those packages
 # cannot return. HEALTHCHECK uses `edgequake healthcheck` (GET /live).
 
@@ -65,17 +68,47 @@ RUN if [ "$ENABLE_OTEL" = "false" ]; then \
     fi
 
 # ============================================
-# Stage 2: Shared libs pdfium needs that distroless/cc does not ship
+# Stage 2: Shared runtime deps (zlib + Tesseract OCR)
 # ============================================
 # debian-slim previously provided zlib for free. Distroless cc has glibc +
 # libstdc++ only. Copy .so files into /opt/edgequake-libs (not /lib) so we
 # never overlay glibc. LD_LIBRARY_PATH is set in the runtime stage.
+#
+# Tesseract + tessdata (LSTM language models) power `edgeparse-ocr`. We harvest
+# the CLI binary, shared libs, and traineddata — no shell/apt in the final image.
+# Language packs: eng + osd + fra/deu/spa/por/chi_sim. Vision LLM weights stay
+# external (Ollama / OpenAI / …). pdfium remains compile-time embedded.
 FROM debian:bookworm-slim AS libs
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends zlib1g \
+    && apt-get install -y --no-install-recommends \
+        zlib1g \
+        tesseract-ocr \
+        tesseract-ocr-eng \
+        tesseract-ocr-osd \
+        tesseract-ocr-fra \
+        tesseract-ocr-deu \
+        tesseract-ocr-spa \
+        tesseract-ocr-por \
+        tesseract-ocr-chi-sim \
     && rm -rf /var/lib/apt/lists/* \
-    && mkdir -p /runtime-libs \
-    && cp -a /lib/*/libz.so.1* /runtime-libs/
+    && mkdir -p /runtime-libs /ocr/bin /ocr/lib \
+    && cp -a /lib/*/libz.so.1* /runtime-libs/ \
+    && cp -a /usr/bin/tesseract /ocr/bin/tesseract \
+    && cp -a /usr/share/tesseract-ocr /ocr/share-tesseract-ocr \
+    && ldd /usr/bin/tesseract | awk '/=>/ {print $3}' \
+      | while read -r lib; do \
+          [ -n "$lib" ] && [ -f "$lib" ] || continue; \
+          base=$(basename "$lib"); \
+          case "$base" in \
+            libc.so*|libm.so*|libdl.so*|librt.so*|libpthread.so*|libgcc_s.so*|libstdc++.so*|ld-linux*|libresolv.so*) continue ;; \
+          esac; \
+          cp -aL "$lib" "/ocr/lib/$base"; \
+        done \
+    && test -x /ocr/bin/tesseract \
+    && test -f /ocr/lib/libtesseract.so.5 \
+    && test -f /ocr/share-tesseract-ocr/5/tessdata/eng.traineddata \
+    && env -u LD_LIBRARY_PATH LD_LIBRARY_PATH=/ocr/lib /ocr/bin/tesseract --list-langs \
+    && test "$(ls -1 /ocr/lib | wc -l)" -ge 5
 
 # ============================================
 # Stage 3: Runtime (no shell, no curl, no apt)
@@ -88,9 +121,15 @@ WORKDIR /app
 # Prefer PDFIUM_LIB_PATH=/path/to/libpdfium.so for hardened read-only mounts.
 # /tmp is world-writable on distroless; prime_pdfium mkdir's the cache dir.
 ENV PDFIUM_AUTO_CACHE_DIR=/tmp/edgequake-pdfium-cache
-ENV LD_LIBRARY_PATH=/opt/edgequake-libs
+ENV LD_LIBRARY_PATH=/opt/edgequake-libs:/opt/edgequake-ocr/lib
+# Debian bookworm: point at the directory that contains `*.traineddata`.
+ENV TESSDATA_PREFIX=/usr/share/tesseract-ocr/5/tessdata
+ENV PATH=/usr/local/bin:/usr/bin:/bin
 
 COPY --from=libs /runtime-libs /opt/edgequake-libs
+COPY --from=libs /ocr/lib /opt/edgequake-ocr/lib
+COPY --from=libs /ocr/bin/tesseract /usr/local/bin/tesseract
+COPY --from=libs /ocr/share-tesseract-ocr /usr/share/tesseract-ocr
 COPY --from=builder /app/target/release/edgequake /usr/local/bin/edgequake
 # Copy models.toml so the runtime binary finds up-to-date models at ./models.toml
 # (CWD=/app, see WORKDIR above). Without this, the binary falls back to the compiled-in

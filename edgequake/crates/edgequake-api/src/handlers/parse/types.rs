@@ -3,11 +3,51 @@
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
+/// Canonical PDF parser backend wire values (OpenAPI / Swagger enum).
+///
+/// Runtime also accepts aliases (`llm`, `edge-parse`, `edgeparse_ocr`, …) via
+/// [`edgequake_pdf::PdfParserBackend::from_env_str`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+pub enum PdfParserBackendName {
+    #[serde(rename = "vision")]
+    Vision,
+    #[serde(rename = "edgeparse")]
+    EdgeParse,
+    /// EdgeParse with Tesseract raster-table OCR.
+    #[serde(rename = "edgeparse-ocr")]
+    EdgeParseOcr,
+    /// SPEC-123 / SPEC-038 auto-routing (starts as Vision).
+    #[serde(rename = "auto")]
+    Auto,
+}
+
+/// Workspace/tenant update wire values including clear sentinel `none`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+pub enum PdfParserBackendUpdateName {
+    #[serde(rename = "vision")]
+    Vision,
+    #[serde(rename = "edgeparse")]
+    EdgeParse,
+    #[serde(rename = "edgeparse-ocr")]
+    EdgeParseOcr,
+    #[serde(rename = "auto")]
+    Auto,
+    /// Clear override (inherit tenant / env / default).
+    #[serde(rename = "none")]
+    Clear,
+}
+
 /// Per-request parse options (multipart JSON `options` or query params).
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema, Default)]
 pub struct ParseOptions {
-    /// `"vision"` or `"edgeparse"`. Default: server `EDGEQUAKE_PDF_PARSER_BACKEND` or vision.
+    /// PDF parser backend. Default: server `EDGEQUAKE_PDF_PARSER_BACKEND` or vision.
+    ///
+    /// - `vision` — VLM page OCR
+    /// - `edgeparse` — CPU born-digital extraction (no Tesseract)
+    /// - `edgeparse-ocr` — EdgeParse + Tesseract raster-table OCR
+    /// - `auto` — Vision start with SPEC-038 EdgeParse fast-path when dense
     #[serde(default)]
+    #[schema(value_type = Option<PdfParserBackendName>, example = "edgeparse-ocr")]
     pub backend: Option<String>,
     /// Vision provider id (e.g. `"ollama"`, `"openai"`).
     #[serde(default)]

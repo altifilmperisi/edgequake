@@ -2,7 +2,7 @@
 title: 'Docker Quickstart'
 ---
 
-> **Product: v0.24.2** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+> **Product: v0.29.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
 
 # Docker Quickstart — Full Stack in One Command
 
@@ -24,6 +24,8 @@ curl -fsSL https://raw.githubusercontent.com/raphaelmansuy/edgequake/edgequake-m
 That's it. Three versioned images (API, Web UI, PostgreSQL) are pulled from GitHub Container Registry and started.
 
 The API image is distroless (no shell). Compose healthchecks run `edgequake healthcheck` (`GET /live`). Use `docker compose logs` rather than `docker exec sh`.
+
+**OCR in the API image:** Tesseract 5 + tessdata language packs (`eng`, `osd`, `fra`, `deu`, `spa`, `por`, `chi_sim`) are harvested into the distroless runtime for `pdf_parser_backend=edgeparse-ocr`. Vision LLM weights remain external (Ollama / OpenAI / …). pdfium stays compile-time embedded.
 
 **Then open:** http://localhost:3000
 

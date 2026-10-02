@@ -59,52 +59,6 @@ async fn upsert_metadata_with_wsdoc_index(
         .map_err(|e| edgequake_tasks::TaskError::Storage(e.to_string()))
 }
 
-pub(crate) fn graph_merge_progress_message(
-    sub_phase_label: &str,
-    entities_processed: usize,
-    entities_total: usize,
-    relationships_processed: usize,
-    relationships_total: usize,
-) -> String {
-    if entities_total > 0 || relationships_total > 0 {
-        format!(
-            "Storing in knowledge graph — {} ({}, {})",
-            sub_phase_label,
-            format_merge_counter("entities", entities_processed, entities_total),
-            format_merge_counter(
-                "relationships",
-                relationships_processed,
-                relationships_total
-            ),
-        )
-    } else {
-        format!("Storing in knowledge graph — {}...", sub_phase_label)
-    }
-}
-
-/// Fraction of graph-merge work complete (entities + relationships weighted equally).
-pub(crate) fn graph_merge_progress_fraction(
-    entities_processed: usize,
-    entities_total: usize,
-    relationships_processed: usize,
-    relationships_total: usize,
-) -> f32 {
-    let total = entities_total.saturating_add(relationships_total);
-    if total == 0 {
-        return 0.0;
-    }
-    let done = entities_processed.saturating_add(relationships_processed);
-    (done as f32 / total as f32).clamp(0.0, 1.0)
-}
-
-fn format_merge_counter(label: &str, processed: usize, total: usize) -> String {
-    if total == 0 {
-        return format!("{label}: —");
-    }
-    let pct = processed.saturating_mul(100) / total.max(1);
-    format!("{processed}/{total} {label} ({pct}%)")
-}
-
 /// Patch document KV with merge progress via the typed run-progress ledger.
 pub(crate) async fn patch_document_graph_merge_progress(
     kv: std::sync::Arc<dyn edgequake_storage::traits::KVStorage>,
@@ -144,80 +98,6 @@ pub(crate) async fn patch_document_graph_merge_progress(
         updated.insert("status".to_string(), json!("indexing"));
     })
     .await;
-}
-
-async fn patch_document_indexing_progress_with_fraction(
-    kv: std::sync::Arc<dyn edgequake_storage::traits::KVStorage>,
-    document_id: &str,
-    stage_message: &str,
-    stage_progress: Option<f32>,
-) {
-    // Prefer the key that already exists; never recreate staging after promote.
-    // A late spawn that resolved staging before promote can otherwise resurrect
-    // `staging:…-metadata` and leave final metadata stuck at `indexing`.
-    //
-    // IMP-075-04/10: SSOT dual-key batch via load_staging_and_final_metadata.
-    let Ok(pair) = crate::services::load_staging_and_final_metadata(kv.as_ref(), document_id).await
-    else {
-        return;
-    };
-
-    let (metadata_key, existing) = if pair.staging.is_some() {
-        // If final is already terminal, ignore staging (stale race) and skip.
-        if let Some(final_meta) = pair.final_meta.as_ref() {
-            if final_meta
-                .get("status")
-                .and_then(|v| v.as_str())
-                .is_some_and(is_terminal_document_status)
-            {
-                tracing::debug!(
-                    document_id = %document_id,
-                    "Skipping merge-progress patch — final metadata already terminal"
-                );
-                return;
-            }
-        }
-        match pair.staging {
-            Some(m) => (pair.staging_key, m),
-            None => return,
-        }
-    } else {
-        match pair.final_meta {
-            Some(m) => (pair.final_key, m),
-            None => return,
-        }
-    };
-    let Some(obj) = existing.as_object() else {
-        return;
-    };
-    // Guard: never clobber a terminal status with a stale fire-and-forget merge patch.
-    // Evidence: invoice 019f475d… finished (task=indexed, SQL=indexed) while KV stayed
-    // `indexing`/`storing` at 100% merge because a late progress spawn rewrote status.
-    if obj
-        .get("status")
-        .and_then(|v| v.as_str())
-        .is_some_and(is_terminal_document_status)
-    {
-        tracing::debug!(
-            document_id = %document_id,
-            status = obj.get("status").and_then(|v| v.as_str()).unwrap_or(""),
-            "Skipping merge-progress KV patch — document already terminal"
-        );
-        return;
-    }
-    let mut updated = obj.clone();
-    updated.insert("status".to_string(), json!("indexing"));
-    updated.insert("current_stage".to_string(), json!("storing"));
-    updated.insert("stage_message".to_string(), json!(stage_message));
-    if let Some(progress) = stage_progress {
-        updated.insert("stage_progress".to_string(), json!(progress));
-    }
-    updated.insert(
-        "updated_at".to_string(),
-        json!(chrono::Utc::now().to_rfc3339()),
-    );
-    apply_status_notice_fields(&mut updated, "indexing", Some(stage_message));
-    let _ = upsert_metadata_with_wsdoc_index(&kv, &metadata_key, json!(updated)).await;
 }
 
 impl DocumentTaskProcessor {
@@ -892,11 +772,16 @@ mod merge_progress_patch_tests {
             meta["stage_message"]
                 .as_str()
                 .unwrap()
-                .contains("Merging relationships"),
+                .contains("Storing in knowledge graph"),
             "expected merge progress message, got {:?}",
             meta["stage_message"]
         );
-        assert_eq!(meta["stage_progress"].as_f64().unwrap(), 1.0);
+        // Ledger caps pre-Materialize-done progress below 1.0 (honest UI).
+        let progress = meta["stage_progress"].as_f64().unwrap();
+        assert!(
+            (0.5..1.0).contains(&progress),
+            "expected mid/high merge progress < 1.0, got {progress}"
+        );
     }
 }
 

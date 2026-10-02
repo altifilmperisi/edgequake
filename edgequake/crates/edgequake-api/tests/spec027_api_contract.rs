@@ -89,9 +89,14 @@ fn spec027_entity_list_uses_batch_degrees() {
 #[test]
 fn spec027_search_nodes_uses_batch_degrees() {
     let search = read_crate_src("src/handlers/graph/graph_query/search.rs");
+    let dto = read_crate_src("src/handlers/graph/graph_dto.rs");
     assert!(
-        search.contains("node_degrees_batch"),
+        search.contains("degrees_breakdown_batch") || search.contains("node_degrees_batch"),
         "neighbor expansion must batch degree lookups"
+    );
+    assert!(
+        dto.contains("node_degrees_batch"),
+        "graph_dto SSOT must call node_degrees_batch"
     );
     assert!(
         !search.contains(".node_degree(&neighbor.id)"),
@@ -730,6 +735,12 @@ fn spec027_graph_edge_response_from_storage_edge_ssot() {
     assert!(graph_types.contains("relationship_type"));
     assert!(graph_types.contains("relation_type"));
 
+    let dto = read_crate_src("src/handlers/graph/graph_dto.rs");
+    assert!(
+        dto.contains("GraphEdgeResponse::from_storage_edge"),
+        "graph_dto::edge_response must call from_storage_edge"
+    );
+
     for path in [
         "src/handlers/graph/graph_query/search.rs",
         "src/handlers/graph/graph_query/traversal.rs",
@@ -737,8 +748,8 @@ fn spec027_graph_edge_response_from_storage_edge_ssot() {
     ] {
         let src = read_crate_src(path);
         assert!(
-            src.contains("GraphEdgeResponse::from_storage_edge"),
-            "{path} must use GraphEdgeResponse SSOT"
+            src.contains("edge_response") || src.contains("GraphEdgeResponse::from_storage_edge"),
+            "{path} must use GraphEdgeResponse SSOT (edge_response or from_storage_edge)"
         );
         assert!(
             !src.contains("GraphEdgeResponse {"),
@@ -2105,6 +2116,37 @@ fn spec027_webui_openapi_codegen_script_exists() {
     assert!(
         pkg.contains("codegen:api"),
         "package.json must define codegen:api script"
+    );
+}
+
+#[test]
+fn spec027_openapi_exposes_edgeparse_ocr_backend() {
+    let doc = ApiDoc::openapi();
+    let schemas = doc.components.as_ref().expect("components").schemas.clone();
+
+    let parse_options = schemas.get("ParseOptions").expect("ParseOptions schema");
+    let parse_json = serde_json::to_value(parse_options).expect("serialize ParseOptions");
+    let backend = &parse_json["properties"]["backend"];
+    let backend_blob = backend.to_string();
+    assert!(
+        backend_blob.contains("edgeparse-ocr"),
+        "ParseOptions.backend must document edgeparse-ocr in OpenAPI/Swagger: {backend_blob}"
+    );
+
+    let backend_name = schemas
+        .get("PdfParserBackendName")
+        .expect("PdfParserBackendName schema");
+    let name_json = serde_json::to_value(backend_name).expect("serialize PdfParserBackendName");
+    let name_blob = name_json.to_string();
+    assert!(
+        name_blob.contains("edgeparse-ocr"),
+        "PdfParserBackendName enum must include edgeparse-ocr: {name_blob}"
+    );
+    assert!(
+        name_blob.contains("vision")
+            && name_blob.contains("edgeparse")
+            && name_blob.contains("auto"),
+        "PdfParserBackendName must list vision/edgeparse/auto: {name_blob}"
     );
 }
 

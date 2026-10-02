@@ -11,7 +11,12 @@
 import type { PdfParserBackend } from "@/types/graph";
 
 /** Per-upload selector value on the Documents dropzone. */
-export type UploadPdfParserChoice = "default" | "vision" | "edgeparse" | "auto";
+export type UploadPdfParserChoice =
+  | "default"
+  | "vision"
+  | "edgeparse"
+  | "edgeparse-ocr"
+  | "auto";
 
 export type PdfParserResolutionSource =
   | "upload"
@@ -34,10 +39,10 @@ export interface PdfParserResolutionContext {
 export interface PdfParserResolution {
   /** Winning config choice (may be `auto`). */
   backend: PdfParserBackend;
-  /** Runtime converter: vision | edgeparse (`auto` starts as vision). */
-  runtimeBackend: "vision" | "edgeparse";
+  /** Runtime converter: vision | edgeparse | edgeparse-ocr (`auto` starts as vision). */
+  runtimeBackend: "vision" | "edgeparse" | "edgeparse-ocr";
   source: PdfParserResolutionSource;
-  /** True when Vision/EdgeParse is inviolable (not Auto). */
+  /** True when Vision/EdgeParse/EdgeParseOcr is inviolable (not Auto). */
   isExplicit: boolean;
   /** SPEC-038 may try EdgeParse only when true. */
   allowsAutoRoute: boolean;
@@ -51,6 +56,14 @@ export function getServerDefaultPdfParserBackend(): PdfParserBackend {
   if (raw === "edgeparse" || raw === "edge-parse" || raw === "edge_parse") {
     return "edgeparse";
   }
+  if (
+    raw === "edgeparse-ocr" ||
+    raw === "edgeparse_ocr" ||
+    raw === "edge-parse-ocr" ||
+    raw === "edgeparseocr"
+  ) {
+    return "edgeparse-ocr";
+  }
   if (raw === "auto") {
     return "auto";
   }
@@ -62,6 +75,7 @@ export function pdfParserBackendDisplayName(
   backend: PdfParserBackend,
 ): string {
   if (backend === "edgeparse") return "EdgeParse";
+  if (backend === "edgeparse-ocr") return "EdgeParse + OCR";
   if (backend === "auto") return "Auto";
   return "Vision";
 }

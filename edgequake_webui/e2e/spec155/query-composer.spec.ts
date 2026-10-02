@@ -167,7 +167,12 @@ test.describe("SPEC-155 query citation link @spec155", () => {
     await expect(card).toBeVisible();
   });
 
-  test("query_citation_click_navigates to the source", async ({ page }) => {
+  test("query_citation_click_navigates to the source (companion off)", async ({ page }) => {
+    // SPEC-157: with the companion on, the click docks the source beside the
+    // chat instead (see e2e/spec157). The kill switch keeps the full-page path.
+    await page.addInitScript(() =>
+      localStorage.setItem("edgequake.query.companion.enabled", "0"),
+    );
     const chip = await answerWithSources(page);
     await chip.click();
     await expect(page).toHaveURL(new RegExp(`/documents/${DOC}\\?.*page=2`), {

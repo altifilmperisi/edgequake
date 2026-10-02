@@ -39,6 +39,8 @@ import {
   resolveReprocessPanelTrackId,
 } from '@/lib/documents/progress-admit';
 import { getEffectiveErrorMessage } from '@/lib/utils/document-status';
+import { parsePageParam } from '@/lib/utils/document-url';
+import { resolvePdfId, withPdfMarkdown } from '@/lib/documents/viewer-target';
 import { hasPageMarkers } from '@/lib/utils/page-markers';
 import { useTenantStore } from '@/stores/use-tenant-store';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -192,14 +194,10 @@ export default function DocumentViewPage() {
   // SPEC-032 W-09: PDF page deep-link — ?page=N or #page=N from citation "Go to page"
   // Priority: URL search param `page=N` > hash fragment `#page=N` > default 1
   // The URL param is set by source-citations.tsx in the deep-link href.
-  const pageFromUrl = useMemo(() => {
-    const paramPage = searchParams.get('page');
-    if (paramPage) {
-      const n = parseInt(paramPage, 10);
-      if (!isNaN(n) && n >= 1) return n;
-    }
-    return undefined;
-  }, [searchParams]);
+  const pageFromUrl = useMemo(
+    () => parsePageParam(searchParams.get('page')),
+    [searchParams],
+  );
 
   const [resolvedPdfPage, setResolvedPdfPage] = useState<number | undefined>();
   const activePdfPage = pageFromUrl ?? resolvedPdfPage;
@@ -385,7 +383,7 @@ export default function DocumentViewPage() {
 
   // OODA-91: Derive PDF ID for content fetching
   // WHY: pdf_id may be in document.pdf_id or derived from source_type
-  const pdfIdForContent = document?.pdf_id || (document?.source_type === 'pdf' ? document?.id : null);
+  const pdfIdForContent = resolvePdfId(document);
 
   // OODA-91: Fetch PDF content (markdown) separately for PDF documents
   // WHY: PDF markdown content is stored in pdf_documents table, not in regular document content
@@ -409,7 +407,7 @@ export default function DocumentViewPage() {
 
   // OODA-48: Derive PDF ID for viewer - use pdf_id if available, otherwise use document.id for PDF source types
   // WHY: The pdf_id may not be set in older documents or when source_type is 'pdf' but pdf_id wasn't populated
-  const pdfIdForViewer = document?.pdf_id || (document?.source_type === 'pdf' ? document?.id : null);
+  const pdfIdForViewer = pdfIdForContent;
   
   // OODA-43: Detect if document is a PDF for side-by-side viewer
   // OODA-48: Require pdfIdForViewer to be truthy to prevent 'undefined' in URL
@@ -419,21 +417,10 @@ export default function DocumentViewPage() {
   // WHY: PDF markdown is stored separately in pdf_documents table, not in regular document content.
   // We merge it here so ContentRenderer can display it without special PDF handling.
   // NOTE: Must be called before early returns to satisfy React Rules of Hooks
-  const documentWithContent = useMemo(() => {
-    if (!document) return null;
-    const markdown =
-      (pdfContent?.markdown_content?.trim() || document.content?.trim() || '') as string;
-    if (isPdfDocument && markdown) {
-      return {
-        ...document,
-        content: markdown,
-        // WHY: PDF mime routes to plain-text path; markdown path needs text/markdown or signatures.
-        mime_type: 'text/markdown',
-        source_type: 'pdf' as const,
-      };
-    }
-    return document;
-  }, [document, isPdfDocument, pdfContent?.markdown_content]);
+  const documentWithContent = useMemo(
+    () => withPdfMarkdown(document, pdfIdForViewer, pdfContent?.markdown_content),
+    [document, pdfIdForViewer, pdfContent?.markdown_content],
+  );
 
   const pdfMarkdownMissing =
     isPdfDocument &&

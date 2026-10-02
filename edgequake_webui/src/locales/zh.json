@@ -86,6 +86,7 @@
       "subtitle": "最新文档上传和处理",
       "noActivity": "暂无活动",
       "uploadFirst": "上传您的第一个文档",
+      "viewAll_one": "查看全部 {{count}} 个文档",
       "viewAll_other": "查看全部 {{count}} 个文档"
     },
     "system": {
@@ -104,6 +105,7 @@
       "queued": "{{count}} 个排队中",
       "failed": "{{count}} 个失败"
     },
+    "documentsOnly_one": "{{count}} 个文档",
     "documentsOnly_other": "{{count}} 个文档"
   },
   "header": {
@@ -166,7 +168,9 @@
       "pdfParserDefault": "Workspace Default",
       "pdfParserDefaultWithValue": "Workspace Default ({{value}})",
       "pdfParserVision": "Vision",
-      "pdfParserEdgeParse": "EdgeParse"
+      "pdfParserEdgeParse": "EdgeParse",
+      "pdfParserEdgeParseOcr": "EdgeParse + OCR",
+      "pdfParserAuto": "Auto"
     },
     "duplicateDialog": {
       "titleSingle": "检测到重复文档",
@@ -844,6 +848,45 @@
       "chips": "已限定的文档",
       "unknownDoc": "文档",
       "removeDoc": "从范围中移除 {{title}}"
+    },
+    "companion": {
+      "title": "侧边面板",
+      "source": "来源",
+      "graph": "图谱",
+      "close": "关闭面板",
+      "openFullPage": "整页打开",
+      "openStudio": "在图谱工作室中打开",
+      "resize": "调整侧边面板大小",
+      "announceOpenSource": "来源已在聊天旁打开",
+      "announceOpenGraph": "答案图谱已在聊天旁打开",
+      "announceClosed": "面板已关闭",
+      "entities": "实体",
+      "relationships": "关系",
+      "context": "上下文",
+      "collapsePassage": "收起段落",
+      "expandPassage": "展开段落",
+      "askAboutThis": "就此提问",
+      "inScope": "已限定范围",
+      "scopeToDoc": "限定为此文档",
+      "viewMode": "视图",
+      "viewPage": "页面",
+      "viewText": "文本",
+      "viewCanvas": "图谱",
+      "viewList": "列表",
+      "sourceGone": "此文档已不可用",
+      "sourceGoneHint": "自生成此回答以来，它可能已被删除。",
+      "errorSource": "无法加载此来源",
+      "errorSourceHint": "请检查网络连接后重试。",
+      "loading": "加载中…",
+      "emptyGraph": "此回答没有图谱",
+      "emptyGraphHint": "此回答未从知识图谱中检索到任何实体。",
+      "expandFailed": "无法加载该实体的相邻节点",
+      "expandNone": "没有新的相邻节点",
+      "graphSummary": "{{nodes}} 个实体 · {{edges}} 条关系",
+      "moreInStudio": "工作室中还有 {{count}} 个",
+      "deselect": "清除选择",
+      "expanded": "已显示相邻节点",
+      "expand": "显示相邻节点"
     }
   },
   "pipeline": {
@@ -1004,15 +1047,20 @@
     },
     "pdfParser": {
       "edgeparse": "EdgeParse",
+      "edgeparseOcr": "EdgeParse + OCR",
       "vision": "Vision",
+      "auto": "Auto",
       "serverDefault": "Server Default",
       "serverDefaultWithValue": "Server Default ({{value}})",
       "serverDefaultHint": "Uses the server fallback when no workspace override is set",
       "serverDefaultHintWithValue": "Uses server config when no workspace override is set (currently {{value}}).",
-      "edgeparseHint": "Fast, CPU-only, best for digital-native PDFs",
-      "visionHint": "Best for scanned and image-heavy PDFs",
+      "edgeparseHint": "快速、仅 CPU，适合原生数字 PDF",
+      "edgeparseOcrHint": "EdgeParse + Tesseract OCR，用于图像表格（需 PATH 上有 tesseract）",
+      "visionHint": "适合扫描件与图像型 PDF",
+      "autoHint": "原生数字 PDF 可用 EdgeParse，否则用 Vision",
       "fallbackVision": "Fallback: Vision",
-      "resolvesTo": "Resolves to {{value}}"
+      "resolvesTo": "Resolves to {{value}}",
+      "resolvesToAuto": "May use EdgeParse"
     }
   },
   "websocket": {

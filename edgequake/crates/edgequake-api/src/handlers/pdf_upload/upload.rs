@@ -70,7 +70,10 @@ use edgequake_storage::{
         ("X-Tenant-ID" = Option<String>, Header, description = "Tenant UUID for multi-tenant isolation"),
         ("X-Workspace-ID" = Option<String>, Header, description = "Workspace UUID — scopes uploaded PDFs"),
     ),
-    request_body(content_type = "multipart/form-data"),
+    request_body(
+        content_type = "multipart/form-data",
+        description = "Multipart fields: `file` (required PDF), optional `pdf_parser_backend` (`vision` | `edgeparse` | `edgeparse-ocr` | `auto`), `vision_provider`, `vision_model`, `title`."
+    ),
     responses(
         (status = 200, description = "PDF uploaded successfully", body = PdfUploadResponse),
         (status = 400, description = "Invalid PDF or request"),
@@ -241,7 +244,10 @@ pub async fn upload_pdf_document(
         ("X-Tenant-ID" = Option<String>, Header, description = "Tenant UUID for multi-tenant isolation"),
         ("X-Workspace-ID" = Option<String>, Header, description = "Workspace UUID — scopes uploaded PDFs"),
     ),
-    request_body(content_type = "multipart/form-data"),
+    request_body(
+        content_type = "multipart/form-data",
+        description = "Multipart fields: `file`/`files` (required PDFs), optional `pdf_parser_backend` (`vision` | `edgeparse` | `edgeparse-ocr` | `auto`), `vision_provider`, `vision_model`."
+    ),
     responses(
         (status = 200, description = "Batch PDF upload accepted", body = PdfBatchUploadResponse),
         (status = 400, description = "Invalid multipart payload"),
