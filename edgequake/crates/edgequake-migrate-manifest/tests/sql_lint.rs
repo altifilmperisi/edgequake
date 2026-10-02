@@ -96,8 +96,8 @@ fn sql_authoring_lint_from_159() {
     // M163: CHECK on newly-added nullable columns (already checksum-locked before
     // manifest registration); NOT VALID rewrite would break applied ledgers.
     failures.retain(|f| {
-        !(f.contains("159_spec150") && f.contains("ADD CONSTRAINT"))
-            && !(f.contains("163_spec155") && f.contains("ADD CONSTRAINT"))
+        !(f.contains("ADD CONSTRAINT")
+            && (f.contains("159_spec150") || f.contains("163_spec155")))
     });
 
     assert!(
