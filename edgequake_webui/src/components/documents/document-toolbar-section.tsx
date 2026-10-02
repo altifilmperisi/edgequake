@@ -13,7 +13,6 @@ import type { Document, PipelineStatus } from '@/types';
 import { useMemo } from 'react';
 import { BatchActionsBar } from './batch-actions-bar';
 import { documentStalledForMs } from '@/lib/documents/document-run-state';
-import { DocumentDropzone, type DocumentDropzoneProps } from './document-dropzone';
 import type { DocStatus, SortField } from './document-filters';
 import { DocumentFilters } from './document-filters';
 import { DocumentSearchBar } from './document-search-bar';
@@ -47,26 +46,6 @@ export interface DocumentToolbarSectionProps {
    * (CTA) always stays visible.
    */
   demotePipelineBanner?: boolean;
-  /**
-   * SPEC-099: collapse upload slot when feedback zone has live work.
-   */
-  collapseUploadSlot?: boolean;
-  
-  // Dropzone
-  getRootProps: DocumentDropzoneProps['getRootProps'];
-  getInputProps: DocumentDropzoneProps['getInputProps'];
-  isDragActive: boolean;
-  openFileDialog: () => void;
-  pdfParserBackend: DocumentDropzoneProps['pdfParserBackend'];
-  onPdfParserBackendChange: DocumentDropzoneProps['onPdfParserBackendChange'];
-  /** Workspace inherit label — Vision / EdgeParse resolved default. */
-  workspacePdfParserBackend?: DocumentDropzoneProps['workspacePdfParserBackend'];
-  visionReasoningEffort?: string;
-  onVisionReasoningEffortChange?: (value: string | undefined) => void;
-  visionExtract?: DocumentDropzoneProps['visionExtract'];
-  onVisionExtractChange?: DocumentDropzoneProps['onVisionExtractChange'];
-  visionProvider?: string | null;
-  visionModel?: string | null;
 
   // Bulk actions
   selectedCount: number;
@@ -81,6 +60,10 @@ export interface DocumentToolbarSectionProps {
   onClearSelection: () => void;
 }
 
+/**
+ * Search / filters / selection / stuck banner.
+ * Dropzone lives in the Intake workspace zone (SPEC-155).
+ */
 export function DocumentToolbarSection({
   searchQuery,
   onSearchChange,
@@ -98,20 +81,6 @@ export function DocumentToolbarSection({
   onReprocessStuckDocuments,
   isReprocessingStuck,
   demotePipelineBanner = false,
-  collapseUploadSlot = false,
-  getRootProps,
-  getInputProps,
-  isDragActive,
-  openFileDialog,
-  pdfParserBackend,
-  onPdfParserBackendChange,
-  workspacePdfParserBackend,
-  visionReasoningEffort,
-  onVisionReasoningEffortChange,
-  visionExtract,
-  onVisionExtractChange,
-  visionProvider,
-  visionModel,
   selectedCount,
   onBulkReprocess,
   onBulkDelete,
@@ -152,9 +121,6 @@ export function DocumentToolbarSection({
     (pipelineUi.isStuck
       ? !(demotePipelineBanner && stuckAllStalled)
       : !demotePipelineBanner);
-  const quietDropzone =
-    pipelineUi.isActivelyProcessing ||
-    primaryRun?.stageStatus === 'active';
 
   const selectionMode = selectedCount > 0;
 
@@ -216,26 +182,6 @@ export function DocumentToolbarSection({
           isReprocessing={isReprocessingStuck}
         />
       )}
-
-      {/* Compact Upload Zone — quieter while a run is active (SPEC-048);
-          collapsed when feedback zone owns live narrative (SPEC-099) */}
-      <DocumentDropzone
-        getRootProps={getRootProps}
-        getInputProps={getInputProps}
-        isDragActive={isDragActive}
-        openFileDialog={openFileDialog}
-        pdfParserBackend={pdfParserBackend}
-        onPdfParserBackendChange={onPdfParserBackendChange}
-        workspacePdfParserBackend={workspacePdfParserBackend}
-        visionReasoningEffort={visionReasoningEffort}
-        onVisionReasoningEffortChange={onVisionReasoningEffortChange}
-        visionExtract={visionExtract}
-        onVisionExtractChange={onVisionExtractChange}
-        visionProvider={visionProvider}
-        visionModel={visionModel}
-        quiet={quietDropzone && !collapseUploadSlot}
-        collapsed={collapseUploadSlot}
-      />
     </>
   );
 }

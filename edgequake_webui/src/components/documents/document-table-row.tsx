@@ -41,6 +41,7 @@ import { memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CostCell } from './cost-cell';
 import { DocumentActionsMenu } from './document-actions-menu';
+import { DOCUMENT_TABLE_COL_HIDE } from '@/lib/documents/document-table-columns';
 import { EnhancedStatusBadge } from './enhanced-status-badge';
 import { ErrorMessagePopover } from './error-message-popover';
 import { QuickActionButtons } from './quick-action-buttons';
@@ -210,7 +211,7 @@ export const DocumentTableRow = memo(function DocumentTableRow({
 
   // WHY: Visual distinction for document status
   const rowClassName = cn(
-    'cursor-pointer transition-colors duration-150',
+    'cursor-pointer transition-colors duration-150 [&>td]:py-2.5',
     'hover:bg-primary/5 dark:hover:bg-primary/10',
     isActive && 'bg-primary/10 dark:bg-primary/15 ring-1 ring-primary/20',
     index % 2 === 0 ? 'bg-background' : 'bg-muted/20',
@@ -281,7 +282,7 @@ export const DocumentTableRow = memo(function DocumentTableRow({
       <TableCell className="overflow-hidden">
         <div className="flex min-w-0 flex-col gap-1">
           <div className="min-w-0 max-w-full">
-            <EnhancedStatusBadge document={doc} />
+            <EnhancedStatusBadge document={doc} compact />
           </div>
           {(() => {
             // LAW-IS3: Active View owns live narrative — table is inventory only.
@@ -304,19 +305,34 @@ export const DocumentTableRow = memo(function DocumentTableRow({
       </TableCell>
 
       {/* Entity Count */}
-      <TableCell className="overflow-hidden text-center tabular-nums">
+      <TableCell
+        className={cn(
+          'overflow-hidden text-center tabular-nums',
+          DOCUMENT_TABLE_COL_HIDE.entities,
+        )}
+      >
         {doc.entity_count ?? doc.chunk_count ?? '-'}
       </TableCell>
 
       {/* Cost — SPEC-099: only when showCostColumn */}
       {showCostColumn ? (
-        <TableCell className="overflow-hidden text-center">
+        <TableCell
+          className={cn(
+            'overflow-hidden text-center',
+            DOCUMENT_TABLE_COL_HIDE.cost,
+          )}
+        >
           <CostCell document={doc} size="sm" />
         </TableCell>
       ) : null}
 
       {/* Created Date */}
-      <TableCell className="max-w-0 overflow-hidden text-muted-foreground">
+      <TableCell
+        className={cn(
+          'max-w-0 overflow-hidden text-muted-foreground',
+          DOCUMENT_TABLE_COL_HIDE.created,
+        )}
+      >
         {doc.created_at ? (
           <span
             className="block truncate whitespace-nowrap"
@@ -330,7 +346,12 @@ export const DocumentTableRow = memo(function DocumentTableRow({
       </TableCell>
 
       {/* Last Updated Date — shows when doc was last reprocessed/rebuilt */}
-      <TableCell className="max-w-0 overflow-hidden text-muted-foreground @max-2xl:hidden">
+      <TableCell
+        className={cn(
+          'max-w-0 overflow-hidden text-muted-foreground',
+          DOCUMENT_TABLE_COL_HIDE.updated,
+        )}
+      >
         {(doc.updated_at || doc.processed_at) ? (
           <span
             className="block truncate whitespace-nowrap"

@@ -147,9 +147,13 @@ export function formatPhaseSummary(
  * Defence in depth: never let a stale poll regress done/total or un-done a phase.
  */
 export function clampMonotonic(
-  prev: RunProgress | null | undefined,
-  next: RunProgress | null | undefined,
+  rawPrev: RunProgress | null | undefined,
+  rawNext: RunProgress | null | undefined,
 ): RunProgress | null {
+  // Wire data is untrusted: a malformed ledger (no `phases` array / `seq`)
+  // must degrade to "no ledger", never throw inside a React Query queryFn.
+  const prev = isRunProgress(rawPrev) ? rawPrev : null;
+  const next = isRunProgress(rawNext) ? rawNext : null;
   if (!next && !prev) return null;
   if (!next) return prev ?? null;
   if (!prev) return next;
@@ -166,6 +170,7 @@ export function clampMonotonic(
       base.phases.push(structuredClone(b));
       continue;
     }
+    phase.tasks = phase.tasks ?? [];
     if (b.state === "done") {
       phase.state = "done";
       phase.finished_at = phase.finished_at ?? b.finished_at;

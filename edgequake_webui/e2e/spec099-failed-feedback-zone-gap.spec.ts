@@ -1,6 +1,6 @@
 /**
  * SPEC-099 — Ordinary Failed must not leave an empty feedback-zone band
- * between the dropzone and the documents inventory (208px CLS reserve leak).
+ * between the dropzone and the documents inventory (CLS reserve leak).
  */
 import { expect, test } from "@playwright/test";
 import { GOTO_OPTS } from "./helpers/app-ready";

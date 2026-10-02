@@ -22,9 +22,11 @@ import { AlertTriangle, Clock, Loader2, MoreHorizontal, RefreshCw, Trash2 } from
 import { useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { Document } from '@/types';
+import type { WorkspacePresetId } from '@/lib/documents/workspace-layout';
 import { ClearDocumentsDialog } from './clear-documents-dialog';
 import { ConnectionBanner } from './connection-banner';
 import { ConnectionStatus } from './connection-status';
+import { WorkspaceLayoutMenu } from './workspace/workspace-layout-menu';
 import { PipelineStatusDialog } from './pipeline-status-dialog';
 import { ReprocessFailedButton } from './reprocess-failed-button';
 
@@ -67,6 +69,10 @@ export interface DocumentHeaderProps {
   documents?: Document[];
   /** Optional columns control slot (e.g. show Cost) */
   columnsMenu?: ReactNode;
+  /** SPEC-155 docking workspace layout menu. */
+  layoutPresetId?: WorkspacePresetId | null;
+  onApplyLayoutPreset?: (id: WorkspacePresetId) => void;
+  onResetLayout?: () => void;
 }
 
 /**
@@ -89,6 +95,9 @@ export function DocumentHeader({
   workspaceId,
   documents,
   columnsMenu,
+  layoutPresetId = null,
+  onApplyLayoutPreset,
+  onResetLayout,
 }: DocumentHeaderProps) {
   const { t } = useTranslation();
   const [clearAllOpen, setClearAllOpen] = useState(false);
@@ -183,6 +192,14 @@ export function DocumentHeader({
               onPipelineDialogChange(true);
             }}
           />
+
+          {onApplyLayoutPreset && onResetLayout ? (
+            <WorkspaceLayoutMenu
+              presetId={layoutPresetId}
+              onApplyPreset={onApplyLayoutPreset}
+              onReset={onResetLayout}
+            />
+          ) : null}
         
           <Button
             variant="outline"

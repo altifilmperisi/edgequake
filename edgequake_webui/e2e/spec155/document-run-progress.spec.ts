@@ -80,10 +80,28 @@ function liveDocs(): Record<string, unknown>[] {
   ];
 }
 
+/** Expand the Runs zone (if railed) and the Working section when collapsed. */
+async function expandIntakeWorking(page: Page) {
+  const rail = page.getByTestId("workspace-zone-rail-runs");
+  if (await rail.isVisible().catch(() => false)) {
+    await rail.click();
+  }
+  await expect(page.getByTestId("workspace-zone-runs")).toBeVisible({
+    timeout: 15_000,
+  });
+  const toggle = page.getByTestId("documents-intake-toggle");
+  await expect(toggle).toBeVisible({ timeout: 30_000 });
+  if ((await toggle.getAttribute("aria-expanded")) !== "true") {
+    await toggle.click();
+  }
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+}
+
 async function openLive(page: Page) {
   await prepareSpec155Page(page, { documents: liveDocs() });
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/documents", { waitUntil: "domcontentloaded" });
+  await expandIntakeWorking(page);
   const card = page.getByTestId("spec048-active-run-card");
   await expect(card).toBeVisible({ timeout: 30_000 });
   return card;
@@ -125,6 +143,7 @@ test.describe("SPEC-155 single progress bar @spec155", () => {
     docs[0].stage_progress = undefined;
     await prepareSpec155Page(page, { documents: docs });
     await page.goto("/documents", { waitUntil: "domcontentloaded" });
+    await expandIntakeWorking(page);
     const card = page.getByTestId("spec048-active-run-card");
     await expect(card).toBeVisible({ timeout: 30_000 });
 
@@ -175,6 +194,7 @@ test.describe("SPEC-155 single progress bar @spec155", () => {
       ],
     });
     await page.goto("/documents", { waitUntil: "domcontentloaded" });
+    await expandIntakeWorking(page);
     const card = page.getByTestId("spec048-active-run-card");
     await expect(card).toBeVisible({ timeout: 30_000 });
     await expect(card.getByTestId("spec091-phase-prepare")).toHaveAttribute(
@@ -199,7 +219,10 @@ test.describe("SPEC-155 single progress bar @spec155", () => {
     await expect(caption).toContainText("1/107");
     await expect(caption.getByTestId("spec048-run-stage-pct")).toHaveText("1%");
 
-    await page.reload({ waitUntil: "domcontentloaded" });
+    // Re-seed + navigate (bare reload drops hermetic mock boot order).
+    await prepareSpec155Page(page, { documents: liveDocs() });
+    await page.goto("/documents", { waitUntil: "domcontentloaded" });
+    await expandIntakeWorking(page);
     const card2 = page.getByTestId("spec048-active-run-card");
     await expect(card2).toBeVisible({ timeout: 30_000 });
     const caption2 = card2.getByTestId("spec048-stage-progress");

@@ -148,8 +148,36 @@ export async function seedSpec155Tenant(page: Page): Promise<void> {
   await page.goto(SEED_PATH, { waitUntil: "domcontentloaded" });
   await page.evaluate(
     ({ tenant, workspace }) => {
+      // Keep Documents workspace layout prefs across remount (SPEC-155 docking).
+      const keptLayout = localStorage.getItem(
+        "edgequake.documents.workspaceLayout.v3",
+      );
+      const keptLegacyLayout = localStorage.getItem(
+        "edgequake.documents.pageLayoutMode",
+      );
+      const keptWorkingCollapsed = localStorage.getItem(
+        "edgequake.documents.intakeWorkingCollapsed",
+      );
       localStorage.clear();
       sessionStorage.clear();
+      if (keptLayout) {
+        localStorage.setItem(
+          "edgequake.documents.workspaceLayout.v3",
+          keptLayout,
+        );
+      }
+      if (keptLegacyLayout) {
+        localStorage.setItem(
+          "edgequake.documents.pageLayoutMode",
+          keptLegacyLayout,
+        );
+      }
+      if (keptWorkingCollapsed) {
+        localStorage.setItem(
+          "edgequake.documents.intakeWorkingCollapsed",
+          keptWorkingCollapsed,
+        );
+      }
       const userId = "spec155-user-001";
       localStorage.setItem("userId", userId);
       localStorage.setItem("tenantId", tenant.id);

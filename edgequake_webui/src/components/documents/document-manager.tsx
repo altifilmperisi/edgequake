@@ -52,6 +52,7 @@ import {
   shouldReserveFeedbackSlot,
   writeLiveWorkHint,
 } from '@/lib/documents/documents-layout-stability';
+import { useWorkspaceLayout } from '@/hooks/use-workspace-layout';
 import {
   needsReuploadNotReprocess,
   resolvePipelineUiState,
@@ -81,17 +82,19 @@ import {
 import { useStuckDetection } from '@/hooks/use-stuck-detection';
 import type { PdfParserResolutionContext } from '@/lib/pdf/large-pdf-admission';
 import {
-    filterLargePdfFiles,
-    type LargePdfAdmissionPreview,
-    type PdfParserChoice,
+  filterLargePdfFiles,
+  type LargePdfAdmissionPreview,
+  type PdfParserChoice,
 } from '@/lib/pdf/large-pdf-admission';
 import { AdmissionPhaseRow } from './admission-phase-row';
 import { ActiveRunsPanel } from './active-runs-panel';
 import { BulkDeleteConfirmDialog } from './bulk-delete-confirm-dialog';
 import { BulkReprocessDialog, type BulkReprocessChoice } from './bulk-reprocess-dialog';
 import { DeleteConfirmDialog } from './delete-confirm-dialog';
+import { DocumentDropzone } from './document-dropzone';
 import { DocumentErrorAlert } from './document-error-alert';
 import { DocumentHeader } from './document-header';
+import { DocumentsWorkspace } from './workspace/documents-workspace';
 import { DocumentPreviewRightPanel } from './document-preview-right-panel';
 import { DocumentsActionsProvider } from './documents-actions-context';
 import { DocumentTableSection } from './document-table-section';
@@ -475,6 +478,14 @@ export function DocumentManager() {
   });
   const showFeedbackZone = feedbackZoneOpen || reserveFeedbackSlot;
 
+  const runsIdle =
+    !showActiveRuns &&
+    !showUploadList &&
+    sessionReprocessEntries.length === 0 &&
+    deleteSessions.length === 0;
+
+  const workspace = useWorkspaceLayout({ runsIdle });
+
   useEffect(() => {
     if (feedbackZoneOpen) {
       writeLiveWorkHint(true);
@@ -678,6 +689,7 @@ export function DocumentManager() {
     t,
   });
 
+
   // OODA-22 / SPEC-048 DEF-06: Working vs Queued in tab title
   useDocumentTitle({
     totalCount,
@@ -736,173 +748,58 @@ export function DocumentManager() {
     return <DocumentErrorAlert error={error} onRetry={refetch} />;
   }
 
-  return (
-    <DocumentsActionsProvider value={documentsActions}>
-    <div
-      className="flex h-full min-h-0 min-w-0 flex-1 overflow-clip"
-      data-testid="documents-page-shell"
-    >
-      {/* Main Content - Flex column for proper scroll zones */}
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-clip">
-        {/* Fixed Header Zone — title, filters, always-on dropzone stay pinned.
-            max-h keeps inventory usable on short viewports (EC-099-01). */}
+  // SPEC-155: quiet dropzone when runs are live; never force-collapse (own zone).
+  const quietDropzone =
+    pipelineUi.isActivelyProcessing || showActiveRuns;
+
+  const intakeDropzone = (
+    <DocumentDropzone
+      getRootProps={getRootProps}
+      getInputProps={getInputProps}
+      isDragActive={isDragActive}
+      openFileDialog={openFileDialog}
+      pdfParserBackend={pdfParserBackend}
+      onPdfParserBackendChange={setPdfParserBackend}
+      workspacePdfParserBackend={selectedWorkspace?.pdf_parser_backend}
+      visionReasoningEffort={visionReasoningEffort}
+      onVisionReasoningEffortChange={setVisionReasoningEffort}
+      visionExtract={visionExtract}
+      onVisionExtractChange={setVisionExtract}
+      visionProvider={
+        selectedWorkspace?.vision_llm_provider ??
+        selectedWorkspace?.llm_provider
+      }
+      visionModel={
+        selectedWorkspace?.vision_llm_model ?? selectedWorkspace?.llm_model
+      }
+      quiet={quietDropzone}
+      fill
+    />
+  );
+
+  const runsZoneContent = showFeedbackZone ? (
+    <ApiErrorBoundary
+      fallback={() => (
         <div
-          className="min-h-0 shrink-0 max-h-[42dvh] space-y-3 overflow-y-auto overscroll-contain bg-background px-4 pt-4"
-          data-testid="documents-chrome"
+          role="alert"
+          className="py-2 text-sm text-muted-foreground"
+          data-testid="spec051-feedback-zone-fallback"
         >
-          <DocumentHeader
-            totalCount={totalCount}
-            countLabel={inventory.countLabel}
-            failedCount={reprocessableFailedCount}
-            showPipelineIndicator={pipelineUi.showPipelineIndicator}
-            reservePipelineSlot={showFeedbackZone}
-            pipelineAlertMode={pipelineUi.alertMode}
-            activeDocCount={pipelineUi.activeDocCount}
-            waitingDocCount={pipelineUi.waitingDocCount}
-            pipelineWaitingOnly={pipelineUi.isQueuedOnly}
-            pipelineDialogOpen={pipelineDialogOpen}
-            onPipelineDialogChange={setPipelineDialogOpen}
-            onRefresh={refetch}
-            tenantId={selectedTenantId ?? undefined}
-            workspaceId={selectedWorkspaceId ?? undefined}
-            documents={documents}
-            columnsMenu={
-              <DropdownMenuCheckboxItem
-                checked={showCostColumn}
-                onCheckedChange={(v) => setShowCostColumn(Boolean(v))}
-                data-testid="spec099-toggle-cost-column"
-              >
-                Show Cost column
-              </DropdownMenuCheckboxItem>
-            }
-          />
-
-          {/* OODA-30: Toolbar section extracted to DocumentToolbarSection */}
-          <DocumentToolbarSection
-            searchQuery={searchQuery}
-            onSearchChange={setSearchQuery}
-            statusFilter={statusFilter}
-            onStatusFilterChange={setStatusFilter}
-            sortField={sortField}
-            onSortFieldChange={setSortField}
-            sortDirection={sortDirection}
-            onSortDirectionChange={setSortDirection}
-            statusCounts={statusCounts}
-            pipelineStatus={pipelineStatus}
-            pipelineUi={pipelineUi}
-            documents={documents}
-            onOpenPipelineDetails={() => setPipelineDialogOpen(true)}
-            onReprocessStuckDocuments={(stuckDocs) => {
-              for (const doc of stuckDocs) {
-                // Staging orphans must be dismissed + re-uploaded, not reprocessed.
-                if (needsReuploadNotReprocess(doc)) continue;
-                const name =
-                  doc.file_name?.trim() ||
-                  doc.title?.trim() ||
-                  doc.id.slice(0, 8);
-                const isPdf =
-                  doc.source_type === 'pdf' ||
-                  Boolean(doc.pdf_id) ||
-                  /\.pdf$/i.test(name);
-                reprocessMutation.mutate({
-                  id: doc.id,
-                  mode: 'full',
-                  name,
-                  isPdf,
-                });
-              }
-            }}
-            isReprocessingStuck={reprocessMutation.isPending}
-            demotePipelineBanner={showFeedbackZone}
-            collapseUploadSlot={showFeedbackZone}
-            getRootProps={getRootProps}
-            getInputProps={getInputProps}
-            isDragActive={isDragActive}
-            openFileDialog={openFileDialog}
-            pdfParserBackend={pdfParserBackend}
-            onPdfParserBackendChange={setPdfParserBackend}
-            workspacePdfParserBackend={selectedWorkspace?.pdf_parser_backend}
-            visionReasoningEffort={visionReasoningEffort}
-            onVisionReasoningEffortChange={setVisionReasoningEffort}
-            visionExtract={visionExtract}
-            onVisionExtractChange={setVisionExtract}
-            visionProvider={
-              selectedWorkspace?.vision_llm_provider ??
-              selectedWorkspace?.llm_provider
-            }
-            visionModel={
-              selectedWorkspace?.vision_llm_model ?? selectedWorkspace?.llm_model
-            }
-            selectedCount={selectedCount}
-            onBulkReprocess={() => {
-              // WHY: Open the bulk choice dialog so the user picks full
-              // re-conversion vs. entity-only before reprocessing the batch.
-              if (selectedCount === 0) return;
-              setBulkReprocessOpen(true);
-            }}
-            onBulkDelete={handleBulkDelete}
-            bulkCancel={{
-              count: bulkCancel.cancellableCount,
-              isCancelling: bulkCancel.isCancelling,
-              onCancel: () => void bulkCancel.cancelSelected(),
-            }}
-            onClearSelection={handleClearSelection}
-          />
-
+          Progress unavailable — processing continues in the background.
         </div>
-
-      {/* ─── Unified feedback zone ───────────────────────────────────────────
-          WHY one zone instead of two separate capped sections:
-          Previously ActiveRunsPanel was capped at 28 vh inside the toolbar and
-          reprocess panels were capped at 30 vh below it → combined worst-case
-          58 vh + toolbar ≈ 500 px, leaving the table with <50 px (1 row visible).
-
-          Now ALL variable-height feedback (active-run stepper, upload progress,
-          reprocess panels) shares a SINGLE 35 vh cap and a single scroll boundary.
-          Layout guarantee:
-            static toolbar  ≈ 150 px  (search + filters + banner + dropzone + batch)
-            feedback zone   ≤ 35 vh   (scrolls internally when full)
-            table           = flex-1  (always gets the remaining ≥65 vh − 150 px)
-          On 760 px viewport: table ≥ 760×0.65−150 ≈ 344 px → ~5 rows always visible.
-      ─────────────────────────────────────────────────────────────────────── */}
-      {showFeedbackZone && (
-        <ApiErrorBoundary
-          fallback={() => (
-            <div
-              role="alert"
-              className="shrink-0 border-b px-4 py-2 text-sm text-muted-foreground"
-              data-testid="spec051-feedback-zone-fallback"
-            >
-              Progress unavailable — processing continues in the background.
-            </div>
-          )}
-        >
+      )}
+    >
+      {reserveFeedbackSlot ? (
         <div
-          className="shrink-0 overflow-y-auto border-b bg-background"
-          style={{
-            maxHeight: '35vh',
-            // CLS floor only while skeleton reservation is active. Live content
-            // sizes naturally; ordinary Failed must not hold an empty 208px band.
-            ...(reserveFeedbackSlot
-              ? { minHeight: FEEDBACK_ZONE_RESERVE_MIN_PX }
-              : {}),
-          }}
-          data-testid="spec051-feedback-zone"
-          data-reserved={reserveFeedbackSlot ? 'true' : 'false'}
-          aria-labelledby="spec051-feedback-zone-label"
+          className="py-1"
+          style={{ minHeight: FEEDBACK_ZONE_RESERVE_MIN_PX }}
         >
-          <span id="spec051-feedback-zone-label" className="sr-only">
-            Document processing progress
-          </span>
-          {reserveFeedbackSlot ? (
-            <div className="px-4 py-2">
-              <FeedbackZoneSkeleton />
-            </div>
-          ) : (
-            <>
+          <FeedbackZoneSkeleton />
+        </div>
+      ) : (
+        <>
           <FeedbackZoneLiveRegion announcement={feedbackAnnouncement} />
-          <div className="px-4 py-2 space-y-2">
-            {/* Server-stage stepper — includes stuck docs (per-doc cards stay visible) */}
+          <div className="space-y-2 pb-1">
             {showActiveRuns && (
               <ActiveRunsPanel
                 runs={activeRunsDisplayed}
@@ -915,8 +812,6 @@ export function DocumentManager() {
               />
             )}
 
-            {/* Upload progress: client-only rows always; tracked rows when
-                ActiveRunsPanel is hidden (it handles them when visible). */}
             {showUploadList && (
               <UploadProgressList
                 uploadingFiles={uploadFilesForList}
@@ -928,7 +823,6 @@ export function DocumentManager() {
               />
             )}
 
-            {/* Per-document reprocess progress panels */}
             {sessionReprocessEntries.length > 0 && (
               <div data-testid="spec051-reprocess-progress-panels">
                 <h4 className="text-sm font-semibold flex items-center gap-2 text-muted-foreground mb-1.5">
@@ -940,8 +834,6 @@ export function DocumentManager() {
                 <div className="space-y-1.5">
                   {sessionReprocessEntries.map((entry) => {
                     const liveDoc = documents.find((d) => d.id === entry.documentId);
-                    // Keep Queuing on provisional entry; never poll batch reprocess_*.
-                    // Prefer server track only when it is a live task progress key.
                     const liveTrackId = resolveReprocessPanelTrackId(
                       entry.trackId,
                       liveDoc?.track_id,
@@ -949,12 +841,10 @@ export function DocumentManager() {
                     const unpinRow = () => {
                       unpinReprocessDocuments(entry.documentId);
                     };
-                    // Dismiss/cancel: immediate remove + suppress bind re-add.
                     const dismissSessionPanel = () => {
                       unpinRow();
                       removeReprocessEntryByDocumentId(entry.documentId);
                     };
-                    // Terminal: brief visibility, then delayed remove (upload parity).
                     const finishSessionPanel = () => {
                       unpinRow();
                       removeReprocessEntry(entry.trackId);
@@ -980,7 +870,6 @@ export function DocumentManager() {
               </div>
             )}
 
-            {/* SPEC-050: Per-document delete progress (WS phases) */}
             {deleteSessions.length > 0 && (
               <div data-testid="spec050-delete-progress-panels">
                 <h4
@@ -1047,13 +936,67 @@ export function DocumentManager() {
               </div>
             )}
           </div>
-            </>
-          )}
-        </div>
-        </ApiErrorBoundary>
+        </>
       )}
+    </ApiErrorBoundary>
+  ) : (
+    <p className="px-2 py-1.5 text-[11px] text-muted-foreground" data-testid="workspace-runs-idle">
+      No active runs
+    </p>
+  );
 
-      {/* OODA-26: Table section extracted to DocumentTableSection */}
+  const libraryZone = (
+    <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-clip" data-testid="workspace-library-root">
+      <div className="shrink-0 space-y-2 bg-background px-3 pt-1.5 pb-1">
+        <DocumentToolbarSection
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
+          statusFilter={statusFilter}
+          onStatusFilterChange={setStatusFilter}
+          sortField={sortField}
+          onSortFieldChange={setSortField}
+          sortDirection={sortDirection}
+          onSortDirectionChange={setSortDirection}
+          statusCounts={statusCounts}
+          pipelineStatus={pipelineStatus}
+          pipelineUi={pipelineUi}
+          documents={documents}
+          onOpenPipelineDetails={() => setPipelineDialogOpen(true)}
+          onReprocessStuckDocuments={(stuckDocs) => {
+            for (const doc of stuckDocs) {
+              if (needsReuploadNotReprocess(doc)) continue;
+              const name =
+                doc.file_name?.trim() ||
+                doc.title?.trim() ||
+                doc.id.slice(0, 8);
+              const isPdf =
+                doc.source_type === 'pdf' ||
+                Boolean(doc.pdf_id) ||
+                /\.pdf$/i.test(name);
+              reprocessMutation.mutate({
+                id: doc.id,
+                mode: 'full',
+                name,
+                isPdf,
+              });
+            }
+          }}
+          isReprocessingStuck={reprocessMutation.isPending}
+          demotePipelineBanner={showFeedbackZone}
+          selectedCount={selectedCount}
+          onBulkReprocess={() => {
+            if (selectedCount === 0) return;
+            setBulkReprocessOpen(true);
+          }}
+          onBulkDelete={handleBulkDelete}
+          bulkCancel={{
+            count: bulkCancel.cancellableCount,
+            isCancelling: bulkCancel.isCancelling,
+            onCancel: () => void bulkCancel.cancelSelected(),
+          }}
+          onClearSelection={handleClearSelection}
+        />
+      </div>
       <DocumentTableSection
         documents={documents}
         totalCount={totalCount}
@@ -1075,15 +1018,12 @@ export function DocumentManager() {
         onViewInGraph={handleViewInGraph}
         onViewPdf={handleViewPdf}
         onRetry={(id) => {
-          // Pass document name + isPdf for ProgressPanelRow display
           const doc = documents.find((d) => d.id === id);
           if (doc && needsReuploadNotReprocess(doc)) return;
           const name = doc?.file_name || doc?.title || id.slice(0, 8);
           reprocessMutation.mutate({ id, name, isPdf: doc?.source_type === 'pdf' });
         }}
         onReprocess={(id) => {
-          // WHY: Open the choice dialog for the target document so the user can
-          // pick between full PDF re-conversion and entity-only re-extraction.
           const target = documents.find((d) => d.id === id) ?? null;
           if (target && needsReuploadNotReprocess(target)) return;
           setReprocessTarget(target ?? ({ id } as Document));
@@ -1118,9 +1058,88 @@ export function DocumentManager() {
           />
         </div>
       )}
+    </div>
+  );
+
+  return (
+    <DocumentsActionsProvider value={documentsActions}>
+    <div
+      className="flex h-full min-h-0 min-w-0 flex-1 overflow-clip"
+      data-testid="documents-page-shell"
+      data-layout-preset={workspace.doc.presetId ?? 'custom'}
+    >
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-clip">
+        <div
+          className="min-h-0 shrink-0 max-h-[30dvh] overflow-y-auto overscroll-contain bg-background px-4 pt-4 pb-2"
+          data-testid="documents-chrome"
+        >
+          <DocumentHeader
+            totalCount={totalCount}
+            countLabel={inventory.countLabel}
+            failedCount={reprocessableFailedCount}
+            showPipelineIndicator={pipelineUi.showPipelineIndicator}
+            reservePipelineSlot={showFeedbackZone}
+            pipelineAlertMode={pipelineUi.alertMode}
+            activeDocCount={pipelineUi.activeDocCount}
+            waitingDocCount={pipelineUi.waitingDocCount}
+            pipelineWaitingOnly={pipelineUi.isQueuedOnly}
+            pipelineDialogOpen={pipelineDialogOpen}
+            onPipelineDialogChange={setPipelineDialogOpen}
+            onRefresh={refetch}
+            tenantId={selectedTenantId ?? undefined}
+            workspaceId={selectedWorkspaceId ?? undefined}
+            documents={documents}
+            columnsMenu={
+              <DropdownMenuCheckboxItem
+                checked={showCostColumn}
+                onCheckedChange={(v) => setShowCostColumn(Boolean(v))}
+                data-testid="spec099-toggle-cost-column"
+              >
+                Show Cost column
+              </DropdownMenuCheckboxItem>
+            }
+            layoutPresetId={workspace.doc.presetId}
+            onApplyLayoutPreset={workspace.applyPresetId}
+            onResetLayout={workspace.reset}
+          />
+        </div>
+
+        <DocumentsWorkspace
+          tree={workspace.renderTree}
+          contents={{
+            intake: (
+              <div
+                className="relative min-h-0 min-w-0 flex-1"
+                data-testid="documents-intake-dropzone-slot"
+              >
+                {intakeDropzone}
+              </div>
+            ),
+            runs: (
+              <div className="min-h-0 flex-1 overflow-auto p-1.5" data-testid="spec051-feedback-zone">
+                {runsZoneContent}
+              </div>
+            ),
+            library: libraryZone,
+          }}
+          badges={{
+            runs:
+              activeRunsDisplayed.length > 0
+                ? activeRunsDisplayed.length
+                : null,
+            library: totalCount > 0 ? totalCount : null,
+          }}
+          collapsed={workspace.doc.collapsed}
+          maximized={workspace.doc.maximized}
+          isMobile={workspace.isMobile}
+          announcement={workspace.announcement}
+          onClearAnnouncement={workspace.clearAnnouncement}
+          onDock={workspace.dock}
+          onToggleCollapse={workspace.toggleCollapsed}
+          onMaximize={workspace.setMaximizedZone}
+        />
       </div>
 
-      {/* OADA-27: Right panel extracted to DocumentPreviewRightPanel */}
       <DocumentPreviewRightPanel
         isOpen={previewPanelOpen}
         onToggle={() => setPreviewPanelOpen(!previewPanelOpen)}

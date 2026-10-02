@@ -40,8 +40,8 @@ test.describe("SPEC-099 upload collapse", () => {
     const dropzone = page.getByTestId("document-dropzone");
     await expect(dropzone).toHaveAttribute("data-collapsed", "true");
     await expect(dropzone).toBeVisible();
-    // Keyboard / click target retained
-    await expect(dropzone).toHaveAttribute("role", "button");
+    // Keyboard / click target retained (role=group hosts nested selects)
+    await expect(dropzone).toHaveAttribute("role", "group");
     await expect(dropzone.locator('input[type="file"]')).toHaveCount(1);
   });
 });

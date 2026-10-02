@@ -4,29 +4,33 @@
  * Shared by header + body `<colgroup>` so columns stay aligned.
  * Title must claim an explicit % — an empty `<col />` collapses under
  * pressure and nowrap cells spill into Status (overlapping headers/badges).
+ *
+ * Progressive disclosure (container queries on the inventory pane):
+ *   ≥ 2xl (~42rem): all columns
+ *   < 2xl: hide Updated; reweight
+ *   < xl  (~36rem): hide Created too
+ *   < lg  (~32rem): hide Entities + Cost; Title + Status + Actions only
  */
 
 export const DOCUMENT_TABLE_COL_PERCENTS = {
   default: {
-    // Actions is one overflow button: keep it narrow so Title/Updated headers
-    // are not truncated ("Last…") at laptop widths.
-    checkbox: '3%',
-    title: '33%',
-    status: '15%',
-    entities: '11%',
-    created: '15%',
-    updated: '14%',
-    actions: '9%',
+    checkbox: "3%",
+    title: "34%",
+    status: "18%",
+    entities: "10%",
+    created: "14%",
+    updated: "13%",
+    actions: "8%",
   },
   withCost: {
-    checkbox: '3%',
-    title: '25%',
-    status: '15%',
-    entities: '10%',
-    cost: '8%',
-    created: '13%',
-    updated: '13%',
-    actions: '13%',
+    checkbox: "3%",
+    title: "28%",
+    status: "16%",
+    entities: "9%",
+    cost: "8%",
+    created: "12%",
+    updated: "12%",
+    actions: "12%",
   },
 } as const;
 
@@ -42,16 +46,24 @@ export function documentTableColPercentSum(showCostColumn: boolean): number {
 }
 
 /**
- * Narrow inventory pane (container < 42rem): "Last Updated" is hidden, so the
- * remaining columns are re-weighted (sum = 100) via important container-query
- * utilities that override the inline `<col>` widths. Literal class strings keep
- * Tailwind's scanner happy. Only applied to the default (no-cost) layout.
+ * Container-query width overrides when secondary columns are hidden.
+ * Applied to BOTH default and withCost layouts (cost itself hides below lg).
  */
 export const DOCUMENT_TABLE_NARROW_COL_CLASSES = {
-  checkbox: '@max-2xl:w-[4%]!',
-  title: '@max-2xl:w-[26%]!',
-  status: '@max-2xl:w-[19%]!',
-  entities: '@max-2xl:w-[17%]!',
-  created: '@max-2xl:w-[25%]!',
-  actions: '@max-2xl:w-[9%]!',
+  checkbox: "@max-2xl:w-[4%]! @max-lg:w-[5%]!",
+  title: "@max-2xl:w-[38%]! @max-xl:w-[44%]! @max-lg:w-[52%]!",
+  status: "@max-2xl:w-[22%]! @max-xl:w-[28%]! @max-lg:w-[34%]!",
+  entities: "@max-2xl:w-[12%]! @max-lg:hidden",
+  cost: "@max-lg:hidden",
+  created: "@max-2xl:w-[16%]! @max-xl:hidden",
+  updated: "@max-2xl:hidden",
+  actions: "@max-2xl:w-[8%]! @max-lg:w-[9%]!",
+} as const;
+
+/** Hide entire column below this container max (match row cells). */
+export const DOCUMENT_TABLE_COL_HIDE = {
+  entities: "@max-lg:hidden",
+  cost: "@max-lg:hidden",
+  created: "@max-xl:hidden",
+  updated: "@max-2xl:hidden",
 } as const;

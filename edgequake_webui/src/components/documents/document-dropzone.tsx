@@ -26,7 +26,11 @@ import {
   supportedReasoningEffortsForModel,
 } from '@/lib/settings/reasoning-effort-supported';
 import type { PdfParserBackend } from '@/types/graph';
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  resolveDropzoneFillLayout,
+  type DropzoneFillLayout,
+} from '@/lib/documents/dropzone-fill-layout';
 
 /**
  * Props for the DocumentDropzone component.
@@ -69,6 +73,11 @@ export interface DocumentDropzoneProps {
    * Always remains a full-width drop target (never removed).
    */
   collapsed?: boolean;
+  /**
+   * Fill the parent panel (docking Upload zone). Stretches to 100% width/height
+   * with content centered inside the dashed frame.
+   */
+  fill?: boolean;
 }
 
 function ParserSelect({
@@ -175,6 +184,7 @@ export function DocumentDropzone({
   visionModel,
   quiet = false,
   collapsed = false,
+  fill = false,
 }: DocumentDropzoneProps) {
   const { t } = useTranslation();
   const { data: llmCatalog } = useLlmModels();
@@ -205,6 +215,27 @@ export function DocumentDropzone({
   const showVisionEffort =
     showVisionPanel && typeof onVisionReasoningEffortChange === 'function';
 
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const [fillLayout, setFillLayout] = useState<DropzoneFillLayout>('hero');
+
+  useEffect(() => {
+    if (!fill) return;
+    const el = rootRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const apply = () => {
+      const { width, height } = el.getBoundingClientRect();
+      setFillLayout(resolveDropzoneFillLayout(width, height));
+    };
+    apply();
+    const ro = new ResizeObserver(apply);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [fill]);
+
+  const fillIsRow = fill && fillLayout === 'row';
+  const fillIsStack = fill && fillLayout === 'stack';
+  const fillIsHero = fill && fillLayout === 'hero';
+
   const rootProps = getRootProps({
     onClick: (e: React.MouseEvent) => {
       e.stopPropagation();
@@ -219,34 +250,60 @@ export function DocumentDropzone({
     },
     // WHY group, not button: the root hosts nested selects (axe nested-interactive).
     role: 'group' as const,
-    'aria-label': collapsed
+    'aria-label': collapsed || fill
       ? t('documents.upload.uploadCollapsed', 'Add files — click or drop')
       : t('documents.upload.uploadDrop', 'Upload files by clicking or dragging'),
     tabIndex: 0,
   });
 
+  const { ref: dropRef, ...dropRootProps } = rootProps as typeof rootProps & {
+    ref?: React.Ref<HTMLDivElement>;
+  };
+  const setRefs = (node: HTMLDivElement | null) => {
+    rootRef.current = node;
+    if (typeof dropRef === 'function') dropRef(node);
+    else if (dropRef && typeof dropRef === 'object') {
+      (dropRef as React.MutableRefObject<HTMLDivElement | null>).current = node;
+    }
+  };
+
   return (
     <div
-      {...rootProps}
+      {...dropRootProps}
+      ref={setRefs}
       data-testid="document-dropzone"
       data-upload="true"
       data-quiet={quiet ? 'true' : 'false'}
       data-collapsed={collapsed ? 'true' : 'false'}
+      data-fill={fill ? 'true' : 'false'}
+      data-fill-layout={fill ? fillLayout : undefined}
       className={cn(
-        // Always a full-width single-line drop band — never a multi-paragraph hero
-        // that steals the inventory flex budget (SPEC-099 scroll layout).
         'w-full border-dashed cursor-pointer transition-colors duration-200',
-        'flex items-center gap-3 min-w-0',
-        collapsed
-          ? 'rounded-md border px-3 py-1.5 gap-2'
-          : compact
-            ? 'rounded-lg border px-3 py-2 gap-2'
-            : 'rounded-lg border-2 px-4 py-2.5 gap-3',
+        'flex min-w-0',
+        fill
+          ? cn(
+              'absolute inset-0 rounded-none border border-dashed border-muted-foreground/35 bg-muted/5',
+              fillIsRow && 'flex-row items-center gap-2 px-3 py-1.5',
+              fillIsStack && 'flex-col items-stretch justify-center gap-2 px-2.5 py-2',
+              fillIsHero && 'flex-col items-center justify-center gap-2 px-4 py-4',
+            )
+          : cn(
+              'flex-wrap items-center gap-3',
+              collapsed
+                ? 'rounded-md border px-2.5 py-1.5 gap-2'
+                : compact
+                  ? 'rounded-lg border px-3 py-2 gap-2'
+                  : 'rounded-lg border-2 px-4 py-2.5 gap-3',
+            ),
         isDragActive
-          ? 'border-primary bg-primary/5 ring-2 ring-primary/20'
-          : collapsed || quiet
-            ? 'border-muted-foreground/20 bg-muted/15 hover:border-primary/40 hover:bg-muted/25'
-            : 'border-muted-foreground/20 hover:border-primary/50 hover:bg-muted/30',
+          ? fill
+            ? 'border-primary bg-primary/5'
+            : 'border-primary bg-primary/5 ring-2 ring-primary/20'
+          : fill
+            ? 'hover:border-primary/40 hover:bg-muted/15'
+            : collapsed || quiet
+              ? 'border-muted-foreground/25 bg-muted/10 hover:border-primary/40 hover:bg-muted/20'
+              : 'border-muted-foreground/20 hover:border-primary/50 hover:bg-muted/30',
       )}
     >
       <input
@@ -256,57 +313,91 @@ export function DocumentDropzone({
       />
       <div
         className={cn(
-          'rounded-lg transition-all shrink-0',
-          compact || collapsed ? 'p-1.5' : 'p-2',
-          isDragActive ? 'bg-primary/10' : 'bg-muted/50',
+          'flex min-w-0 items-center gap-2',
+          fillIsHero && 'max-w-full flex-col text-center',
+          fillIsStack && 'w-full flex-col items-start text-left',
+          fillIsRow && 'min-w-0 flex-1',
+          !fill && 'flex-1 flex-wrap',
         )}
       >
-        <Upload
+        <div
           className={cn(
-            'transition-all duration-200',
-            compact || collapsed ? 'h-4 w-4' : 'h-5 w-5',
-            isDragActive ? 'text-primary scale-110' : 'text-muted-foreground',
+            'rounded-lg transition-all shrink-0',
+            fillIsHero ? 'p-2.5' : fill || compact || collapsed ? 'p-1.5' : 'p-2',
+            isDragActive ? 'bg-primary/10' : 'bg-muted/50',
           )}
-        />
-      </div>
-      <div className="min-w-0 flex-1 overflow-hidden">
-        {isDragActive ? (
-          <p className="truncate text-sm font-medium text-primary">
-            {t('documents.upload.uploadDropActive', 'Drop files here')}
-          </p>
-        ) : collapsed ? (
-          <p className="truncate text-xs text-muted-foreground">
-            {t('documents.upload.addFilesDrop', 'Drop files here or click to add')}
-          </p>
-        ) : quiet ? (
-          <p className="truncate text-xs text-muted-foreground">
-            {t(
-              'documents.upload.uploadWhileWorking',
-              'Add more files anytime · max {{limit}}',
-              { limit: MAX_UPLOAD_LABEL },
+        >
+          <Upload
+            className={cn(
+              'transition-all duration-200',
+              fillIsHero ? 'h-6 w-6' : fill || compact || collapsed ? 'h-4 w-4' : 'h-5 w-5',
+              isDragActive ? 'text-primary scale-110' : 'text-muted-foreground',
             )}
-          </p>
-        ) : (
-          <p
-            className="truncate text-sm text-muted-foreground"
-            title={t(
-              'documents.upload.uploadDropWithLimit',
-              'Drag & drop or click to upload • TXT, MD, JSON, PDF, PNG, JPG, GIF, WEBP (max {{limit}}) · DOCX/Excel not supported',
-              { limit: MAX_UPLOAD_LABEL },
-            )}
-          >
-            {t(
-              'documents.upload.uploadDropWithLimit',
-              'Drag & drop or click to upload • TXT, MD, JSON, PDF, PNG, JPG, GIF, WEBP (max {{limit}}) · DOCX/Excel not supported',
-              { limit: MAX_UPLOAD_LABEL },
-            )}
-          </p>
-        )}
+          />
+        </div>
+        <div
+          className={cn(
+            'min-w-0 overflow-hidden',
+            fillIsHero || fillIsStack ? 'w-full' : fillIsRow ? 'min-w-0 flex-1' : 'flex-1 basis-[12rem]',
+          )}
+        >
+          {isDragActive ? (
+            <p
+              className={cn(
+                'font-medium text-primary',
+                fill ? 'text-sm' : 'truncate text-sm',
+              )}
+            >
+              {t('documents.upload.uploadDropActive', 'Drop files here')}
+            </p>
+          ) : fill || collapsed ? (
+            <p
+              className={cn(
+                'text-muted-foreground',
+                fillIsHero ? 'text-sm' : 'truncate text-xs',
+              )}
+            >
+              {t('documents.upload.addFilesDrop', 'Drop files or click to upload')}
+            </p>
+          ) : quiet ? (
+            <p className="truncate text-xs text-muted-foreground">
+              {t(
+                'documents.upload.uploadWhileWorking',
+                'Add more files anytime · max {{limit}}',
+                { limit: MAX_UPLOAD_LABEL },
+              )}
+            </p>
+          ) : (
+            <p
+              className="truncate text-sm text-muted-foreground"
+              title={t(
+                'documents.upload.uploadDropWithLimit',
+                'Drag & drop or click to upload • TXT, MD, JSON, PDF, PNG, JPG, GIF, WEBP (max {{limit}}) · DOCX/Excel not supported',
+                { limit: MAX_UPLOAD_LABEL },
+              )}
+            >
+              {t(
+                'documents.upload.uploadDropWithLimit',
+                'Drag & drop or click to upload • TXT, MD, JSON, PDF, PNG, JPG, GIF, WEBP (max {{limit}}) · DOCX/Excel not supported',
+                { limit: MAX_UPLOAD_LABEL },
+              )}
+            </p>
+          )}
+          {fillIsHero ? (
+            <p className="mt-0.5 text-[11px] text-muted-foreground/80">
+              TXT, MD, JSON, PDF, images · max {MAX_UPLOAD_LABEL}
+            </p>
+          ) : null}
+        </div>
       </div>
       <div
         className={cn(
-          // No opacity dimming: it pushed the muted "Parser" label below WCAG AA.
-          'shrink-0 flex items-center gap-2 sm:border-l sm:border-border/70 sm:pl-3',
+          'shrink-0 flex items-center gap-2',
+          fillIsHero && 'justify-center',
+          fillIsStack && 'w-full justify-stretch',
+          fillIsRow && 'shrink-0',
+          !fill &&
+            'sm:border-l sm:border-border/70 sm:pl-3 max-sm:basis-full max-sm:border-t max-sm:border-border/50 max-sm:pt-1.5 max-sm:pl-0',
         )}
         data-testid="upload-parser-vision-combo"
         onClick={(event) => event.stopPropagation()}
@@ -316,11 +407,14 @@ export function DocumentDropzone({
           pdfParserBackend={pdfParserBackend}
           onPdfParserBackendChange={onPdfParserBackendChange}
           workspacePdfParserBackend={workspacePdfParserBackend}
-          compact={compact || collapsed}
-          hideSideLabel={false}
+          compact={compact || collapsed || Boolean(fill)}
+          hideSideLabel={collapsed || fillIsRow || fillIsStack}
           triggerClassName={
-            compact || collapsed
-              ? 'min-w-[10.5rem] w-auto max-w-[14rem] h-7 text-xs'
+            compact || collapsed || fill
+              ? cn(
+                  'h-7 text-xs',
+                  fillIsStack ? 'w-full max-w-none' : 'min-w-[9.5rem] w-auto max-w-[13rem]',
+                )
               : 'min-w-[13.5rem] w-auto max-w-[18rem] h-9'
           }
         />

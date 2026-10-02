@@ -14,8 +14,20 @@ import type { PipelineStatus } from "@/types";
  * Compact Active-run panel footprint (section title + one stepper card).
  * Sized to match live `ActiveRunsPanel` density so skeleton → live does not
  * shove the inventory table (measured ~200px for a single Extracting run).
+ *
+ * SPEC-155 intake strip: reserve matches a single compact run card (~120px)
+ * rather than the old full nested PDF meter (~208px) — the strip budget and
+ * inventory min-height now own the layout guarantee.
  */
-export const FEEDBACK_ZONE_RESERVE_MIN_PX = 208;
+export const FEEDBACK_ZONE_RESERVE_MIN_PX = 120;
+
+/** Re-export intake strip budget SSOT for callers that already import here. */
+export {
+  INTAKE_STRIP_MAX_DVH,
+  INTAKE_STRIP_MAX_REM,
+  INVENTORY_MIN_PX,
+  intakeStripMaxHeightCss,
+} from "./intake-strip-state";
 
 /** sessionStorage flag: last visit had live work (refresh reservation hint). */
 export const LIVE_WORK_HINT_KEY = "edgequake.documents.liveWorkHint";

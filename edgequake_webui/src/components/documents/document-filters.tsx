@@ -55,7 +55,7 @@ export function DocumentFilters({
   };
 
   return (
-    <div className="flex flex-wrap items-center gap-3">
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
       {/* Status Filter */}
       <Select
         value={status}
@@ -82,7 +82,7 @@ export function DocumentFilters({
       <div className="h-6 w-px bg-border hidden sm:block" />
 
       {/* Sort Controls — date shortcuts; full column sort lives in table headers */}
-      <div className="flex h-9 items-center gap-1" role="group" aria-label={t('documents.filter.sortBy')}>
+      <div className="flex h-9 items-center gap-1 rounded-md border border-input bg-muted/30 pl-2.5 pr-0.5" role="group" aria-label={t('documents.filter.sortBy')}>
         <span className="mr-0.5 text-sm leading-none text-muted-foreground whitespace-nowrap">
           {t('documents.filter.sortBy')}
         </span>
@@ -90,7 +90,7 @@ export function DocumentFilters({
           variant={sortField === 'created_at' ? 'secondary' : 'ghost'}
           size="sm"
           onClick={() => toggleSort('created_at')}
-          className="gap-1 h-9"
+          className="gap-1 h-7 px-2.5"
           data-testid="toolbar-sort-created_at"
         >
           {t('documents.filter.created')}
@@ -106,7 +106,7 @@ export function DocumentFilters({
           variant={sortField === 'updated_at' ? 'secondary' : 'ghost'}
           size="sm"
           onClick={() => toggleSort('updated_at')}
-          className="gap-1 h-9"
+          className="gap-1 h-7 px-2.5"
           data-testid="toolbar-sort-updated_at"
         >
           {t('documents.filter.updated')}

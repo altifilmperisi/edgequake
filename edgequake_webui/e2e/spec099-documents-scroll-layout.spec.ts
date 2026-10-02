@@ -37,20 +37,21 @@ test.describe("SPEC-099 documents scroll layout", () => {
 
     const dropzone = page.getByTestId("document-dropzone");
     const chrome = page.getByTestId("documents-chrome");
+    const workspace = page.getByTestId("documents-workspace");
     const scroll = page.getByTestId("documents-table-scroll");
 
     await expect(dropzone).toBeVisible({ timeout: 20_000 });
     await expect(chrome).toBeVisible();
+    await expect(workspace).toBeVisible();
     await expect(scroll).toBeVisible();
     await expect(page.getByTestId("documents-virtual-spacer")).toBeVisible();
 
-    // Dropzone must be a full-width band in the chrome (not scrolled away)
+    // Dropzone must stay in the Intake zone (not scrolled away with inventory)
     const dropBefore = await dropzone.boundingBox();
     expect(dropBefore).toBeTruthy();
     expect(dropBefore!.y).toBeGreaterThanOrEqual(0);
-    expect(dropBefore!.y).toBeLessThan(400);
-    expect(dropBefore!.width).toBeGreaterThan(200);
-    expect(dropBefore!.height).toBeLessThan(96);
+    expect(dropBefore!.y).toBeLessThan(500);
+    expect(dropBefore!.width).toBeGreaterThan(120);
 
     // Document must not grow a page scroller (table padding leak → white band)
     const beforeScroll = await page.evaluate(() => ({

@@ -128,3 +128,22 @@ describe("synthesizeFromLegacy", () => {
     expect(findPhase(synth!, "prepare")!.state).toBe("done");
   });
 });
+
+describe("clampMonotonic malformed wire data", () => {
+  it("does not throw when a ledger lacks phases (regression: reading 'find')", () => {
+    const bad = { seq: 3 } as unknown as RunProgress;
+    expect(() => clampMonotonic(bad, pagesThenFigures())).not.toThrow();
+    expect(clampMonotonic(bad, pagesThenFigures())?.phases).toHaveLength(3);
+    expect(clampMonotonic(pagesThenFigures(), bad)?.seq).toBe(2);
+    expect(clampMonotonic(bad, bad)).toBeNull();
+  });
+
+  it("tolerates phases without tasks arrays", () => {
+    const prev = pagesThenFigures();
+    const next = {
+      seq: 5,
+      phases: [{ id: "prepare", state: "active" }],
+    } as unknown as RunProgress;
+    expect(() => clampMonotonic(prev, next)).not.toThrow();
+  });
+});

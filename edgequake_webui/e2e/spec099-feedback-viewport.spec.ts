@@ -1,5 +1,5 @@
 /**
- * SPEC-099 F-099-06 — Feedback zone viewport budget.
+ * SPEC-099 F-099-06 — Feedback zone / intake strip viewport budget.
  */
 import { expect, test } from "@playwright/test";
 import { GOTO_OPTS } from "./helpers/app-ready";
@@ -14,7 +14,7 @@ import {
 } from "./helpers/spec086-ingestion-mocks";
 
 test.describe("SPEC-099 feedback viewport", () => {
-  test("zone max-height ≤35vh with multiple runs; table still visible", async ({
+  test("runs zone stays bounded; table still visible", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1280, height: 900 });
@@ -36,13 +36,20 @@ test.describe("SPEC-099 feedback viewport", () => {
     await mockSpec086DocumentList(page, docs);
     await page.goto("/documents", GOTO_OPTS);
 
+    const rail = page.getByTestId("workspace-zone-rail-runs");
+    if (await rail.isVisible().catch(() => false)) {
+      await rail.click();
+    }
     const zone = page.getByTestId("spec051-feedback-zone");
+    const runs = page.getByTestId("workspace-zone-runs");
     await expect(zone).toBeVisible({ timeout: 20_000 });
+    await expect(runs).toBeVisible();
 
-    const maxHeight = await zone.evaluate((el) => getComputedStyle(el).maxHeight);
-    expect(maxHeight === "35vh" || maxHeight.endsWith("px")).toBeTruthy();
+    const runsBox = await runs.boundingBox();
+    expect(runsBox).toBeTruthy();
+    // Runs zone must not consume the whole viewport.
+    expect(runsBox!.height).toBeLessThan(900 * 0.7);
 
-    // Table section / rows remain in the document
     await expect(page.getByTestId("document-row-doc-099-vp-0")).toBeVisible();
     const tableBox = await page.getByTestId("document-row-doc-099-vp-0").boundingBox();
     expect(tableBox).toBeTruthy();

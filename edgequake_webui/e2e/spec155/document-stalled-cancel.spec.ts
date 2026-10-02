@@ -72,6 +72,10 @@ async function openDocuments(page: Page) {
 
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/documents", { waitUntil: "domcontentloaded" });
+  const rail = page.getByTestId("workspace-zone-rail-runs");
+  if (await rail.isVisible().catch(() => false)) {
+    await rail.click();
+  }
   return { docs, cancelCalls };
 }
 

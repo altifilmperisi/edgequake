@@ -161,13 +161,19 @@ export function EnhancedStatusBadge({
         }
       >
         {queryReady ? (
-          <>
-            <span data-testid="status-badge">{compact ? '✓' : pipelineLabel(displayStatus)}</span>
-            <span aria-hidden className="opacity-60">
-              ·
-            </span>
-            <ServingFenceBadge queryReady={true} />
-          </>
+          compact ? (
+            <span data-testid="status-badge">Ready</span>
+          ) : (
+            <>
+              <span data-testid="status-badge">{pipelineLabel(displayStatus)}</span>
+              <span aria-hidden className="opacity-60">
+                ·
+              </span>
+              <ServingFenceBadge queryReady={true} />
+            </>
+          )
+        ) : compact ? (
+          <span data-testid="status-badge">Indexed</span>
         ) : (
           <>
             <span data-testid="status-badge">Indexed</span>

@@ -4,6 +4,46 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- **Documents layout density (SPEC-155)** — Library-left/right presets give
+  Library ~74% width; when Runs is railed the Upload dock auto-narrows (~18–28%).
+  Inventory columns hide progressively (Updated → Created → Entities/Cost) and
+  status badges use compact labels when space is tight.
+
+- **Documents docking workspace (SPEC-155)** — Intake/Upload, Runs, and Library
+  are arrangeable panels (drag title grip or Move-to menu) with thin splitters,
+  collapse-to-rail, presets (Classic / Library left|right|center), Alt+1..4, and
+  persistence. Upload dropzone fills its panel (`data-fill`). Hermetic E2E:
+  `documents-workspace.spec.ts`, `documents-upload-fill.spec.ts`.
+
+
+### Fixed
+- **Documents crash "Cannot read properties of undefined (reading 'find')"** —
+  `clampMonotonic` now treats a malformed `run_progress` ledger (missing
+  `phases` / `tasks`) as absent instead of throwing inside the documents
+  `queryFn`. Regression: `run-progress.test.ts`,
+  `e2e/spec155/documents-malformed-ledger.spec.ts`.
+- **Intake strip overlap** — chip/focus strip no longer paints a tall Needs-attention
+  card (Cancel/Reprocess) over the inventory header; the strip sizes to content
+  up to the shared budget and the feedback zone scrolls.
+
+### Changed
+- **Documents polish** — thicker, higher-contrast Active-run progress bar; the
+  duplicate "N documents" line is shown only when filtered; sort shortcuts are a
+  bordered segmented group; slightly roomier table rows.
+- **Documents layout modes (SPEC-155)** — Curated Focus / Split / Stack presets
+  via a header segmented control, Alt+1/2/3, and an intake-strip grip snap-drag.
+  Preference persists in `localStorage`. Focus (default) keeps Documents
+  dominant with a one-line intake chip; Split places dropzone beside Active run;
+  Stack is a capped vertical narrative. Hermetic E2E:
+  `e2e/spec155/documents-layout-modes.spec.ts`.
+- **Documents intake strip (SPEC-155)** — Dropzone and Active run share one
+  capped horizontal band (`documents-intake-strip`, side-by-side on md+) instead
+  of a tall vertical stack that shoved the inventory off-screen. Working runs
+  default to a one-line summary with Cancel (expand for the full stepper card);
+  Needs-attention never collapses away. Inventory keeps a ≥14rem floor.
+  Hermetic E2E: `e2e/spec155/documents-intake-layout.spec.ts`.
+
 ### Fixed
 - **SPEC-149 multi-batch projecting stall** — Acking several `document_batch`
   deliveries that share `(object_id, object_revision, binding_id)` in one

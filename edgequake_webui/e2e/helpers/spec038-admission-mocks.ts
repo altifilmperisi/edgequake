@@ -59,6 +59,9 @@ export async function seedSpec038TenantContext(
       localStorage.setItem("userId", userId);
       localStorage.setItem("tenantId", tenantId);
       localStorage.setItem("workspaceId", workspaceId);
+      // Existing SPEC-038/048/086/099 e2e expect the Working card expanded.
+      // Product default is collapsed (density-first); tests opt into expand.
+      localStorage.setItem("edgequake.documents.intakeWorkingCollapsed", "0");
       const workspace: Record<string, unknown> = {
         id: workspaceId,
         tenant_id: tenantId,

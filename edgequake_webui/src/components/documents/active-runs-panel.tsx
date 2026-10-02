@@ -7,15 +7,20 @@
  *
  * Cancelled terminals: first-class orange Cancelled (never Failed); 12s TTL +
  * durable Dismiss via sessionStorage (document row remains under Cancelled).
+ *
+ * SPEC-155: Working section is collapsible (summary header + persisted state).
+ * Needs-attention / stalled cards are never collapsed away.
  */
 
 "use client";
 
 import { useEffect, useReducer, useRef, useState } from "react";
+import { ChevronDown, ChevronRight, X } from "lucide-react";
 import { IngestionRunCard } from "@/components/documents/ingestion-run-card";
 import { PdfUploadProgress } from "@/components/documents/pdf-upload-progress";
 import { StalledRunCard } from "@/components/documents/stalled-run-card";
 import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
 import { useCancelDocument } from "@/hooks/use-cancel-document";
 import {
   cancelledRetentionDeadlines,
@@ -39,6 +44,11 @@ import {
   shouldNestPdfPageMeter,
   type IngestionRunView,
 } from "@/lib/pipeline/ingestion-run-view";
+import {
+  readWorkingCollapsed,
+  summarizeWorkingRuns,
+  writeWorkingCollapsed,
+} from "@/lib/documents/intake-strip-state";
 
 // Re-export partition SSOT for existing test / call-site imports.
 export {
@@ -182,6 +192,13 @@ export function ActiveRunsPanel({
   );
   // Force re-render when cancelled TTL expires.
   const [, bumpRetention] = useReducer((n: number) => n + 1, 0);
+  // Density-first: collapsed by default so Documents keep the viewport.
+  const [workingCollapsed, setWorkingCollapsed] = useState(true);
+  useEffect(() => {
+    // Hydrate from localStorage after mount (SSR default stays collapsed).
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setWorkingCollapsed(readWorkingCollapsed());
+  }, []);
 
   const onCancelRun = (run: IngestionRunView) => {
     const id = run.documentId;
@@ -216,6 +233,7 @@ export function ActiveRunsPanel({
     clock: clockRef.current,
     dismissedCancelledIds,
   });
+  const summary = summarizeWorkingRuns(working);
 
   // Delay until each in-window cancelled card expires. Stable primitive deps —
   // never sync-bump when remaining <= 0 (that + fresh `runs` arrays loops).
@@ -271,23 +289,81 @@ export function ActiveRunsPanel({
     }
   };
 
+  const toggleWorkingCollapsed = () => {
+    setWorkingCollapsed((prev) => {
+      const next = !prev;
+      writeWorkingCollapsed(next);
+      return next;
+    });
+  };
+
+  const avgPct =
+    summary.avgProgress01 != null
+      ? Math.round(summary.avgProgress01 * 100)
+      : null;
+
+  // Primary cancellable run for the collapsed one-line Cancel affordance.
+  const primaryCancellable = working.find(isCancellableRun);
+
   return (
     <div
-      className="space-y-2 rounded-lg border border-sky-200/80 bg-sky-50/40 p-2.5 dark:border-sky-900 dark:bg-sky-950/20"
+      className="space-y-1.5 rounded-lg border border-sky-200/80 bg-sky-50/40 p-1.5 dark:border-sky-900 dark:bg-sky-950/20"
       data-testid="spec048-active-runs-panel"
       data-density="compact"
+      data-working-collapsed={workingCollapsed ? "true" : "false"}
     >
       {working.length > 0 && (
         <section
-          className="space-y-1.5"
+          className="space-y-1"
           data-testid="spec048-active-runs-working"
         >
-          <div className="flex items-baseline justify-between gap-2">
-            <div className="text-sm font-medium tracking-tight">
-              {workingSectionTitleForRuns(working)}
-            </div>
-            {/* A lone "1" next to "Active run" is noise; show the count only
-                when it adds information. */}
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              className="flex min-w-0 flex-1 items-center gap-1.5 rounded-md text-left hover:bg-sky-100/60 dark:hover:bg-sky-900/40 px-1.5 py-1"
+              onClick={toggleWorkingCollapsed}
+              aria-expanded={!workingCollapsed}
+              data-testid="documents-intake-toggle"
+            >
+              {workingCollapsed ? (
+                <ChevronRight
+                  className="h-3.5 w-3.5 shrink-0 text-muted-foreground"
+                  aria-hidden="true"
+                />
+              ) : (
+                <ChevronDown
+                  className="h-3.5 w-3.5 shrink-0 text-muted-foreground"
+                  aria-hidden="true"
+                />
+              )}
+              <div className="min-w-0 flex-1">
+                <div className="flex min-w-0 items-baseline gap-1.5">
+                  <span className="shrink-0 text-xs font-medium tracking-tight">
+                    {workingSectionTitleForRuns(working)}
+                  </span>
+                  <span
+                    className="truncate text-xs text-muted-foreground"
+                    data-testid="documents-intake-summary"
+                  >
+                    {summary.text}
+                  </span>
+                </div>
+              </div>
+            </button>
+            {avgPct != null ? (
+              <div
+                className="flex w-24 shrink-0 items-center gap-1.5"
+                aria-hidden="true"
+              >
+                <Progress
+                  value={avgPct}
+                  className="h-1.5 flex-1 bg-sky-200 dark:bg-sky-900 [&>[data-slot=progress-indicator]]:bg-sky-600 dark:[&>[data-slot=progress-indicator]]:bg-sky-400"
+                />
+                <span className="w-8 text-right text-xs tabular-nums text-muted-foreground">
+                  {avgPct}%
+                </span>
+              </div>
+            ) : null}
             {working.length > 1 ? (
               <div
                 className="rounded-full bg-sky-100 px-1.5 text-xs font-medium tabular-nums text-sky-800 dark:bg-sky-950 dark:text-sky-200"
@@ -296,16 +372,32 @@ export function ActiveRunsPanel({
                 {working.length}
               </div>
             ) : null}
+            {workingCollapsed && primaryCancellable ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 shrink-0 gap-1 border-border/60 px-2 text-xs text-muted-foreground hover:text-foreground"
+                onClick={() => onCancelRun(primaryCancellable)}
+                disabled={cancellingIds.has(primaryCancellable.documentId)}
+                data-testid="spec086-run-cancel"
+              >
+                <X className="h-3 w-3" aria-hidden="true" />
+                Cancel
+              </Button>
+            ) : null}
           </div>
-          {working.map((run) =>
-            renderRunCard(run, {
-              onDismissFailed,
-              onDismissCancelled,
-              onCancelRun,
-              onReprocess,
-              cancellingIds,
-            }),
-          )}
+          {!workingCollapsed
+            ? working.map((run) =>
+                renderRunCard(run, {
+                  onDismissFailed,
+                  onDismissCancelled,
+                  onCancelRun,
+                  onReprocess,
+                  cancellingIds,
+                }),
+              )
+            : null}
         </section>
       )}
 
