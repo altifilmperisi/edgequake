@@ -267,6 +267,14 @@ function documentMatchesMessage(
 ): boolean {
   const trackId = resolveTrackId(message);
   const documentId = resolveDocumentId(message);
+
+  // SPEC-120: a different non-empty track is a different run. Never apply
+  // old-run WS progress (matched only by document_id) onto a row that already
+  // shows a newer track_id from poll / reprocess.
+  if (trackId && doc.track_id && doc.track_id !== trackId) {
+    return false;
+  }
+
   if (trackId && doc.track_id === trackId) return true;
   if (documentId && doc.id === documentId) return true;
   return false;

@@ -663,7 +663,14 @@ test.describe("SPEC-143 PDF / Markdown sync", () => {
     });
     const before = await mdScroll.evaluate((el) => el.scrollTop);
 
+    // Wait for page 2 before the second click — a double-click race left CI
+    // stuck at data-page=2 on E-143-05d retries.
     await viewer.getByTestId("pdf-next-page").click();
+    await expect(viewer.getByTestId("pdf-page-indicator")).toHaveAttribute(
+      "data-page",
+      "2",
+      { timeout: 15_000 },
+    );
     await viewer.getByTestId("pdf-next-page").click();
     await expect(viewer.getByTestId("pdf-page-indicator")).toHaveAttribute(
       "data-page",

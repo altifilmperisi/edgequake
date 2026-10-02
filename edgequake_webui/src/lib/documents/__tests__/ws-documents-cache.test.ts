@@ -152,6 +152,45 @@ describe("patchDocumentsCacheFromProgress", () => {
     expect(data?.items[0].stage_message).toBe("Converting 7/17 pages");
   });
 
+  it("SPEC-120: ignores PdfPageProgress when document track_id already changed", () => {
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(["documents", "ws-1"], {
+      items: [
+        makeDoc("a", {
+          status: "pending",
+          current_stage: "queued",
+          display_status: "queued",
+          ui_phase: "idle",
+          track_id: "pdf-15f3095a-reprocess",
+          stage_message: "Waiting for reprocess worker",
+        }),
+      ],
+    });
+
+    const patched = patchDocumentsCacheFromProgress(queryClient, {
+      type: "PdfPageProgress",
+      data: {
+        document_id: "a",
+        task_id: "pdf-15f3095a-convert",
+        current_page: 7,
+        total_pages: 17,
+        completed_pages: 7,
+        progress: 0.41,
+        phase: "ocr",
+      },
+    });
+
+    expect(patched).toBe(0);
+    const data = queryClient.getQueryData<{ items: Document[] }>([
+      "documents",
+      "ws-1",
+    ]);
+    expect(data?.items[0].current_stage).toBe("queued");
+    expect(data?.items[0].display_status).toBe("queued");
+    expect(data?.items[0].track_id).toBe("pdf-15f3095a-reprocess");
+    expect(data?.items[0].stage_message).toBe("Waiting for reprocess worker");
+  });
+
   it("caps active PdfPageProgress below 1.0 and ignores late events after completed", () => {
     const queryClient = new QueryClient();
     queryClient.setQueryData(["documents", "ws-1"], {

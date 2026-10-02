@@ -308,10 +308,11 @@ async function mockApis(
 async function expectBadgeTitle(
   page: import("@playwright/test").Page,
   pattern: RegExp,
+  timeout = 15_000,
 ) {
   const badge = page.getByTestId("status-badge").first();
-  await expect(badge).toBeVisible({ timeout: 15_000 });
-  await expect(badge).toHaveAttribute("title", pattern);
+  await expect(badge).toBeVisible({ timeout });
+  await expect(badge).toHaveAttribute("title", pattern, { timeout });
 }
 
 test.describe("SPEC-120 converting not queued", () => {
@@ -435,12 +436,17 @@ test.describe("SPEC-120 converting not queued", () => {
 
     // A different non-empty track is a new run and must replace all old-run
     // fields wholesale rather than creating a hybrid row.
+    const pollCountBeforeReplace = getDocumentPollCount();
     setDocument({
       ...queuedDoc(),
       track_id: "pdf-15f3095a-reprocess",
       stage_message: "Waiting for reprocess worker",
       updated_at: freshIso(-1_000),
     });
+    // Wait for the list poll that carries the new track_id (WS interval ≈ 5s).
+    await expect
+      .poll(getDocumentPollCount, { timeout: 15_000 })
+      .toBeGreaterThan(pollCountBeforeReplace);
     await expectBadgeTitle(page, /Queued/i);
     await expect(activeRuns).toContainText(/Waiting for reprocess worker/i);
     await expect(activeRuns).not.toContainText(/7\/17/);
