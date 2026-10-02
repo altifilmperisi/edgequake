@@ -139,19 +139,31 @@ async function installMissionMocks(page: Page, state: MockState) {
     await route.fulfill({ status: 200, body: 'OK' });
   });
 
-  await page.route('**/api/v1/tenants', async (route) => {
+  // `*` so paginated `?limit=` calls match; bare `/tenants` does not.
+  await page.route('**/api/v1/tenants*', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify([TENANT]),
+      body: JSON.stringify({
+        items: [TENANT],
+        total: 1,
+        offset: 0,
+        limit: 100,
+      }),
     });
   });
 
   await page.route('**/api/v1/tenants/*/workspaces**', async (route) => {
+    const workspaces = state.workspaceDeleted ? [] : [WORKSPACE];
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify(state.workspaceDeleted ? [] : [WORKSPACE]),
+      body: JSON.stringify({
+        items: workspaces,
+        total: workspaces.length,
+        offset: 0,
+        limit: 100,
+      }),
     });
   });
 
@@ -326,9 +338,8 @@ test.describe('Mission 06 regression proof', () => {
     const deleteWorkspaceButton = page.getByRole('button', {
       name: /delete( this)? workspace/i,
     });
+    await expect(deleteWorkspaceButton).toBeVisible({ timeout: 15_000 });
     await deleteWorkspaceButton.scrollIntoViewIfNeeded();
-    await expect(deleteWorkspaceButton).toBeVisible();
-
     await deleteWorkspaceButton.click();
 
     const dialog = page.locator('[role="alertdialog"]');
@@ -377,9 +388,11 @@ test.describe('Mission 06 regression proof', () => {
       });
     });
 
-    await page.route('**/api/v1/graph/entities/*', async (route) => {
+    // DELETE uses `?confirm=true`; strip query when capturing the entity id.
+    await page.route(/\/api\/v1\/graph\/entities\/[^/?]+/, async (route) => {
       if (route.request().method() === 'DELETE') {
-        const entityId = route.request().url().split('/').pop();
+        const pathname = new URL(route.request().url()).pathname;
+        const entityId = decodeURIComponent(pathname.split('/').pop() || '');
         if (entityId) {
           state.deletedEntities.push(entityId);
         }
@@ -393,9 +406,10 @@ test.describe('Mission 06 regression proof', () => {
     await page.goto('/graph?stream=0');
 
     await expect(page.getByRole('complementary', { name: /entity browser/i })).toBeVisible();
-    await expect(page.getByText('ALPHA')).toBeVisible({ timeout: 10000 });
-
-    await page.getByText('ALPHA').first().click();
+    // UI formats UPPERCASE labels to Title Case (Alpha / Beta).
+    const alphaRow = page.getByRole('button', { name: /^Alpha$/i });
+    await expect(alphaRow).toBeVisible({ timeout: 10000 });
+    await alphaRow.click();
 
     await expect(page.getByRole('button', { name: /^Edit entity/i })).toBeVisible();
     await expect(page.getByRole('button', { name: /^Merge entity/i })).toBeVisible();
@@ -412,7 +426,7 @@ test.describe('Mission 06 regression proof', () => {
     await page.keyboard.press('Escape');
     await expect(editDialog).not.toBeVisible();
 
-    await page.getByText('ALPHA').first().click();
+    await alphaRow.click();
     await page.getByRole('button', { name: /^Merge entity/i }).click();
     const mergeDialog = page.locator('[role="dialog"]').last();
     await expect(mergeDialog).toContainText(/merge entities/i);
@@ -429,13 +443,16 @@ test.describe('Mission 06 regression proof', () => {
     await expect.poll(() => state.mergeCalls[0]?.target_entity).toBe('BETA');
     await expect.poll(() => state.mergeCalls[0]?.source_entity).toBe('ALPHA');
 
-    await page.getByText('BETA').first().click();
+    const betaRow = page.getByRole('button', { name: /^Beta$/i });
+    await betaRow.click();
     await page.getByRole('button', { name: /^Delete entity/i }).click();
 
     const deleteDialog = page.locator('[role="alertdialog"]').last();
     await expect(deleteDialog).toContainText(/delete entity/i);
     await deleteDialog.getByRole('button', { name: /^Delete$/ }).click();
 
-    await expect.poll(() => state.deletedEntities.includes('node-2')).toBe(true);
+    await expect.poll(() => state.deletedEntities.includes('node-2'), {
+      timeout: 15_000,
+    }).toBe(true);
   });
 });

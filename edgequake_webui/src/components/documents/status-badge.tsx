@@ -204,7 +204,16 @@ export const StatusBadge = memo(function StatusBadge({
       <Icon
         className={`h-3 w-3 shrink-0${spinIcon ? ' animate-spin' : pulseBadge ? ' motion-safe:animate-pulse' : ''}`}
       />
-      {!compact && <span className="truncate">{label}</span>}
+      {/* Compact still shows terminal / cancel labels — icon-only is opaque. */}
+      {(!compact ||
+        status === 'failed' ||
+        status === 'delete_failed' ||
+        status === 'partial_failure' ||
+        status === 'cancelled' ||
+        status === 'stopping' ||
+        status === 'cancelling') && (
+        <span className="truncate">{label}</span>
+      )}
     </Badge>
   );
 

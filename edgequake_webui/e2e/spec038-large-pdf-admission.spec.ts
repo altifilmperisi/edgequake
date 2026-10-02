@@ -24,16 +24,27 @@ startxref
   return Buffer.from(body, "utf8");
 }
 
+async function dropzoneFileInput(page: import("@playwright/test").Page) {
+  const input = page
+    .getByTestId("document-dropzone")
+    .locator('input[type="file"]');
+  await input.waitFor({ state: "attached", timeout: 15_000 });
+  return input;
+}
+
 test.describe("SPEC-038 Large PDF Admission", () => {
   test.setTimeout(60_000);
 
   test.beforeEach(async ({ page }) => {
-    await mockSpec038AdmissionRoutes(page);
-    await seedSpec038TenantContext(page);
+    await mockSpec038AdmissionRoutes(page, { workspacePdfParserBackend: "vision" });
+    await seedSpec038TenantContext(page, { workspacePdfParserBackend: "vision" });
     await page.goto("/documents", GOTO_OPTS);
     await page.getByRole("heading", { name: "Documents" }).waitFor({
       state: "visible",
       timeout: 20_000,
+    });
+    await expect(page.getByTestId("spec038-upload-parser-select")).toBeVisible({
+      timeout: 15_000,
     });
   });
 
@@ -58,7 +69,7 @@ test.describe("SPEC-038 Large PDF Admission", () => {
       fullPage: false,
     });
 
-    const fileInput = page.locator('input[type="file"]').first();
+    const fileInput = await dropzoneFileInput(page);
     await fileInput.setInputFiles(fixturePath);
 
     const dialog = page.getByTestId("spec038-large-pdf-admission-dialog");
@@ -103,9 +114,11 @@ test.describe("SPEC-038 Large PDF Admission", () => {
     const fixturePath = path.join(tmpDir, "large-guide-upload.pdf");
     fs.writeFileSync(fixturePath, buildLargePageCountPdf(603));
 
-    const fileInput = page.locator('input[type="file"]').first();
+    const fileInput = await dropzoneFileInput(page);
     await fileInput.setInputFiles(fixturePath);
-    await expect(page.getByTestId("spec038-large-pdf-admission-dialog")).toBeVisible();
+    await expect(page.getByTestId("spec038-large-pdf-admission-dialog")).toBeVisible({
+      timeout: 15_000,
+    });
     await page.getByTestId("spec038-admission-confirm").click();
 
     await expect
@@ -118,10 +131,12 @@ test.describe("SPEC-038 Large PDF Admission", () => {
     const fixturePath = path.join(tmpDir, "large-survey.pdf");
     fs.writeFileSync(fixturePath, buildLargePageCountPdf(250));
 
-    const fileInput = page.locator('input[type="file"]').first();
+    const fileInput = await dropzoneFileInput(page);
     await fileInput.setInputFiles(fixturePath);
 
-    await expect(page.getByTestId("spec038-large-pdf-admission-dialog")).toBeVisible();
+    await expect(page.getByTestId("spec038-large-pdf-admission-dialog")).toBeVisible({
+      timeout: 15_000,
+    });
     await page.getByLabel(/Vision OCR/i).click();
     await expect(page.getByTestId("spec038-admission-eta-vision")).toBeVisible();
 
@@ -159,7 +174,7 @@ test.describe("SPEC-038 Large PDF Admission", () => {
     const fixturePath = path.join(tmpDir, "large-edgeparse-upload.pdf");
     fs.writeFileSync(fixturePath, buildLargePageCountPdf(603));
 
-    const fileInput = page.locator('input[type="file"]').first();
+    const fileInput = await dropzoneFileInput(page);
     await fileInput.setInputFiles(fixturePath);
 
     await expect(page.getByTestId("spec038-large-pdf-admission-dialog")).toBeHidden({
@@ -216,7 +231,7 @@ test.describe("SPEC-038 Large PDF Admission — workspace EdgeParse default", ()
     const fixturePath = path.join(tmpDir, "large-ws-edgeparse.pdf");
     fs.writeFileSync(fixturePath, buildLargePageCountPdf(603));
 
-    const fileInput = page.locator('input[type="file"]').first();
+    const fileInput = await dropzoneFileInput(page);
     await fileInput.setInputFiles(fixturePath);
 
     await expect(page.getByTestId("spec038-large-pdf-admission-dialog")).toBeHidden({

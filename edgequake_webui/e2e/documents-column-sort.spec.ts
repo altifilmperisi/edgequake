@@ -7,6 +7,7 @@
 
 import { expect, test } from "@playwright/test";
 import { GOTO_OPTS } from "./helpers/app-ready";
+import { seedTenantStoreOnPage } from "./helpers/spec013-bootstrap";
 
 const MOCK_TENANT_ID = "tenant-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
 const MOCK_WORKSPACE_ID = "ws-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
@@ -88,12 +89,38 @@ async function mockBaseApi(page: import("@playwright/test").Page) {
     });
   });
 
-  await page.route("**/api/v1/tenants", async (route) => {
+  await page.route("**/api/v1/setup/status**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        needs_setup: false,
+        has_login_users: true,
+        tenant_count: 1,
+        workspace_count: 1,
+        auth_enabled: false,
+        bootstrap_admin_configured: true,
+      }),
+    });
+  });
+
+  // Trailing `*` so `?limit=` list calls match (Playwright globs include query).
+  await page.route("**/api/v1/tenants*", async (route) => {
+    const url = route.request().url();
+    if (/\/api\/v1\/tenants\/[^/?]+/.test(url)) {
+      await route.fallback();
+      return;
+    }
     if (route.request().method() === "GET") {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify([MOCK_TENANT]),
+        body: JSON.stringify({
+          items: [MOCK_TENANT],
+          total: 1,
+          offset: 0,
+          limit: 50,
+        }),
       });
     } else {
       await route.fallback();
@@ -105,7 +132,12 @@ async function mockBaseApi(page: import("@playwright/test").Page) {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify([MOCK_WORKSPACE]),
+        body: JSON.stringify({
+          items: [MOCK_WORKSPACE],
+          total: 1,
+          offset: 0,
+          limit: 50,
+        }),
       });
     } else {
       await route.fallback();
@@ -175,10 +207,23 @@ test.describe("Documents table column sort", () => {
       );
     });
     await mockBaseApi(page);
+    await seedTenantStoreOnPage(
+      page,
+      {
+        tenantId: MOCK_TENANT_ID,
+        tenantName: "TestTenant",
+        workspaceId: MOCK_WORKSPACE_ID,
+        workspaceName: "Default Workspace",
+        workspaceSlug: "bootstrap-workspace",
+      },
+      { waitForReady: false },
+    );
   });
 
   test("sorts by Entities header and toggles direction", async ({ page }) => {
     await page.goto("/documents", GOTO_OPTS);
+    // Maximize library so @container progressive column hide does not drop Entities.
+    await page.setViewportSize({ width: 1400, height: 900 });
     await expect(page.getByTestId("sort-header-entity_count")).toBeVisible({
       timeout: 30_000,
     });
@@ -212,6 +257,7 @@ test.describe("Documents table column sort", () => {
 
   test("sorts by Title and Cost columns", async ({ page }) => {
     await page.goto("/documents", GOTO_OPTS);
+    await page.setViewportSize({ width: 1400, height: 900 });
     await expect(page.getByTestId("sort-header-title")).toBeVisible({
       timeout: 30_000,
     });

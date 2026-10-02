@@ -54,6 +54,17 @@ export function summarizePipelineDocuments(
       waitingDocs.push(doc);
       continue;
     }
+    // Queued-behind-busy: aged uploading seed with live queue coverage stays
+    // waiting/Working — never SPEC-155 stalled Needs attention.
+    if (
+      opts?.hasQueueCoverage &&
+      doc.track_id &&
+      doc.admission_staging &&
+      (doc.current_stage || "").toLowerCase() === "uploading"
+    ) {
+      waitingDocs.push(doc);
+      continue;
+    }
     if (isActiveProcessingStatus(status)) {
       if (stalledForMs(doc.updated_at) !== null) {
         stalledDocs.push(doc);
@@ -175,6 +186,16 @@ export function isOrphanAdmissionShell(
     status === "partial_failure" ||
     status === "partial_success"
   ) {
+    // Recovered staging shells stay orphans even after status=failed
+    // (failure_code / re-upload copy). Terminal early-out must not hide them.
+    if (
+      doc.failure_code === "server_restart_interrupted" ||
+      /please re-upload|orphaned staging|upload interrupted/i.test(
+        `${doc.stage_message || ""} ${doc.error_message || ""}`,
+      )
+    ) {
+      return true;
+    }
     return false;
   }
   if (doc.failure_code === "server_restart_interrupted") {

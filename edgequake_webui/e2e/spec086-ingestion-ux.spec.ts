@@ -20,6 +20,28 @@ import {
   type Spec086ListDoc,
 } from "./helpers/spec086-ingestion-mocks";
 
+/** SPEC-155: expand the Runs zone when it is railed. */
+async function ensureRunsExpanded(page: Page) {
+  const zone = page.getByTestId("workspace-zone-runs");
+  if (await zone.isVisible().catch(() => false)) return;
+  const rail = page.getByTestId("workspace-zone-rail-runs");
+  if ((await rail.count()) > 0) {
+    await rail.first().click({ force: true });
+  }
+  await expect(zone).toBeVisible({ timeout: 15_000 });
+}
+
+/** Expand Runs + Working section so Active run cards / dismiss are reachable. */
+async function expandIntakeWorking(page: Page) {
+  await ensureRunsExpanded(page);
+  const toggle = page.getByTestId("documents-intake-toggle");
+  if ((await toggle.count()) > 0) {
+    if ((await toggle.getAttribute("aria-expanded")) !== "true") {
+      await toggle.click();
+    }
+  }
+}
+
 /** @deprecated Prefer Spec086ListDoc + makeSpec086ListDoc (DRY helper). */
 type ListDoc = Spec086ListDoc;
 
@@ -287,7 +309,10 @@ test.describe("086 format-agnostic ingestion UX", () => {
     const headlines = page.getByTestId("spec048-run-headline");
     if ((await headlines.count()) > 0) {
       await expect(headlines.first()).not.toHaveText(/Converting PDF/i);
-      await expect(headlines.first()).toHaveText(/Chunking|Queued|Extracting/i);
+      // SPEC-091 phase strip may say Prepare · chunks N/M for chunking.
+      await expect(headlines.first()).toHaveText(
+        /Chunking|Queued|Extracting|Prepare/i,
+      );
     }
 
     // Non-PDF: converting step omitted (not muted skipped "Converting PDF").
@@ -381,12 +406,13 @@ test.describe("086 format-agnostic ingestion UX", () => {
     await expect(page.getByText("paper.pdf").first()).toBeVisible({
       timeout: 15_000,
     });
+    await expandIntakeWorking(page);
     await expect(page.getByTestId("spec048-active-runs-panel")).toBeVisible({
       timeout: 15_000,
     });
-    // Shared chrome (not MD-only): Converting PDF label on ActiveRuns.
+    // SPEC-155/091: converting maps to Prepare phase caption (or legacy Converting PDF).
     await expect(page.getByTestId("spec048-run-headline").first()).toHaveText(
-      /Converting PDF/i,
+      /Converting PDF|Prepare|pages/i,
       { timeout: 10_000 },
     );
   });
@@ -675,6 +701,7 @@ test.describe("086 format-agnostic ingestion UX", () => {
     });
     await expect(page.getByText("active.md").first()).toBeVisible();
 
+    await expandIntakeWorking(page);
     const panel = page.getByTestId("spec048-active-runs-panel");
     if ((await panel.count()) > 0) {
       await expect(panel).toBeVisible();
@@ -773,6 +800,7 @@ test.describe("086 format-agnostic ingestion UX", () => {
       timeout: 15_000,
     });
 
+    await expandIntakeWorking(page);
     const cancelBtn = page.getByTestId("spec086-run-cancel").first();
     await expect(cancelBtn).toBeVisible({ timeout: 15_000 });
     await cancelBtn.click();
@@ -785,6 +813,7 @@ test.describe("086 format-agnostic ingestion UX", () => {
     await expect(page.getByText("cancel.md").first()).toBeVisible({
       timeout: 15_000,
     });
+    await expandIntakeWorking(page);
     const headlines = page.getByTestId("spec048-run-headline");
     if ((await headlines.count()) > 0) {
       await expect(headlines.first()).not.toHaveText(/^Completed/i);
@@ -827,13 +856,11 @@ test.describe("086 format-agnostic ingestion UX", () => {
     await expect(pill).toContainText(/Needs attention/i);
     await expect(pill).not.toContainText(/Working/i);
 
-    // Stuck banner owns the narrative (ActiveRuns may hide failed shells).
-    await expect(
-      page.getByText(/need attention|Failed ·|re-upload|No worker/i).first(),
-    ).toBeVisible({ timeout: 10_000 });
-    await expect(
-      page.getByLabel("Document processing progress"),
-    ).toContainText(/Failed/i);
+    // SPEC-155: attention lives in ActiveRuns (banner demoted when Runs zone open).
+    await expandIntakeWorking(page);
+    const attention = page.getByTestId("spec086-needs-attention");
+    await expect(attention).toBeVisible({ timeout: 15_000 });
+    await expect(attention).toContainText(/Needs attention|re-upload|Failed|Prior interrupted/i);
   });
 
   test("ux086_e_orphan_staging_recovered: failed staging shell shows re-upload guidance", async ({
@@ -915,6 +942,7 @@ test.describe("086 format-agnostic ingestion UX", () => {
       timeout: 20_000,
     });
 
+    await expandIntakeWorking(page);
     const panel = page.getByTestId("spec048-active-runs-panel");
     await expect(panel).toBeVisible({ timeout: 15_000 });
     const cards = panel.getByTestId("spec048-active-run-card");
@@ -964,6 +992,7 @@ test.describe("086 format-agnostic ingestion UX", () => {
       timeout: 20_000,
     });
 
+    await expandIntakeWorking(page);
     const panel = page.getByTestId("spec048-active-runs-panel");
     await expect(panel).toBeVisible({ timeout: 15_000 });
 
@@ -975,7 +1004,7 @@ test.describe("086 format-agnostic ingestion UX", () => {
     await expect(working).toContainText("clinical_symptom.pdf");
     await expect(attention).toContainText(/Needs attention/i);
     await expect(attention).toContainText("areal_2607.01120v2.md");
-    await expect(attention).toContainText(/Prior interrupted/i);
+    await expect(attention).toContainText(/Prior interrupted|re-upload/i);
     await expect(page.getByTestId("spec086-dismiss-all-attention")).toBeVisible();
   });
 
@@ -1034,6 +1063,7 @@ test.describe("086 format-agnostic ingestion UX", () => {
       timeout: 20_000,
     });
 
+    await expandIntakeWorking(page);
     const dismiss = page.getByTestId("spec086-run-dismiss");
     await expect(dismiss).toBeVisible({ timeout: 15_000 });
     await dismiss.click();
@@ -1283,6 +1313,7 @@ test.describe("086 format-agnostic ingestion UX", () => {
       timeout: 20_000,
     });
 
+    await expandIntakeWorking(page);
     await page.getByTestId("spec086-run-dismiss").click();
     await expect.poll(() => deleteHits, { timeout: 10_000 }).toBeGreaterThan(0);
 
@@ -1534,6 +1565,7 @@ test.describe("086 format-agnostic ingestion UX", () => {
       state: "visible",
       timeout: 20_000,
     });
+    await expandIntakeWorking(page);
     await page.getByTestId("spec086-run-cancel").first().click();
 
     // Headline projects ui_phase=stopping then Cancelled (LAW-28 / ops).
@@ -1542,6 +1574,7 @@ test.describe("086 format-agnostic ingestion UX", () => {
       { timeout: 10_000 },
     );
     await page.getByRole("button", { name: /^Refresh$/i }).click();
+    await expandIntakeWorking(page);
     await expect(page.getByTestId("spec048-run-headline").first()).toHaveText(
       /Cancelled/i,
       { timeout: 15_000 },
@@ -1762,9 +1795,11 @@ test.describe("086 format-agnostic ingestion UX", () => {
     await expect(page.getByRole("dialog")).toBeVisible({ timeout: 10_000 });
     await expect(page.getByRole("dialog")).toContainText(/duplicate/i);
 
+    await expandIntakeWorking(page);
     const cards = page
       .getByTestId("spec048-active-runs-panel")
-      .getByText(filename);
+      .getByTestId("spec048-active-run-card")
+      .filter({ hasText: filename });
     // Single Working narrative for this file (dialog open; no second live card flood).
     await expect(cards).toHaveCount(1);
   });

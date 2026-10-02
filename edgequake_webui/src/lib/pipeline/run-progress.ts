@@ -201,7 +201,18 @@ export function synthesizeFromLegacy(input: {
   counts?: { unit?: string; current?: number; total?: number } | null;
 }): RunProgress | null {
   const stage = (input.stage || "").toLowerCase();
-  if (!stage || stage === "queued" || stage === "cleaning" || stage === "pending") {
+  if (
+    !stage ||
+    stage === "queued" ||
+    stage === "cleaning" ||
+    stage === "pending" ||
+    // Terminal / cancel paths must not synthesize a Prepare caption that
+    // clobbers Failed / Cancelled / re-upload copy (SPEC-086 attention).
+    stage === "failed" ||
+    stage === "cancelled" ||
+    stage === "stopping" ||
+    stage === "completed"
+  ) {
     return null;
   }
 

@@ -320,7 +320,14 @@ export async function mockSpec038AdmissionRoutes(
     });
   });
 
-  await page.route("**/api/v1/tenants", async (route) => {
+  // Trailing `*` so `?limit=&offset=` list calls match (Playwright globs include query).
+  await page.route("**/api/v1/tenants*", async (route) => {
+    const url = route.request().url();
+    // Do not steal `/tenants/{id}` or `/tenants/{id}/workspaces…`.
+    if (/\/api\/v1\/tenants\/[^/?]+/.test(url)) {
+      await route.fallback();
+      return;
+    }
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -404,11 +411,12 @@ export async function mockSpec038AdmissionRoutes(
     const url = route.request().url();
     const method = route.request().method();
     if (method === "GET" && !url.includes("/documents/pdf")) {
+      // Client maps `response.documents` → items (not a bare `items` key).
       await route.fulfill({
         status: 200,
         contentType: "application/json",
         body: JSON.stringify({
-          items: [],
+          documents: [],
           total: 0,
           page: 1,
           page_size: 500,
@@ -463,9 +471,13 @@ export async function mockSpec038AdmissionRoutes(
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({
-        running_tasks: 1,
-        is_busy: true,
+        // Idle by default — a fake busy pipeline paints Working · 1 with an
+        // empty library and races admission / upload progress asserts.
+        running_tasks: 0,
+        is_busy: false,
         queued_tasks: 0,
+        pending_tasks: 0,
+        processing_tasks: 0,
       }),
     });
   });
@@ -480,7 +492,7 @@ export async function mockSpec038AdmissionRoutes(
           pagination: { total: 0, page: 1, page_size: 50, total_pages: 0 },
           statistics: {
             pending: 0,
-            processing: 1,
+            processing: 0,
             indexed: 0,
             failed: 0,
             cancelled: 0,

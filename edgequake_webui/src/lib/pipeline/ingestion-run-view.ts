@@ -13,6 +13,7 @@ import {
 import { bareDocumentId } from "@/lib/documents/reprocess-cache";
 import {
   isOrphanAdmissionShell,
+  needsReuploadNotReprocess,
   isWaitingStatus,
 } from "./pipeline-document-state";
 import { stalledForMs as computeStalledForMs } from "./run-liveness";
@@ -530,9 +531,10 @@ export function buildIngestionRunView(
     return null;
   }
 
-  const orphanShell = isOrphanAdmissionShell(doc, Date.now(), {
-    hasQueueCoverage: opts?.hasQueueCoverage,
-  });
+  const orphanShell =
+    isOrphanAdmissionShell(doc, Date.now(), {
+      hasQueueCoverage: opts?.hasQueueCoverage,
+    }) || needsReuploadNotReprocess(doc);
   const stage = orphanShell
     ? ("failed" as IngestionRunStage)
     : normalizeRunStage(doc.current_stage, doc.status);
@@ -550,7 +552,9 @@ export function buildIngestionRunView(
             ? (doc.stage_message as string).trim()
             : "please re-upload the document.";
         if (/prior interrupted upload/i.test(raw)) return raw;
-        return `Prior interrupted upload — ${raw.replace(/^Upload interrupted[^—]*—?\s*/i, "")}`;
+        // Keep full server copy after the prefix (do not strip when no em-dash).
+        const stripped = raw.replace(/^Upload interrupted[^—]*—\s*/i, "").trim();
+        return `Prior interrupted upload — ${stripped || raw}`;
       })()
     : (doc.stage_message && doc.stage_message.trim()) ||
       stageDisplayName(stage);
@@ -626,8 +630,17 @@ export function buildIngestionRunView(
     stageProgress01: progress01,
     counts,
   });
+  // Never clobber Failed / Cancelled / re-upload copy with a Prepare caption.
   const ledgerCaption = formatPhaseCaption(runProgress);
-  if (ledgerCaption && stage !== "queued" && stage !== "cleaning") {
+  if (
+    ledgerCaption &&
+    stage !== "queued" &&
+    stage !== "cleaning" &&
+    stage !== "failed" &&
+    stage !== "cancelled" &&
+    stage !== "stopping" &&
+    !orphanShell
+  ) {
     displayMessage = ledgerCaption;
   }
 

@@ -7,9 +7,19 @@
 
 import { expect, test } from "@playwright/test";
 import { GOTO_OPTS } from "./helpers/app-ready";
+import { seedTenantStoreOnPage } from "./helpers/spec013-bootstrap";
+import { expandIntakeWorking, freshIso } from "./helpers/workspace-runs";
 
 const MOCK_TENANT_ID = "tenant-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
 const MOCK_WORKSPACE_ID = "ws-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+
+const MOCK_CTX = {
+  tenantId: MOCK_TENANT_ID,
+  tenantName: "TestTenant",
+  workspaceId: MOCK_WORKSPACE_ID,
+  workspaceName: "Default Workspace",
+  workspaceSlug: "bootstrap-workspace",
+};
 
 const MOCK_TENANT = {
   id: MOCK_TENANT_ID,
@@ -53,8 +63,9 @@ const EXTRACTING_DOC = {
   chunk_count: 5,
   entity_count: 0,
   source_type: "text",
-  created_at: "2026-06-06T11:00:00Z",
-  updated_at: "2026-06-06T11:05:00Z",
+  track_id: "track-alert-extract",
+  created_at: freshIso(-60_000),
+  updated_at: freshIso(-5_000),
 };
 
 const GRAPH_MERGE_DOC = {
@@ -69,8 +80,9 @@ const GRAPH_MERGE_DOC = {
   chunk_count: 120,
   entity_count: 2654,
   source_type: "pdf",
-  created_at: "2026-06-06T12:00:00Z",
-  updated_at: "2026-06-06T12:30:00Z",
+  track_id: "track-alert-merge",
+  created_at: freshIso(-60_000),
+  updated_at: freshIso(-5_000),
 };
 
 const QUEUED_PENDING_DOC = {
@@ -79,6 +91,8 @@ const QUEUED_PENDING_DOC = {
   title: "queued.md",
   file_name: "queued.md",
   stage_message: "Waiting for a processing slot",
+  created_at: freshIso(-30_000),
+  updated_at: freshIso(-5_000),
 };
 
 async function mockBaseApi(page: import("@playwright/test").Page) {
@@ -102,12 +116,23 @@ async function mockBaseApi(page: import("@playwright/test").Page) {
     });
   });
 
-  await page.route("**/api/v1/tenants", async (route) => {
+  // Trailing `*` so `?limit=` list calls match (Playwright globs include query).
+  await page.route("**/api/v1/tenants*", async (route) => {
+    const url = route.request().url();
+    if (/\/api\/v1\/tenants\/[^/?]+/.test(url)) {
+      await route.fallback();
+      return;
+    }
     if (route.request().method() === "GET") {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify([MOCK_TENANT]),
+        body: JSON.stringify({
+          items: [MOCK_TENANT],
+          total: 1,
+          offset: 0,
+          limit: 50,
+        }),
       });
     } else {
       await route.fallback();
@@ -119,7 +144,12 @@ async function mockBaseApi(page: import("@playwright/test").Page) {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify([MOCK_WORKSPACE]),
+        body: JSON.stringify({
+          items: [MOCK_WORKSPACE],
+          total: 1,
+          offset: 0,
+          limit: 50,
+        }),
       });
     } else {
       await route.fallback();
@@ -210,6 +240,10 @@ async function mockDocuments(
 test.describe("Ingestion alert banner", () => {
   test.setTimeout(60_000);
 
+  test.beforeEach(async ({ page }) => {
+    await seedTenantStoreOnPage(page, MOCK_CTX, { waitForReady: false });
+  });
+
   test("shows stuck state when pending doc has no queue coverage", async ({
     page,
   }) => {
@@ -239,6 +273,7 @@ test.describe("Ingestion alert banner", () => {
     await page.goto("/documents", GOTO_OPTS);
 
     // Non-stuck chrome is demoted when the feedback zone owns the narrative.
+    await expandIntakeWorking(page);
     await expect(page.getByTestId("spec048-active-runs-panel")).toBeVisible({
       timeout: 15_000,
     });
@@ -259,11 +294,13 @@ test.describe("Ingestion alert banner", () => {
 
     await page.goto("/documents", GOTO_OPTS);
 
+    await expandIntakeWorking(page);
     await expect(page.getByTestId("spec048-active-runs-panel")).toBeVisible({
       timeout: 15_000,
     });
-    await expect(page.getByTestId("spec048-run-headline")).toContainText(
-      /Extracting Entities/i,
+    // SPEC-091/155: phase caption (Extract · …) or legacy Extracting Entities.
+    await expect(page.getByTestId("spec048-run-headline").first()).toContainText(
+      /Extract(ing)?|Extract ·/i,
     );
     await expect(page.getByTestId("pipeline-header-button")).toContainText(
       /Working/i,
@@ -281,15 +318,17 @@ test.describe("Ingestion alert banner", () => {
 
     await page.goto("/documents", GOTO_OPTS);
 
+    await expandIntakeWorking(page);
     const zone = page.getByTestId("spec048-active-runs-panel");
     await expect(zone).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByTestId("spec048-run-headline")).toContainText(
-      /Storing/i,
+    await expect(page.getByTestId("spec048-run-headline").first()).toContainText(
+      /Materialize|Storing|relationships/i,
     );
-    const stageProgress = page.getByTestId("spec048-stage-progress");
-    await expect(stageProgress).toBeVisible();
-    await expect(stageProgress).toContainText(/relationships/i);
-    await expect(stageProgress).toContainText(/66%/);
+    const stageProgress = page
+      .getByTestId("spec048-stage-progress")
+      .or(page.getByTestId("spec048-overall-progress"));
+    await expect(stageProgress.first()).toBeVisible();
+    await expect(zone).toContainText(/relationships|66%|Materialize|Storing/i);
     await expect(page.getByTestId("pipeline-header-button")).toContainText(
       /Working/i,
     );

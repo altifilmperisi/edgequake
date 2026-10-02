@@ -98,4 +98,27 @@ describe("buildIngestionRunViewFromProgress (ux086_v_one_presenter)", () => {
       /prior interrupted|re-upload|interrupted|document received/,
     );
   });
+
+  it("recovered failed staging shell keeps re-upload copy (not Prepare caption)", () => {
+    const doc = {
+      id: "doc-orphan-recovered",
+      file_name: "invarian_2607.11875v2.md",
+      status: "failed",
+      current_stage: "failed",
+      stage_message:
+        "Upload interrupted during 'uploading' (no live worker task). Please re-upload the document.",
+      stage_progress: 0,
+      track_id: "insert-dead",
+      admission_staging: true,
+      failure_code: "server_restart_interrupted",
+      error_message: "Orphaned staging admission — please re-upload",
+      updated_at: new Date().toISOString(),
+      created_at: "2020-01-01T00:00:00Z",
+    } as Document;
+    const run = buildIngestionRunView(doc);
+    expect(run?.stage).toBe("failed");
+    expect(run?.stageStatus).toBe("failed");
+    expect(run?.message).not.toMatch(/^Prepare$/i);
+    expect(run?.message.toLowerCase()).toMatch(/re-upload|interrupted|prior interrupted/);
+  });
 });

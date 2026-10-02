@@ -7,7 +7,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { GOTO_OPTS } from "./helpers/app-ready";
-import { mockSpec038AdmissionRoutes, seedSpec038TenantContext } from "./helpers/spec038-admission-mocks";
+import {
+  mockSpec038AdmissionRoutes,
+  seedSpec038TenantContext,
+} from "./helpers/spec038-admission-mocks";
 import { spec038Screenshot } from "./helpers/screenshot-paths";
 
 function buildLargePageCountPdf(pageCount: number): Buffer {
@@ -30,16 +33,31 @@ function buildPaddedPdf(pageCount: number, targetBytes: number): Buffer {
   return Buffer.concat([header, pad]);
 }
 
+async function dropzoneFileInput(page: import("@playwright/test").Page) {
+  const input = page
+    .getByTestId("document-dropzone")
+    .locator('input[type="file"]');
+  await input.waitFor({ state: "attached", timeout: 15_000 });
+  return input;
+}
+
 test.describe("SPEC-038 Upload byte progress", () => {
   test.setTimeout(90_000);
 
   test.beforeEach(async ({ page }) => {
-    await mockSpec038AdmissionRoutes(page);
-    await seedSpec038TenantContext(page);
+    await mockSpec038AdmissionRoutes(page, {
+      workspacePdfParserBackend: "vision",
+    });
+    await seedSpec038TenantContext(page, {
+      workspacePdfParserBackend: "vision",
+    });
     await page.goto("/documents", GOTO_OPTS);
     await page.getByRole("heading", { name: "Documents" }).waitFor({
       state: "visible",
       timeout: 20_000,
+    });
+    await expect(page.getByTestId("document-dropzone")).toBeVisible({
+      timeout: 15_000,
     });
   });
 
@@ -67,7 +85,7 @@ test.describe("SPEC-038 Upload byte progress", () => {
     const fixturePath = path.join(tmpDir, "medium-doc.pdf");
     fs.writeFileSync(fixturePath, buildPaddedPdf(50, 512 * 1024));
 
-    const fileInput = page.locator('input[type="file"]').first();
+    const fileInput = await dropzoneFileInput(page);
     await fileInput.setInputFiles(fixturePath);
 
     const bytesLabel = page.getByTestId("spec038-upload-bytes-sent");
@@ -81,7 +99,9 @@ test.describe("SPEC-038 Upload byte progress", () => {
     });
   });
 
-  test("admission confirm shows transfer then saving labels", async ({ page }) => {
+  test("admission confirm shows transfer then saving labels", async ({
+    page,
+  }) => {
     let uploadHasEdgeparse = false;
     await page.route("**/api/v1/documents/pdf", async (route) => {
       if (route.request().method() !== "POST") {
@@ -104,13 +124,19 @@ test.describe("SPEC-038 Upload byte progress", () => {
       });
     });
 
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "spec038-admit-progress-"));
+    const tmpDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "spec038-admit-progress-"),
+    );
     const fixturePath = path.join(tmpDir, "large-admit.pdf");
     fs.writeFileSync(fixturePath, buildLargePageCountPdf(250));
 
-    const fileInput = page.locator('input[type="file"]').first();
+    const fileInput = await dropzoneFileInput(page);
     await fileInput.setInputFiles(fixturePath);
-    await expect(page.getByTestId("spec038-large-pdf-admission-dialog")).toBeVisible();
+    await expect(
+      page.getByTestId("spec038-large-pdf-admission-dialog"),
+    ).toBeVisible({
+      timeout: 15_000,
+    });
     await page.getByTestId("spec038-admission-confirm").click();
 
     await expect

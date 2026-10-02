@@ -94,10 +94,12 @@ test.describe("GH-318 Query during active ingest", () => {
       page.getByText(/still uploading or processing/i),
     ).toHaveCount(0);
 
-    const input = page.getByRole("textbox", { name: /ask a question/i });
+    // SPEC-155 composer uses role=combobox (mention autocomplete), not textbox.
+    const input = page.locator("textarea.query-input").first();
+    await expect(input).toBeVisible({ timeout: 20_000 });
     await input.fill("What is in the knowledge graph so far?");
 
-    const send = page.getByRole("button", { name: /send/i });
+    const send = page.getByTestId("query-send");
     await expect(send).toBeEnabled();
     await send.click();
 

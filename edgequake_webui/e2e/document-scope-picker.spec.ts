@@ -49,7 +49,8 @@ async function mockDocumentSearch(page: Page): Promise<void> {
 }
 
 async function openPicker(page: Page) {
-  const trigger = page.getByTestId("query-scope-trigger");
+  // SPEC-155/composer: empty-state trigger is `query-scope-chip` ("All docs").
+  const trigger = page.getByTestId("query-scope-chip");
   await trigger.click();
   const list = page.getByTestId("scope-picker-list");
   await list.waitFor({ state: "visible" });
@@ -137,7 +138,7 @@ test.describe("Document scope picker — scroll & a11y", () => {
   test("footer (clear all) stays reachable when the list is full and an item is selected", async ({
     page,
   }) => {
-    // First selection remounts empty → active; reopen via the Add trigger so
+    // First selection remounts empty → active; reopen via the scope chip so
     // the popover stays open with an existing selection (footer renders).
     await openPicker(page);
     await page.getByTestId("scope-picker-option").first().click();
@@ -145,7 +146,8 @@ test.describe("Document scope picker — scroll & a11y", () => {
       page.getByRole("button", { name: /remove document 001 from scope/i }),
     ).toBeVisible();
 
-    await page.getByTestId("scope-picker-add-trigger").click();
+    // Composer always uses `query-scope-chip` as the popover trigger (no separate Add).
+    await page.getByTestId("query-scope-chip").click();
     const list = page.getByTestId("scope-picker-list");
     await list.waitFor({ state: "visible" });
     await expectScrollable(list);

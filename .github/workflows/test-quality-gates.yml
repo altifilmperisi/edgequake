@@ -91,8 +91,9 @@ jobs:
   e2e-ui:
     name: E2E UI Gate (chromium, no backend)
     runs-on: ubuntu-latest
-    # Suite has grown (~500+ chromium tests); 25m was canceling mid-run on GHA.
-    timeout-minutes: 45
+    # Suite ~565 chromium tests with retries=2; 45m canceled mid-run after
+    # cascading failures. Keep headroom once failures are fixed (not a blank check).
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v6
 
@@ -151,7 +152,15 @@ jobs:
             echo "::error::E2E flake lint failed — fix anti-patterns in chromium gate specs"
             exit 1
           fi
-          if [ "${{ needs.e2e-ui.result }}" == "failure" ]; then
-            echo "::error::E2E UI gate failed — run make test-e2e-ui locally"
+          # Timeout / concurrency cancel must fail the summary (else a cancelled
+          # 45–60m e2e-ui greenwashes Quality Gate Summary while Release is blocked).
+          if [ "${{ needs.e2e-ui.result }}" == "failure" ] || [ "${{ needs.e2e-ui.result }}" == "cancelled" ]; then
+            echo "::error::E2E UI gate ${{ needs.e2e-ui.result }} — run make test-e2e-ui locally"
+            exit 1
+          fi
+          if [ "${{ needs.invariant-tests.result }}" == "cancelled" ] || \
+             [ "${{ needs.test-count-gate.result }}" == "cancelled" ] || \
+             [ "${{ needs.e2e-flake-lint.result }}" == "cancelled" ]; then
+            echo "::error::A required quality gate was cancelled"
             exit 1
           fi

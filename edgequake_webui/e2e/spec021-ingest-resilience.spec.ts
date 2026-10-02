@@ -24,7 +24,8 @@ async function mockCoreRoutes(page: import("@playwright/test").Page) {
     await route.fulfill({ status: 200, body: "OK" });
   });
 
-  await page.route("**/api/v1/tenants", async (route) => {
+  // `*` so `?limit=` / `?offset=` list calls match (exact `/tenants` does not).
+  await page.route("**/api/v1/tenants*", async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -105,7 +106,8 @@ test.describe("SPEC-021 ingest resilience UI", () => {
     await seedTenantStoreOnPage(page, MOCK_CTX, { waitForReady: false });
     await page.goto("/", { waitUntil: "domcontentloaded" });
 
-    await expect(page.getByRole("banner").getByText("Busy", { exact: true })).toBeVisible({
+    // ConnectionIndicator duplicates Busy (sm:inline + sr-only); both count as visible to Playwright.
+    await expect(page.getByRole("banner").getByRole("status")).toContainText("Busy", {
       timeout: 20_000,
     });
     await expect(page.getByText(/processing documents/i)).toHaveCount(0);

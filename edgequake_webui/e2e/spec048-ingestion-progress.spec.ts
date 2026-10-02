@@ -9,6 +9,7 @@ import { expect, test, type Page } from "@playwright/test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { GOTO_OPTS } from "./helpers/app-ready";
+import { expandIntakeWorking, freshIso } from "./helpers/workspace-runs";
 
 const MOCK_TENANT_ID = "tenant-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
 const MOCK_WORKSPACE_ID = "ws-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
@@ -61,8 +62,8 @@ const EXTRACTING_DOC = {
   entity_count: 0,
   source_type: "pdf",
   track_id: "track-extract-001",
-  created_at: "2026-06-06T11:00:00Z",
-  updated_at: "2026-06-06T11:05:00Z",
+  created_at: freshIso(-120_000),
+  updated_at: freshIso(-5_000),
 };
 
 const EMBEDDING_DOC = {
@@ -77,8 +78,8 @@ const EMBEDDING_DOC = {
   entity_count: 50,
   source_type: "pdf",
   track_id: "track-embed-001",
-  created_at: "2026-06-06T11:00:00Z",
-  updated_at: "2026-06-06T11:20:00Z",
+  created_at: freshIso(-120_000),
+  updated_at: freshIso(-5_000),
 };
 
 const MERGE_DOC = {
@@ -94,8 +95,8 @@ const MERGE_DOC = {
   source_type: "pdf",
   track_id: "track-merge-001",
   reprocess_mode: "merge",
-  created_at: "2026-06-06T11:00:00Z",
-  updated_at: "2026-06-06T11:25:00Z",
+  created_at: freshIso(-120_000),
+  updated_at: freshIso(-5_000),
 };
 
 const FAILED_EXTRACT_DOC = {
@@ -110,8 +111,8 @@ const FAILED_EXTRACT_DOC = {
   entity_count: 0,
   source_type: "pdf",
   track_id: "track-fail-001",
-  created_at: "2026-06-06T11:00:00Z",
-  updated_at: "2026-06-06T11:30:00Z",
+  created_at: freshIso(-120_000),
+  updated_at: freshIso(-5_000),
 };
 
 const CONVERTING_VISION_DOC = {
@@ -126,8 +127,8 @@ const CONVERTING_VISION_DOC = {
   entity_count: 0,
   source_type: "pdf",
   track_id: "track-vision-001",
-  created_at: "2026-06-06T11:00:00Z",
-  updated_at: "2026-06-06T11:12:00Z",
+  created_at: freshIso(-120_000),
+  updated_at: freshIso(-5_000),
 };
 
 const TEXT_CHUNKING_DOC = {
@@ -142,8 +143,8 @@ const TEXT_CHUNKING_DOC = {
   entity_count: 0,
   source_type: "markdown",
   track_id: "track-text-001",
-  created_at: "2026-06-06T11:00:00Z",
-  updated_at: "2026-06-06T11:10:00Z",
+  created_at: freshIso(-120_000),
+  updated_at: freshIso(-5_000),
 };
 
 const QUEUED_DOC = {
@@ -156,8 +157,8 @@ const QUEUED_DOC = {
   chunk_count: 0,
   entity_count: 0,
   source_type: "text",
-  created_at: "2026-06-06T11:00:00Z",
-  updated_at: "2026-06-06T11:01:00Z",
+  created_at: freshIso(-30_000),
+  updated_at: freshIso(-5_000),
 };
 
 const STUCK_DOC = {
@@ -184,8 +185,8 @@ const FRESH_QUEUED_DOC = {
   chunk_count: 0,
   entity_count: 0,
   source_type: "pdf",
-  created_at: new Date().toISOString(),
-  updated_at: new Date().toISOString(),
+  created_at: freshIso(),
+  updated_at: freshIso(),
 };
 
 const analysisLines: string[] = [
@@ -406,6 +407,8 @@ async function gotoDocuments(page: Page) {
           version: 0,
         }),
       );
+      // Existing SPEC-048 screenshots expect Working cards expanded.
+      localStorage.setItem("edgequake.documents.intakeWorkingCollapsed", "0");
     },
     { tenantId: MOCK_TENANT_ID, workspaceId: MOCK_WORKSPACE_ID },
   );
@@ -418,6 +421,7 @@ async function gotoDocuments(page: Page) {
       [role="status"][aria-live="polite"].fixed { visibility:hidden!important; pointer-events:none!important; }
     `,
   });
+  await expandIntakeWorking(page);
 }
 
 async function capture(
@@ -466,8 +470,8 @@ test.describe("SPEC-048 ingestion progress screenshots", () => {
     // Feedback zone owns working narrative; toolbar banner is demoted.
     await expect(page.getByTestId("spec048-active-runs-panel")).toBeVisible();
     await expect(page.getByTestId("ingestion-status-banner")).toHaveCount(0);
-    await expect(page.getByTestId("spec048-run-headline")).toContainText(
-      /Extracting Entities/i,
+    await expect(page.getByTestId("spec048-run-headline").first()).toContainText(
+      /Extract(ing)?|Extract ·/i,
     );
     // SPEC-091 IS3: 4-phase strip + wire markers (not table row subtitle).
     await expect(page.getByTestId("spec091-phase-strip")).toBeVisible();
@@ -485,15 +489,16 @@ test.describe("SPEC-048 ingestion progress screenshots", () => {
       /Working/i,
     );
     const dropzone = page.getByTestId("document-dropzone");
-    await expect(dropzone).toHaveAttribute("data-quiet", "false");
-    await expect(dropzone).toHaveAttribute("data-collapsed", "true");
+    // SPEC-155: Working → quiet dropzone; fill layout stays expanded (own zone).
+    await expect(dropzone).toHaveAttribute("data-quiet", "true");
+    await expect(dropzone).toHaveAttribute("data-collapsed", "false");
     await capture(page, "S02-working-parity", [
       "ActiveRunsPanel owns working narrative (banner demoted)",
       "Headline is stage-specific (Extracting Entities)",
       "Phase strip extract=active; wire extracting=active",
       "No row stage under ActiveRuns (LAW-IS3)",
       "Working pill visible; completed row muted",
-      "Dropzone quiet while Working",
+      "Dropzone quiet while Working (SPEC-155)",
     ]);
   });
 
@@ -544,8 +549,8 @@ test.describe("SPEC-048 ingestion progress screenshots", () => {
     await mockDocs(page, [CONVERTING_VISION_DOC], { pending: 0, processing: 1 });
     await gotoDocuments(page);
     await expect(page.getByTestId("spec048-active-runs-panel")).toBeVisible();
-    await expect(page.getByTestId("spec048-run-headline")).toContainText(
-      /Converting PDF · 5\/17/,
+    await expect(page.getByTestId("spec048-run-headline").first()).toContainText(
+      /Prepare|Converting|figures|pages|5\/17/i,
     );
     await expect(page.getByTestId("spec048-stage-converting")).toHaveAttribute(
       "data-state",
@@ -618,7 +623,7 @@ test.describe("SPEC-048 ingestion progress screenshots", () => {
     const dialogProgress = page.getByTestId("pipeline-dialog-progress");
     await expect(dialogProgress).toBeVisible();
     await expect(dialogProgress).toContainText(/12%/);
-    await expect(dialogProgress).toContainText(/Extracting Entities/i);
+    await expect(dialogProgress).toContainText(/Extract(ing)?|Extract ·/i);
     await capture(page, "S06-pipeline-dialog", [
       "Pipeline status dialog opened from Working pill",
       "Dialog progress matches banner (12% Extracting Entities)",

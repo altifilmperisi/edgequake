@@ -4,6 +4,7 @@
  */
 import { expect, test, type Page } from "@playwright/test";
 import { GOTO_OPTS } from "./helpers/app-ready";
+import { expandIntakeWorking, freshIso } from "./helpers/workspace-runs";
 
 const MOCK_TENANT_ID = "tenant-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
 const MOCK_WORKSPACE_ID = "ws-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
@@ -60,8 +61,8 @@ function baseDoc(overrides: Partial<DocState> = {}): DocState {
     entity_count: 0,
     source_type: "pdf",
     track_id: TRACK_ID,
-    created_at: "2026-07-17T10:00:00Z",
-    updated_at: "2026-07-17T10:05:00Z",
+    created_at: freshIso(-60_000),
+    updated_at: freshIso(-5_000),
     ...overrides,
   };
 }
@@ -88,7 +89,12 @@ async function mockShell(page: Page) {
       body: JSON.stringify({ status: "ready" }),
     });
   });
-  await page.route("**/api/v1/tenants", async (route) => {
+  await page.route("**/api/v1/tenants*", async (route) => {
+    const url = route.request().url();
+    if (/\/api\/v1\/tenants\/[^/?]+/.test(url)) {
+      await route.fallback();
+      return;
+    }
     if (route.request().method() === "GET") {
       await route.fulfill({
         status: 200,
@@ -241,7 +247,9 @@ test.describe("SPEC-057 P4 cancel status SSOT", () => {
 
     const row = page.getByTestId(`document-row-${DOC_ID}`);
     await expect(row).toBeVisible({ timeout: 15000 });
-    await expect(row.getByTestId("status-badge")).toContainText(/Extracting/i);
+    // Compact density: Extracting may be title-only; cancel labels keep text.
+    const badge = row.getByTestId("status-badge");
+    await expect(badge).toHaveAttribute("title", /Extracting/i);
 
     // Open row actions → Cancel Extraction
     await row.getByRole("button", { name: /More actions/i }).click();
@@ -278,7 +286,7 @@ test.describe("SPEC-057 P4 cancel status SSOT", () => {
   test("ActiveRuns: cancelled ack is compact then dismissible (not Failed/Queued)", async ({
     page,
   }) => {
-    const justNow = new Date().toISOString();
+    const justNow = freshIso();
     await mockShell(page);
     await mockDocumentsList(page, () => [
       baseDoc({
@@ -294,6 +302,7 @@ test.describe("SPEC-057 P4 cancel status SSOT", () => {
 
     await page.goto("/documents", GOTO_OPTS);
 
+    await expandIntakeWorking(page);
     const panel = page.getByTestId("spec048-active-runs-panel");
     await expect(panel).toBeVisible({ timeout: 15000 });
     await expect(panel).toContainText(/Cancelled/i);

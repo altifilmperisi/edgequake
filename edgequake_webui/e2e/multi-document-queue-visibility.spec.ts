@@ -7,6 +7,7 @@ import {
   SPEC038_MOCK_TENANT_ID,
   SPEC038_MOCK_WORKSPACE_ID,
 } from "./helpers/spec038-admission-mocks";
+import { expandIntakeWorking } from "./helpers/workspace-runs";
 
 test.describe("multi-document queue visibility", () => {
   test("accepts a later selection and keeps four independent queued runs", async ({
@@ -23,6 +24,9 @@ test.describe("multi-document queue visibility", () => {
       tenant_id: string;
       workspace_id: string;
       created_at: string;
+      file_name?: string;
+      current_stage?: string;
+      updated_at?: string;
     }> = [];
     let requestCount = 0;
 
@@ -61,16 +65,20 @@ test.describe("multi-document queue visibility", () => {
       const ordinal = requestCount;
       await new Promise<void>((resolve) => pendingReleases.push(resolve));
       const trackId = `insert-queue-${ordinal}`;
+      const now = new Date().toISOString();
       admitted.push({
         id: `00000000-0000-0000-0000-0000000000${ordinal
           .toString()
           .padStart(2, "0")}`,
         title: body.title,
+        file_name: body.title,
         track_id: trackId,
         status: "pending",
+        current_stage: "queued",
         tenant_id: SPEC038_MOCK_TENANT_ID,
         workspace_id: SPEC038_MOCK_WORKSPACE_ID,
-        created_at: new Date().toISOString(),
+        created_at: now,
+        updated_at: now,
       });
       await route.fulfill({
         status: 202,
@@ -87,15 +95,20 @@ test.describe("multi-document queue visibility", () => {
     await seedSpec038TenantContext(page);
     await page.goto("/documents", GOTO_OPTS);
     await page.getByRole("heading", { name: "Documents" }).waitFor();
+    await expect(page.getByTestId("document-dropzone")).toBeVisible({
+      timeout: 15_000,
+    });
 
-    const input = page.locator('input[type="file"]').first();
+    const input = page
+      .getByTestId("document-dropzone")
+      .locator('input[type="file"]');
     const firstSelection = [1, 2, 3].map((ordinal) => ({
       name: `batch-a-${ordinal}.md`,
       mimeType: "text/markdown",
       buffer: Buffer.from(`# Batch A ${ordinal}\n\nUnique ${ordinal}`),
     }));
     await input.setInputFiles(firstSelection);
-    await expect.poll(() => requestCount).toBe(3);
+    await expect.poll(() => requestCount, { timeout: 20_000 }).toBe(3);
 
     await input.setInputFiles({
       name: "batch-b-4.md",
@@ -116,6 +129,7 @@ test.describe("multi-document queue visibility", () => {
 
     await expect.poll(() => admitted.length).toBe(4);
     expect(new Set(admitted.map((document) => document.track_id)).size).toBe(4);
+    await expandIntakeWorking(page);
     await expect(page.getByTestId("spec048-active-run-card")).toHaveCount(4, {
       timeout: 15_000,
     });
