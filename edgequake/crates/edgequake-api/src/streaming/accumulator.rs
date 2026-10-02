@@ -93,7 +93,7 @@ pub struct StreamAccumulator {
     /// First chunk timestamp (for TTFT - time to first token)
     first_chunk_time: Option<Instant>,
 
-    /// When an opening <think>/<thinking> tag was first observed
+    /// When an opening `` <think> `` / `` <thinking> `` tag was first observed
     think_open_time: Option<Instant>,
 
     /// Duration of the first closed think block (ms), if observed
