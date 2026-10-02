@@ -7,6 +7,7 @@
 
 import { expect, test } from "@playwright/test";
 import { GOTO_OPTS } from "./helpers/app-ready";
+import { expandIntakeWorking, freshIso } from "./helpers/workspace-runs";
 
 const MOCK_TENANT_ID = "tenant-bbbbbbbb-cccc-dddd-eeee-ffffffffffff";
 const MOCK_WORKSPACE_ID = "ws-bbbbbbbb-cccc-dddd-eeee-ffffffffffff";
@@ -29,51 +30,55 @@ const MOCK_WORKSPACE = {
   updated_at: "2026-01-01T00:00:00Z",
 };
 
-const CONVERTING_DOC = {
-  id: MOCK_DOC_ID,
-  title: "vision-paper.pdf",
-  file_name: "vision-paper.pdf",
-  status: "processing",
-  current_stage: "converting",
-  display_status: "converting",
-  ui_phase: "running",
-  stage_message: "Converting PDF (7/17 pages)",
-  stage_progress: 0.41,
-  track_id: "pdf-15f3095a-convert",
-  source_type: "pdf",
-  chunk_count: 0,
-  entity_count: 0,
-  created_at: "2026-07-27T04:00:00Z",
-  updated_at: "2026-07-27T04:05:00Z",
-};
+function convertingDoc() {
+  return {
+    id: MOCK_DOC_ID,
+    title: "vision-paper.pdf",
+    file_name: "vision-paper.pdf",
+    status: "processing",
+    current_stage: "converting",
+    display_status: "converting",
+    ui_phase: "running",
+    stage_message: "Converting PDF (7/17 pages)",
+    stage_progress: 0.41,
+    track_id: "pdf-15f3095a-convert",
+    source_type: "pdf",
+    chunk_count: 0,
+    entity_count: 0,
+    created_at: freshIso(-120_000),
+    updated_at: freshIso(-5_000),
+  };
+}
 
-const QUEUED_DOC = {
-  ...CONVERTING_DOC,
-  status: "pending",
-  current_stage: "queued",
-  display_status: "queued",
-  ui_phase: "idle",
-  stage_message: "Waiting for a processing slot",
-  stage_progress: 0,
-  updated_at: "2026-07-27T04:04:00Z",
-};
+function queuedDoc() {
+  return {
+    ...convertingDoc(),
+    status: "pending",
+    current_stage: "queued",
+    display_status: "queued",
+    ui_phase: "idle",
+    stage_message: "Waiting for a processing slot",
+    stage_progress: 0,
+    updated_at: freshIso(-4_000),
+  };
+}
 
-const REPROCESS_QUEUED_DOC = {
-  ...QUEUED_DOC,
-  track_id: "pdf-15f3095a-reprocess",
-  stage_message: "Waiting for reprocess worker",
-  updated_at: "2026-07-27T04:06:00Z",
-};
+type Spec120Doc = ReturnType<typeof convertingDoc>;
 
 async function seedTenant(page: import("@playwright/test").Page) {
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.evaluate(
-    ({ tenant, workspace }) => {
+    ({ tenant, workspace, layoutJson }) => {
       localStorage.clear();
       sessionStorage.clear();
       localStorage.setItem("userId", crypto.randomUUID());
       localStorage.setItem("tenantId", tenant.id);
       localStorage.setItem("workspaceId", workspace.id);
+      localStorage.setItem("edgequake.documents.intakeWorkingCollapsed", "0");
+      localStorage.setItem(
+        "edgequake.documents.workspaceLayout.v3",
+        layoutJson,
+      );
       localStorage.setItem(
         "edgequake-tenant",
         JSON.stringify({
@@ -87,14 +92,40 @@ async function seedTenant(page: import("@playwright/test").Page) {
         }),
       );
     },
-    { tenant: MOCK_TENANT, workspace: MOCK_WORKSPACE },
+    {
+      tenant: MOCK_TENANT,
+      workspace: MOCK_WORKSPACE,
+      layoutJson: JSON.stringify({
+        version: 3,
+        tree: {
+          type: "split",
+          orientation: "vertical",
+          sizes: [16, 84],
+          children: [
+            {
+              type: "split",
+              orientation: "horizontal",
+              sizes: [70, 30],
+              children: [
+                { type: "leaf", zone: "intake" },
+                { type: "leaf", zone: "runs" },
+              ],
+            },
+            { type: "leaf", zone: "library" },
+          ],
+        },
+        collapsed: { intake: false, runs: false, library: false },
+        maximized: null,
+        presetId: "classic",
+      }),
+    },
   );
 }
 
 async function mockApis(
   page: import("@playwright/test").Page,
   opts?: {
-    documents?: Array<typeof QUEUED_DOC>;
+    documents?: Spec120Doc[];
     pipeline?: {
       pending_tasks?: number;
       processing_tasks?: number;
@@ -104,9 +135,9 @@ async function mockApis(
     };
   },
 ) {
-  let documents: Array<typeof QUEUED_DOC> = opts?.documents
+  let documents: Spec120Doc[] = opts?.documents
     ? [...opts.documents]
-    : [QUEUED_DOC];
+    : [queuedDoc()];
   let pipelineOverride = opts?.pipeline;
   let documentPollCount = 0;
   await page.route("**/health", async (route) => {
@@ -137,7 +168,7 @@ async function mockApis(
     });
   });
 
-  await page.route("**/api/v1/tenants", async (route) => {
+  await page.route("**/api/v1/tenants*", async (route) => {
     if (route.request().method() === "GET") {
       await route.fulfill({
         status: 200,
@@ -257,11 +288,11 @@ async function mockApis(
   });
 
   return {
-    setDocument(next: typeof QUEUED_DOC) {
+    setDocument(next: Spec120Doc) {
       documents = [next];
       pipelineOverride = undefined;
     },
-    setDocuments(next: Array<typeof QUEUED_DOC>) {
+    setDocuments(next: Spec120Doc[]) {
       documents = [...next];
     },
     setPipeline(next: NonNullable<typeof opts>["pipeline"]) {
@@ -271,6 +302,16 @@ async function mockApis(
       return documentPollCount;
     },
   };
+}
+
+/** Compact StatusCell is icon-first; title carries the stage label. */
+async function expectBadgeTitle(
+  page: import("@playwright/test").Page,
+  pattern: RegExp,
+) {
+  const badge = page.getByTestId("status-badge").first();
+  await expect(badge).toBeVisible({ timeout: 15_000 });
+  await expect(badge).toHaveAttribute("title", pattern);
 }
 
 test.describe("SPEC-120 converting not queued", () => {
@@ -347,10 +388,9 @@ test.describe("SPEC-120 converting not queued", () => {
     await seedTenant(page);
     const { setDocument, getDocumentPollCount } = await mockApis(page);
     await page.goto("/documents", GOTO_OPTS);
+    await expandIntakeWorking(page);
 
-    const badge = page.getByTestId("status-badge").first();
-    await expect(badge).toBeVisible({ timeout: 15000 });
-    await expect(badge).toContainText(/Queued/i);
+    await expectBadgeTitle(page, /Queued/i);
 
     const activeRuns = page.getByTestId("spec048-active-runs-panel");
     await expect(activeRuns).toBeVisible({ timeout: 15000 });
@@ -374,10 +414,9 @@ test.describe("SPEC-120 converting not queued", () => {
           },
         });
       },
-      { documentId: MOCK_DOC_ID, trackId: CONVERTING_DOC.track_id },
+      { documentId: MOCK_DOC_ID, trackId: convertingDoc().track_id },
     );
-    await expect(badge).toContainText(/Converting/i);
-    await expect(badge).not.toContainText(/Queued/i);
+    await expectBadgeTitle(page, /Converting/i);
 
     await expect(activeRuns).toContainText(/Converting/i);
     await expect(activeRuns).toContainText(/Active run/i);
@@ -391,13 +430,18 @@ test.describe("SPEC-120 converting not queued", () => {
     await expect
       .poll(getDocumentPollCount, { timeout: 10_000 })
       .toBeGreaterThan(pollCountAfterWs);
-    await expect(badge).toContainText(/Converting/i);
+    await expectBadgeTitle(page, /Converting/i);
     await expect(activeRuns).toContainText(/Converting/i);
 
     // A different non-empty track is a new run and must replace all old-run
     // fields wholesale rather than creating a hybrid row.
-    setDocument(REPROCESS_QUEUED_DOC);
-    await expect(badge).toContainText(/Queued/i, { timeout: 15_000 });
+    setDocument({
+      ...queuedDoc(),
+      track_id: "pdf-15f3095a-reprocess",
+      stage_message: "Waiting for reprocess worker",
+      updated_at: freshIso(-1_000),
+    });
+    await expectBadgeTitle(page, /Queued/i);
     await expect(activeRuns).toContainText(/Waiting for reprocess worker/i);
     await expect(activeRuns).not.toContainText(/7\/17/);
   });
@@ -417,7 +461,7 @@ test.describe("SPEC-120 converting not queued", () => {
     });
 
     const HELD_DOC = {
-      ...QUEUED_DOC,
+      ...queuedDoc(),
       status: "pending",
       current_stage: "queued",
       display_status: "queued",
@@ -432,7 +476,7 @@ test.describe("SPEC-120 converting not queued", () => {
       track_id: "pdf-15f3095a-held",
     };
     const RUNNING_DOC = {
-      ...CONVERTING_DOC,
+      ...convertingDoc(),
       track_id: "pdf-15f3095a-held",
       stage_message: "Converting PDF (7/17 pages)",
       presentation: {
@@ -447,6 +491,7 @@ test.describe("SPEC-120 converting not queued", () => {
     const { setDocument } = await mockApis(page);
     setDocument(HELD_DOC);
     await page.goto("/documents", GOTO_OPTS);
+    await expandIntakeWorking(page);
 
     const activeRuns = page.getByTestId("spec048-active-runs-panel");
     await expect(activeRuns).toBeVisible({ timeout: 15000 });
@@ -458,9 +503,7 @@ test.describe("SPEC-120 converting not queued", () => {
     await expect(activeRuns).not.toContainText(/Waiting for capacity/i);
     await expect(activeRuns).not.toContainText(/Waiting for a processing slot/i);
 
-    const badge = page.getByTestId("status-badge").first();
-    await expect(badge).toContainText(/Converting/i);
-    await expect(badge).not.toContainText(/Queued/i);
+    await expectBadgeTitle(page, /Converting/i);
   });
 
   test("capacity wait banner must not say Workers are idle", async ({ page }) => {
@@ -476,14 +519,14 @@ test.describe("SPEC-120 converting not queued", () => {
     });
 
     const ACTIVE_DOC = {
-      ...CONVERTING_DOC,
+      ...convertingDoc(),
       id: "doc-active-capacity",
       track_id: "insert-active-capacity",
       title: "active.pdf",
       file_name: "active.pdf",
     };
     const WAITING_A = {
-      ...QUEUED_DOC,
+      ...queuedDoc(),
       id: "doc-wait-a",
       track_id: "insert-wait-a",
       title: "wait-a.pdf",
@@ -517,6 +560,7 @@ test.describe("SPEC-120 converting not queued", () => {
       },
     });
     await page.goto("/documents", GOTO_OPTS);
+    await expandIntakeWorking(page);
 
     // IS-AC-07: header shows Working/Queued counts (not the old slot phrase).
     // Capacity copy lives on ActiveRuns admission pills / stage messages.
@@ -550,7 +594,7 @@ test.describe("SPEC-120 converting not queued", () => {
     });
 
     const TERMINAL_A = {
-      ...CONVERTING_DOC,
+      ...convertingDoc(),
       id: "doc-terminal-a",
       track_id: "insert-terminal-a",
       title: "done-a.pdf",
@@ -585,6 +629,7 @@ test.describe("SPEC-120 converting not queued", () => {
       },
     });
     await page.goto("/documents", GOTO_OPTS);
+    // Terminal inventory — no ActiveRuns; do not force-expand idle Runs rail.
 
     await expect(page.getByTestId("pipeline-header-button")).toHaveCount(0);
     await expect(page.getByTestId("ingestion-alert-capacity")).toHaveCount(0);

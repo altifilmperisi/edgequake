@@ -102,6 +102,7 @@ function PhaseIndicator({
 }: {
   phase: PhaseInfo;
 }) {
+  if (!phase?.status) return null;
   const statusIcon = getPhaseStatusIcon(phase.status);
 
   return (
@@ -304,7 +305,7 @@ function extractErrorCode(errorMessage: string): string {
  * OODA-29: Get the name of the failed phase from phase info.
  */
 function getFailedPhaseName(phases: PhaseInfo[]): string | undefined {
-  const failedPhase = phases.find(p => p.status.type === "failed");
+  const failedPhase = phases.find((p) => p?.status?.type === "failed");
   return failedPhase?.label;
 }
 
@@ -706,7 +707,7 @@ export function PdfUploadProgress({
 
         {/* Phase timeline */}
         <div className="flex items-start justify-between">
-          {phases.map((phase, index) => (
+          {phases.filter((p) => p?.status).map((phase, index) => (
             <div key={phase.phase} className="flex items-center">
               <PhaseIndicator phase={phase} />
               {index < phases.length - 1 && (
@@ -736,7 +737,7 @@ export function PdfUploadProgress({
         {/* Live progress message for active phase */}
         {isProcessing && !graphStorageProgress && (
           <p className="text-xs text-center text-muted-foreground min-h-[1rem]">
-            {phases.find((p) => p.status.type === "active")?.message ?? "Processing..."}
+            {phases.find((p) => p?.status?.type === "active")?.message ?? "Processing..."}
           </p>
         )}
 

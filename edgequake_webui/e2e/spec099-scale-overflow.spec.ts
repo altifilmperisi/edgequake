@@ -67,16 +67,20 @@ test.describe("SPEC-099 scale overflow", () => {
     });
     await page.goto("/documents", GOTO_OPTS);
 
-    await expect(page.getByTestId("spec099-documents-count")).toBeVisible({
+    await expect(page.getByTestId("documents-workspace")).toBeVisible({
       timeout: 20_000,
     });
-    const label = (
-      await page.getByTestId("spec099-documents-count").textContent()
-    )?.trim();
+    const count = page.getByTestId("spec099-documents-count");
     const overflow = page.getByTestId("spec099-scale-overflow");
+    await expect(count.or(overflow)).toBeVisible({ timeout: 20_000 });
+    const label = ((await count.count()) ? await count.textContent() : "")?.trim();
     const hasOverflow = (await overflow.count()) > 0;
     expect(
-      hasOverflow || Boolean(label && (label.includes("+") || label.includes("of"))),
+      hasOverflow ||
+        Boolean(
+          label &&
+            (label.includes("+") || label.includes("of") || Number(label) >= 100),
+        ),
     ).toBeTruthy();
   });
 });

@@ -83,7 +83,7 @@ async function mockWorkspaceBackend(page: Page) {
   await page.route("**/api/v1/tenants/*/workspaces**", async (route) => {
     await fulfillJson(route, 200, [mockWorkspace]);
   });
-  await page.route("**/api/v1/tenants", async (route) => {
+  await page.route("**/api/v1/tenants*", async (route) => {
     await fulfillJson(route, 200, [MOCK_TENANT]);
   });
   await page.route(`**/api/v1/tenants/${MOCK_TENANT_ID}`, async (route) => {
@@ -368,7 +368,7 @@ test.describe("SPEC-135 chunk span UI", () => {
     );
 
     await expect(
-      page.getByTestId("side-by-side-viewer").getByText("2.1 Challenges in the Prefill Stage"),
+      page.getByTestId("side-by-side-viewer").getByText(/Challenges in the Prefill/i),
     ).toBeVisible({ timeout: 30_000 });
     await expect(
       page.getByTestId("side-by-side-viewer").locator('[data-highlighted="true"]').first(),

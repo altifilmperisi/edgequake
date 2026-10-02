@@ -78,7 +78,7 @@ async function mockSpec116Backend(page: Page) {
     await fulfillJson(route, 200, [mockWorkspace]);
   });
 
-  await page.route("**/api/v1/tenants", async (route) => {
+  await page.route("**/api/v1/tenants*", async (route) => {
     await fulfillJson(route, 200, [MOCK_TENANT]);
   });
 

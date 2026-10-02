@@ -12,6 +12,7 @@ import {
   mockSpec086BusyPipeline,
   mockSpec086DocumentList,
 } from "./helpers/spec086-ingestion-mocks";
+import { expandIntakeWorking } from "./helpers/workspace-runs";
 
 test.describe("SPEC-099 upload collapse", () => {
   test("data-collapsed=true when Active runs open; dropzone still activatable", async ({
@@ -33,12 +34,14 @@ test.describe("SPEC-099 upload collapse", () => {
     await mockSpec086BusyPipeline(page);
     await mockSpec086DocumentList(page, [doc]);
     await page.goto("/documents", GOTO_OPTS);
+    await expandIntakeWorking(page);
 
     await expect(page.getByTestId("spec048-active-runs-panel")).toBeVisible({
       timeout: 20_000,
     });
     const dropzone = page.getByTestId("document-dropzone");
-    await expect(dropzone).toHaveAttribute("data-collapsed", "true");
+    await expect(dropzone).toHaveAttribute("data-quiet", "true");
+    await expect(dropzone).toHaveAttribute("data-collapsed", "false");
     await expect(dropzone).toBeVisible();
     // Keyboard / click target retained (role=group hosts nested selects)
     await expect(dropzone).toHaveAttribute("role", "group");

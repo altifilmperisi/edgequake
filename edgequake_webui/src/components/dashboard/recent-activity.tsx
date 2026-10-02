@@ -80,7 +80,11 @@ export function RecentActivity({ documents, total, isLoading, headerAction }: Re
   const count = total ?? documents.length;
 
   return (
-    <Card data-testid="spec100-dashboard-activity" className="gap-3 py-4">
+    <Card
+      data-testid="spec100-dashboard-activity"
+      className="gap-3 py-4"
+      style={{ minHeight: 380 }}
+    >
       <CardHeader className="pb-1">
         <CardTitle className="text-base">{t('dashboard.recentActivity.title', 'Recent Activity')}</CardTitle>
         <CardDescription className="text-xs">
@@ -103,12 +107,11 @@ export function RecentActivity({ documents, total, isLoading, headerAction }: Re
         )}
       </CardContent>
       {isLoading ? (
-        <div className="border-t px-4 pt-3">
+        <div className="min-h-8 border-t px-4 pt-3">
           <Skeleton className="h-5 w-36" />
         </div>
-      ) : null}
-      {!isLoading && items.length > 0 ? (
-        <div className="border-t px-4 pt-3">
+      ) : items.length > 0 ? (
+        <div className="min-h-8 border-t px-4 pt-3">
           <Link
             href="/documents"
             data-testid="dashboard-activity-view-all"

@@ -124,16 +124,25 @@ async function mockSpec096Backend(page: Page) {
       await fulfillJson(route, 201, created);
       return;
     }
-    // Array format (legacy) — getWorkspaces accepts both.
-    await fulfillJson(route, 200, [mockWorkspace]);
+    await fulfillJson(route, 200, {
+      items: [mockWorkspace],
+      total: 1,
+      offset: 0,
+      limit: 100,
+    });
   });
 
-  await page.route("**/api/v1/tenants", async (route) => {
+  await page.route("**/api/v1/tenants*", async (route) => {
     if (route.request().method() === "POST") {
       await fulfillJson(route, 201, MOCK_TENANT);
       return;
     }
-    await fulfillJson(route, 200, [MOCK_TENANT]);
+    await fulfillJson(route, 200, {
+      items: [MOCK_TENANT],
+      total: 1,
+      offset: 0,
+      limit: 100,
+    });
   });
 
   await page.route(`**/api/v1/tenants/${MOCK_TENANT_ID}`, async (route) => {

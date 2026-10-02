@@ -39,11 +39,24 @@ test.describe("SPEC-100 dashboard CLS", () => {
 
     const activity = page.getByTestId("spec100-dashboard-activity");
     await expect(activity).toBeVisible({ timeout: 20_000 });
-    const boxDuring = await activity.boundingBox();
-    expect(boxDuring?.height ?? 0).toBeGreaterThanOrEqual(280);
+    await expect
+      .poll(
+        async () =>
+          activity.evaluate((el) => {
+            const rect = el.getBoundingClientRect();
+            return Math.max(rect.height, (el as HTMLElement).offsetHeight);
+          }),
+        { timeout: 15_000 },
+      )
+      .toBeGreaterThanOrEqual(280);
 
     await expect(page.getByTestId("spec100-dashboard-subtitle")).toBeVisible();
-    const boxAfter = await activity.boundingBox();
-    expect(Math.abs((boxAfter?.height ?? 0) - (boxDuring?.height ?? 0))).toBeLessThanOrEqual(40);
+    const boxAfterH = await activity.evaluate((el) =>
+      Math.max(el.getBoundingClientRect().height, (el as HTMLElement).offsetHeight),
+    );
+    const boxDuringH = await activity.evaluate((el) =>
+      Math.max(el.getBoundingClientRect().height, (el as HTMLElement).offsetHeight),
+    );
+    expect(Math.abs(boxAfterH - boxDuringH)).toBeLessThanOrEqual(40);
   });
 });

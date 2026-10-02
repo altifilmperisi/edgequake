@@ -483,7 +483,9 @@ export function DocumentManager() {
     !showActiveRuns &&
     !showUploadList &&
     sessionReprocessEntries.length === 0 &&
-    deleteSessions.length === 0;
+    deleteSessions.length === 0 &&
+    !liveWorkHint &&
+    !reserveFeedbackSlot;
 
   const workspace = useWorkspaceLayout({ runsIdle });
 

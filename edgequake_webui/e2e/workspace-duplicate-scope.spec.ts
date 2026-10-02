@@ -92,7 +92,7 @@ async function mockWorkspaceScopedApi(page: import("@playwright/test").Page) {
     });
   });
 
-  await page.route("**/api/v1/tenants", async (route) => {
+  await page.route("**/api/v1/tenants*", async (route) => {
     if (route.request().method() === "GET") {
       await route.fulfill({
         status: 200,
@@ -233,7 +233,9 @@ test.describe("Workspace duplicate scope", () => {
   }) => {
     await page.goto("/documents", GOTO_OPTS);
 
-    await expect(page.getByText("Documents (1)")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId("spec099-documents-count")).toHaveText("1", {
+      timeout: 15_000,
+    });
     await expect(page.getByRole("row", { name: /SPF TOME II/i })).toBeVisible();
   });
 

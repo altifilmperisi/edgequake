@@ -162,7 +162,10 @@ export function EnhancedStatusBadge({
       >
         {queryReady ? (
           compact ? (
-            <span data-testid="status-badge">Ready</span>
+            <>
+              <span data-testid="status-badge">Ready</span>
+              <ServingFenceBadge queryReady={true} />
+            </>
           ) : (
             <>
               <span data-testid="status-badge">{pipelineLabel(displayStatus)}</span>
@@ -173,7 +176,10 @@ export function EnhancedStatusBadge({
             </>
           )
         ) : compact ? (
-          <span data-testid="status-badge">Indexed</span>
+          <>
+            <span data-testid="status-badge">Indexed</span>
+            <ServingFenceBadge queryReady={false} />
+          </>
         ) : (
           <>
             <span data-testid="status-badge">Indexed</span>

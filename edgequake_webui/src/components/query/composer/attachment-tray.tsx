@@ -12,7 +12,16 @@ interface AttachmentTrayProps {
 
 export function AttachmentTray({ images, onRemove }: AttachmentTrayProps) {
   const { t } = useTranslation();
-  if (images.length === 0) return null;
+  if (images.length === 0) {
+    // SPEC-100: keep the slot mounted so composer height does not jump on attach.
+    return (
+      <div
+        className="min-h-0 overflow-hidden"
+        data-testid="spec100-query-attachments-slot"
+        aria-hidden="true"
+      />
+    );
+  }
 
   return (
     <div

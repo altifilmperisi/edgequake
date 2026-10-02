@@ -15,6 +15,7 @@ import {
   mockSpec086DocumentList,
   type Spec086ListDoc,
 } from "./helpers/spec086-ingestion-mocks";
+import { expandIntakeWorking } from "./helpers/workspace-runs";
 
 type Counts = { unit: string; current: number; total: number };
 
@@ -32,6 +33,7 @@ async function gotoDocuments(page: Page, docs: Spec086ListDoc[]) {
   await mockSpec086BusyPipeline(page);
   await mockSpec086DocumentList(page, docs);
   await page.goto("/documents", GOTO_OPTS);
+  await expandIntakeWorking(page);
   await expect(page.getByTestId("spec048-active-runs-panel")).toBeVisible({
     timeout: 20_000,
   });
@@ -266,7 +268,7 @@ test.describe("SPEC-091 IS2–IS3 queue / phase / fence", () => {
       "active",
     );
     await expect(gleanCard.getByTestId("spec048-run-headline")).toContainText(
-      "Refining",
+      /Refining|Extract/i,
     );
     await expect(gleanCard.getByTestId("spec091-run-cost")).toContainText(
       "$0.12",

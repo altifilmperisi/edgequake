@@ -153,9 +153,9 @@ export function ReprocessPagesDialog({
       failedPageNumbers(
         pages.map((p) => ({
           page_number: p.page_number,
-          parse: p.parse.status as "ok",
-          figures: p.figures.status as "ok",
-          entities: p.entities.status as "ok",
+          parse: (p.parse?.status ?? "skipped") as "ok",
+          figures: (p.figures?.status ?? "skipped") as "ok",
+          entities: (p.entities?.status ?? "skipped") as "ok",
         })),
       ),
     [pages],

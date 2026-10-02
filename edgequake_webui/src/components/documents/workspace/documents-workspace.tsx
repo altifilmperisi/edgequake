@@ -280,6 +280,8 @@ export function DocumentsWorkspace({
         }
       }
 
+      // Drive imperative resize for slim/narrow tools bands; CollapsingPanel
+      // also restores defaultSize after expand so rail siblings recover share.
       const forceSizePercent = toolsSlim || toolsNarrow;
 
       const childRail =

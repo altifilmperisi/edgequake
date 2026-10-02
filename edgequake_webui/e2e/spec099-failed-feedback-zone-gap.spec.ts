@@ -13,6 +13,7 @@ import {
   mockSpec086BusyPipeline,
   mockSpec086DocumentList,
 } from "./helpers/spec086-ingestion-mocks";
+import { ensureIntakeExpanded, expandIntakeWorking } from "./helpers/workspace-runs";
 
 async function dropzoneToInventoryGapPx(
   page: import("@playwright/test").Page,
@@ -46,6 +47,7 @@ test.describe("SPEC-099 Failed feedback-zone gap", () => {
     await seedSpec038TenantContext(page);
     await mockSpec086DocumentList(page, [failed]);
     await page.goto("/documents", GOTO_OPTS);
+    await ensureIntakeExpanded(page);
 
     await expect(page.getByTestId("document-dropzone")).toBeVisible({
       timeout: 20_000,
@@ -61,7 +63,8 @@ test.describe("SPEC-099 Failed feedback-zone gap", () => {
 
     const gapIdle = await dropzoneToInventoryGapPx(page);
     expect(gapIdle).toBeGreaterThanOrEqual(0);
-    expect(gapIdle).toBeLessThan(48);
+    // SPEC-155 docks Library below the tools band; splitter + title ~<160px.
+    expect(gapIdle).toBeLessThan(160);
 
     // Selection toolbar must not reintroduce the empty zone.
     await page
@@ -73,7 +76,7 @@ test.describe("SPEC-099 Failed feedback-zone gap", () => {
 
     const gapSelected = await dropzoneToInventoryGapPx(page);
     expect(gapSelected).toBeGreaterThanOrEqual(0);
-    expect(gapSelected).toBeLessThan(48);
+    expect(gapSelected).toBeLessThan(160);
   });
 
   test("live run positive control: feedback zone open + dropzone collapsed", async ({
@@ -96,14 +99,19 @@ test.describe("SPEC-099 Failed feedback-zone gap", () => {
     await mockSpec086BusyPipeline(page);
     await mockSpec086DocumentList(page, [live]);
     await page.goto("/documents", GOTO_OPTS);
+    await expandIntakeWorking(page);
 
     await expect(page.getByTestId("spec051-feedback-zone")).toBeVisible({
       timeout: 20_000,
     });
     await expect(page.getByTestId("spec048-active-runs-panel")).toBeVisible();
     await expect(page.getByTestId("document-dropzone")).toHaveAttribute(
-      "data-collapsed",
+      "data-quiet",
       "true",
+    );
+    await expect(page.getByTestId("document-dropzone")).toHaveAttribute(
+      "data-collapsed",
+      "false",
     );
   });
 });

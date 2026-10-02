@@ -13,6 +13,7 @@ import {
   mockSpec086DocumentList,
   type Spec086ListDoc,
 } from "./helpers/spec086-ingestion-mocks";
+import { ensureIntakeExpanded } from "./helpers/workspace-runs";
 
 test.describe("SPEC-099 documents scroll layout", () => {
   test("dropzone stays in viewport after scrolling the inventory table", async ({
@@ -34,6 +35,7 @@ test.describe("SPEC-099 documents scroll layout", () => {
     await seedSpec038TenantContext(page);
     await mockSpec086DocumentList(page, docs);
     await page.goto("/documents", GOTO_OPTS);
+    await ensureIntakeExpanded(page);
 
     const dropzone = page.getByTestId("document-dropzone");
     const chrome = page.getByTestId("documents-chrome");

@@ -10,6 +10,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { GOTO_OPTS } from "./helpers/app-ready";
 import { expandIntakeWorking, freshIso } from "./helpers/workspace-runs";
+import { SPEC038_CLASSIC_WORKSPACE_LAYOUT } from "./helpers/spec038-admission-mocks";
 
 const MOCK_TENANT_ID = "tenant-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
 const MOCK_WORKSPACE_ID = "ws-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
@@ -222,7 +223,7 @@ async function mockBase(page: Page) {
       body: JSON.stringify({ status: "ready" }),
     });
   });
-  await page.route("**/api/v1/tenants", async (route) => {
+  await page.route("**/api/v1/tenants*", async (route) => {
     if (route.request().method() === "GET") {
       await route.fulfill({
         status: 200,
@@ -392,9 +393,12 @@ async function mockDocs(
   });
 }
 
-async function gotoDocuments(page: Page) {
+async function gotoDocuments(
+  page: Page,
+  opts: { expandWorking?: boolean } = {},
+) {
   await page.addInitScript(
-    ({ tenantId, workspaceId }) => {
+    ({ tenantId, workspaceId, layoutJson }) => {
       localStorage.setItem(
         "edgequake-tenant",
         JSON.stringify({
@@ -409,11 +413,24 @@ async function gotoDocuments(page: Page) {
       );
       // Existing SPEC-048 screenshots expect Working cards expanded.
       localStorage.setItem("edgequake.documents.intakeWorkingCollapsed", "0");
+      localStorage.setItem(
+        "edgequake.documents.workspaceLayout.v3",
+        layoutJson,
+      );
     },
-    { tenantId: MOCK_TENANT_ID, workspaceId: MOCK_WORKSPACE_ID },
+    {
+      tenantId: MOCK_TENANT_ID,
+      workspaceId: MOCK_WORKSPACE_ID,
+      layoutJson: JSON.stringify({
+        ...SPEC038_CLASSIC_WORKSPACE_LAYOUT,
+        collapsed: { intake: false, runs: false, library: false },
+      }),
+    },
   );
   await page.goto("/documents", GOTO_OPTS);
-  await page.waitForTimeout(800);
+  await expect(page.getByTestId("documents-workspace")).toBeVisible({
+    timeout: 20_000,
+  });
   // SPEC-048 polish: hide ephemeral banners/toasts in screenshots
   await page.addStyleTag({
     content: `
@@ -421,7 +438,9 @@ async function gotoDocuments(page: Page) {
       [role="status"][aria-live="polite"].fixed { visibility:hidden!important; pointer-events:none!important; }
     `,
   });
-  await expandIntakeWorking(page);
+  if (opts.expandWorking) {
+    await expandIntakeWorking(page);
+  }
 }
 
 async function capture(
@@ -466,7 +485,7 @@ test.describe("SPEC-048 ingestion progress screenshots", () => {
       pending: 0,
       processing: 1,
     });
-    await gotoDocuments(page);
+    await gotoDocuments(page, { expandWorking: true });
     // Feedback zone owns working narrative; toolbar banner is demoted.
     await expect(page.getByTestId("spec048-active-runs-panel")).toBeVisible();
     await expect(page.getByTestId("ingestion-status-banner")).toHaveCount(0);
@@ -504,7 +523,7 @@ test.describe("SPEC-048 ingestion progress screenshots", () => {
 
   test("S03 active runs server stepper", async ({ page }) => {
     await mockDocs(page, [EXTRACTING_DOC], { pending: 0, processing: 1 });
-    await gotoDocuments(page);
+    await gotoDocuments(page, { expandWorking: true });
     await expect(page.getByTestId("spec048-active-runs-panel")).toBeVisible();
     await expect(page.getByTestId("spec048-server-stage-stepper")).toBeVisible();
     await expect(page.getByTestId("spec048-stage-extracting")).toHaveAttribute(
@@ -547,7 +566,7 @@ test.describe("SPEC-048 ingestion progress screenshots", () => {
 
   test("S03b converting vision figure analyze progress", async ({ page }) => {
     await mockDocs(page, [CONVERTING_VISION_DOC], { pending: 0, processing: 1 });
-    await gotoDocuments(page);
+    await gotoDocuments(page, { expandWorking: true });
     await expect(page.getByTestId("spec048-active-runs-panel")).toBeVisible();
     await expect(page.getByTestId("spec048-run-headline").first()).toContainText(
       /Prepare|Converting|figures|pages|5\/17/i,
@@ -569,7 +588,7 @@ test.describe("SPEC-048 ingestion progress screenshots", () => {
 
   test("S04 queued-only — not Busy", async ({ page }) => {
     await mockDocs(page, [QUEUED_DOC], { pending: 1, processing: 0 });
-    await gotoDocuments(page);
+    await gotoDocuments(page, { expandWorking: true });
     const pill = page.getByTestId("pipeline-header-button");
     await expect(pill).toBeVisible();
     await expect(pill).toContainText(/Queued|Waiting/i);
@@ -587,7 +606,7 @@ test.describe("SPEC-048 ingestion progress screenshots", () => {
 
   test("S05 stuck attention", async ({ page }) => {
     await mockDocs(page, [STUCK_DOC], { pending: 0, processing: 0 });
-    await gotoDocuments(page);
+    await gotoDocuments(page, { expandWorking: true });
     await expect(page.getByTestId("ingestion-status-banner")).toBeVisible();
     await expect(page.getByTestId("ingestion-alert-stuck")).toBeVisible();
     // Stuck CTA stays on the banner; per-doc cards remain in the feedback zone.
@@ -601,7 +620,7 @@ test.describe("SPEC-048 ingestion progress screenshots", () => {
 
   test("S05b fresh upload is Queued not Stuck", async ({ page }) => {
     await mockDocs(page, [FRESH_QUEUED_DOC], { pending: 0, processing: 0 });
-    await gotoDocuments(page);
+    await gotoDocuments(page, { expandWorking: true });
     await expect(page.getByTestId("spec048-active-runs-panel")).toBeVisible();
     await expect(page.getByTestId("ingestion-status-banner")).toHaveCount(0);
     await expect(page.getByTestId("ingestion-alert-stuck")).toHaveCount(0);
@@ -617,7 +636,7 @@ test.describe("SPEC-048 ingestion progress screenshots", () => {
 
   test("S06 pipeline dialog open", async ({ page }) => {
     await mockDocs(page, [EXTRACTING_DOC], { pending: 0, processing: 1 });
-    await gotoDocuments(page);
+    await gotoDocuments(page, { expandWorking: true });
     await page.getByTestId("pipeline-header-button").click();
     await page.waitForTimeout(400);
     const dialogProgress = page.getByTestId("pipeline-dialog-progress");
@@ -633,7 +652,7 @@ test.describe("SPEC-048 ingestion progress screenshots", () => {
 
   test("S07 embedding step detail", async ({ page }) => {
     await mockDocs(page, [EMBEDDING_DOC], { pending: 0, processing: 1 });
-    await gotoDocuments(page);
+    await gotoDocuments(page, { expandWorking: true });
     await expect(page.getByTestId("spec048-stage-embedding")).toHaveAttribute(
       "data-state",
       "active",
@@ -651,7 +670,7 @@ test.describe("SPEC-048 ingestion progress screenshots", () => {
 
   test("S08 merge mode skips early stages", async ({ page }) => {
     await mockDocs(page, [MERGE_DOC], { pending: 0, processing: 1 });
-    await gotoDocuments(page);
+    await gotoDocuments(page, { expandWorking: true });
     await expect(page.getByTestId("spec048-active-run-card")).toHaveAttribute(
       "data-mode",
       "merge",
@@ -686,7 +705,7 @@ test.describe("SPEC-048 ingestion progress screenshots", () => {
 
   test("S10 markdown skips converting", async ({ page }) => {
     await mockDocs(page, [TEXT_CHUNKING_DOC], { pending: 0, processing: 1 });
-    await gotoDocuments(page);
+    await gotoDocuments(page, { expandWorking: true });
     // SPEC-086: non-PDF timelines omit converting entirely (not muted/skipped).
     await expect(page.getByTestId("spec048-stage-converting")).toHaveCount(0);
     await expect(page.getByTestId("spec048-stage-chunking")).toHaveAttribute(

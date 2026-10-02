@@ -41,9 +41,18 @@ async function seedAuthenticatedSession(page: Page) {
     healthPollIntervalMs: false,
   });
   await page.addInitScript(
-    ({ token }) => {
-      localStorage.setItem("accessToken", token);
-      localStorage.setItem("refreshToken", "spec149-refresh");
+    ({ token, tenantId, workspaceId }) => {
+      // Spoof automation probes so ProgressWebSocket auto-connects (SPEC-149).
+      Object.defineProperty(Navigator.prototype, "webdriver", {
+        configurable: true,
+        get: () => false,
+      });
+      Object.defineProperty(window, "__PLAYWRIGHT__", {
+        configurable: true,
+        value: false,
+      });
+      // SPEC-154: memory token adopted by AuthGuard (not localStorage).
+      window.__eqE2ePendingToken = token;
       localStorage.setItem(
         "edgequake-auth",
         JSON.stringify({
@@ -55,8 +64,32 @@ async function seedAuthenticatedSession(page: Page) {
           version: 1,
         }),
       );
+      localStorage.setItem("tenantId", tenantId);
+      localStorage.setItem("workspaceId", workspaceId);
+      localStorage.setItem(
+        "edgequake-tenant",
+        JSON.stringify({
+          state: {
+            selectedTenantId: tenantId,
+            selectedWorkspaceId: workspaceId,
+            workspaces: [
+              {
+                id: workspaceId,
+                name: "default",
+                tenant_id: tenantId,
+              },
+            ],
+            tenants: [{ id: tenantId, name: "Default" }],
+          },
+          version: 1,
+        }),
+      );
     },
-    { token: FAKE_TOKEN },
+    {
+      token: FAKE_TOKEN,
+      tenantId: "00000000-0000-0000-0000-000000000002",
+      workspaceId: "00000000-0000-0000-0000-000000000003",
+    },
   );
 }
 
@@ -71,13 +104,36 @@ async function stubBootstrapApis(page: Page) {
       body: JSON.stringify({ status: "healthy", components: {} }),
     }),
   );
-  await page.route("**/api/v1/tenants**", (route) =>
+  await page.route("**/api/v1/tenants/*/workspaces**", (route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify([
-        { id: "00000000-0000-0000-0000-000000000002", name: "Default" },
-      ]),
+      body: JSON.stringify({
+        items: [
+          {
+            id: "00000000-0000-0000-0000-000000000003",
+            name: "default",
+            tenant_id: "00000000-0000-0000-0000-000000000002",
+          },
+        ],
+        total: 1,
+        offset: 0,
+        limit: 100,
+      }),
+    }),
+  );
+  await page.route("**/api/v1/tenants*", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        items: [
+          { id: "00000000-0000-0000-0000-000000000002", name: "Default" },
+        ],
+        total: 1,
+        offset: 0,
+        limit: 100,
+      }),
     }),
   );
   await page.route("**/api/v1/workspaces**", (route) =>
@@ -212,6 +268,7 @@ test.describe("SPEC-149 real-time updates", () => {
   test("E-149-01/02 WS token + StageTransition patches row without list refetch", async ({
     page,
   }) => {
+    test.setTimeout(90_000);
     await seedAuthenticatedSession(page);
     await stubBootstrapApis(page);
 
@@ -289,11 +346,12 @@ test.describe("SPEC-149 real-time updates", () => {
     await mock.register();
 
     await page.goto("/documents", { waitUntil: "domcontentloaded" });
+    // Do not expand Runs here — idle expand can burn the WS handshake budget.
 
     const routed = await Promise.race([
       mock.routed,
       page
-        .waitForTimeout(20_000)
+        .waitForTimeout(45_000)
         .then(() => Promise.reject(new Error("WS route never matched"))),
     ]);
 

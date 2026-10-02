@@ -1,6 +1,7 @@
 'use client';
 
 import { getRuntimeConfig } from '@/lib/runtime-config';
+import { setTokens } from '@/lib/api/client-context';
 import { useAuthStore, useAuthStoreHydrated } from '@/stores/use-auth-store';
 import { Loader2 } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
@@ -8,6 +9,13 @@ import { useEffect } from 'react';
 
 interface AuthGuardProps {
   children: React.ReactNode;
+}
+
+declare global {
+  interface Window {
+    /** E2E-only: memory access token seed (SPEC-154 — not localStorage). */
+    __eqE2ePendingToken?: string;
+  }
 }
 
 export function AuthGuard({ children }: AuthGuardProps) {
@@ -19,6 +27,20 @@ export function AuthGuard({ children }: AuthGuardProps) {
   const logout = useAuthStore((state) => state.logout);
   const hasHydrated = useAuthStoreHydrated();
   const { authEnabled, disableDemoLogin } = getRuntimeConfig();
+
+  // Playwright cannot write SPEC-154 memory tokens via localStorage. Specs
+  // seed `window.__eqE2ePendingToken` before navigation; adopt it once.
+  useEffect(() => {
+    const pending = window.__eqE2ePendingToken;
+    if (!pending) return;
+    setTokens(pending);
+    useAuthStore.setState({
+      isAuthenticated: true,
+      accessToken: pending,
+      expiresAt: Date.now() + 3_600_000,
+    });
+    delete window.__eqE2ePendingToken;
+  }, []);
 
   const requiresAuth = authEnabled || disableDemoLogin;
   // A session is valid only if authenticated, has a token, AND the token is not expired

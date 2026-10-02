@@ -40,14 +40,50 @@ export const SPEC038_PDF_UPLOAD_RESPONSE = {
   duplicate_of: null,
 };
 
+/** Classic tools-on-top so mocked Documents e2e measure a real dropzone, not a 28px rail. */
+export const SPEC038_CLASSIC_WORKSPACE_LAYOUT = {
+  version: 3 as const,
+  tree: {
+    type: "split" as const,
+    orientation: "vertical" as const,
+    sizes: [16, 84] as [number, number],
+    children: [
+      {
+        type: "split" as const,
+        orientation: "horizontal" as const,
+        sizes: [70, 30] as [number, number],
+        children: [
+          { type: "leaf" as const, zone: "intake" as const },
+          { type: "leaf" as const, zone: "runs" as const },
+        ],
+      },
+      { type: "leaf" as const, zone: "library" as const },
+    ],
+  },
+  collapsed: { intake: false, runs: true, library: false },
+  maximized: null,
+  presetId: "classic" as const,
+};
+
 /** Seed browser storage so Documents page uses SPEC-038 mock tenant/workspace. */
 export async function seedSpec038TenantContext(
   page: Page,
   options?: { workspacePdfParserBackend?: "vision" | "edgeparse" },
 ): Promise<void> {
+  const layoutJson = JSON.stringify(SPEC038_CLASSIC_WORKSPACE_LAYOUT);
+  // First paint on /documents must already have Classic — hydrate-after-mount
+  // loses the race with react-resizable-panels auto-collapse.
+  await page.addInitScript((layout: string) => {
+    try {
+      localStorage.setItem("edgequake.documents.workspaceLayout.v3", layout);
+      localStorage.setItem("edgequake.documents.intakeWorkingCollapsed", "0");
+    } catch {
+      // ignore quota / private-mode
+    }
+  }, layoutJson);
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.evaluate(
-    ({ tenantId, workspaceId, pdfParserBackend }) => {
+    ({ tenantId, workspaceId, pdfParserBackend, layoutJson }) => {
       // Keep SPEC-143 sync preference across remocks (product key, not tenant state).
       const keptSyncMode = localStorage.getItem("eq-page-sync-mode");
       localStorage.clear();
@@ -62,6 +98,12 @@ export async function seedSpec038TenantContext(
       // Existing SPEC-038/048/086/099 e2e expect the Working card expanded.
       // Product default is collapsed (density-first); tests opt into expand.
       localStorage.setItem("edgequake.documents.intakeWorkingCollapsed", "0");
+      // SPEC-155: keep Intake as a real panel after localStorage.clear()
+      // so dropzone e2e does not measure the 28px rail.
+      localStorage.setItem(
+        "edgequake.documents.workspaceLayout.v3",
+        layoutJson,
+      );
       const workspace: Record<string, unknown> = {
         id: workspaceId,
         tenant_id: tenantId,
@@ -97,6 +139,7 @@ export async function seedSpec038TenantContext(
       tenantId: SPEC038_MOCK_TENANT_ID,
       workspaceId: SPEC038_MOCK_WORKSPACE_ID,
       pdfParserBackend: options?.workspacePdfParserBackend ?? null,
+      layoutJson,
     },
   );
 }
@@ -410,6 +453,14 @@ export async function mockSpec038AdmissionRoutes(
   await page.route("**/api/v1/documents**", async (route) => {
     const url = route.request().url();
     const method = route.request().method();
+    // Leave single-document / lineage / pages GETs to more specific handlers.
+    if (
+      /\/api\/v1\/documents\/[0-9a-fA-F-]{36}/.test(url) &&
+      !url.includes("/documents/pdf")
+    ) {
+      await route.fallback();
+      return;
+    }
     if (method === "GET" && !url.includes("/documents/pdf")) {
       // Client maps `response.documents` → items (not a bare `items` key).
       await route.fulfill({

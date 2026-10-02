@@ -24,11 +24,14 @@ export interface CollapsingPanelProps {
  * Panel that syncs our zone-collapsed state to react-resizable-panels'
  * imperative collapse API — otherwise a railed zone keeps its % width
  * and paints a large empty void next to the rail.
+ *
+ * After expand(), also resize to defaultSize: panels that mounted while
+ * collapsed often keep a ~3% sibling share and stay unusable.
  */
 export function CollapsingPanel({
   id,
   defaultSize,
-  minSize,
+  minSize: _zoneMinPx,
   collapsedSize = 28,
   collapsed,
   sizePercent,
@@ -47,20 +50,31 @@ export function CollapsingPanel({
     if (panel.isCollapsed()) {
       panel.expand();
     }
-    if (typeof sizePercent === "number" && Number.isFinite(sizePercent)) {
+    const targetPct =
+      typeof sizePercent === "number" && Number.isFinite(sizePercent)
+        ? sizePercent
+        : typeof defaultSize === "string"
+          ? Number(defaultSize)
+          : typeof defaultSize === "number" && defaultSize <= 100
+            ? defaultSize
+            : null;
+    if (targetPct != null && Number.isFinite(targetPct)) {
       const current = panel.getSize().asPercentage;
-      if (Math.abs(current - sizePercent) > 1.5) {
-        panel.resize(`${sizePercent}%`);
+      if (Math.abs(current - targetPct) > 1.5) {
+        panel.resize(`${targetPct}%`);
       }
     }
-  }, [collapsed, sizePercent, panelRef]);
+  }, [collapsed, sizePercent, defaultSize, panelRef]);
 
   return (
     <Panel
       id={id}
       panelRef={panelRef}
       defaultSize={defaultSize}
-      minSize={collapsed ? collapsedSize : minSize}
+      // Do not pass ZONE_MIN as Panel minSize: react-resizable-panels
+      // auto-collapses when computed size < minSize (library-center Intake
+      // at ~16% was snapping to a 28px column while still painting dropzone).
+      minSize={collapsed ? collapsedSize : 1}
       className={cn("flex h-full min-h-0 min-w-0 flex-col", className)}
       collapsible
       collapsedSize={collapsedSize}

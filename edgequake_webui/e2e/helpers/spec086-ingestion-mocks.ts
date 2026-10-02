@@ -120,7 +120,14 @@ export async function mockSpec086DocumentList(
     const method = route.request().method();
     const url = route.request().url();
     if (method === "GET" && !url.includes("/track/") && !url.includes("/pdf")) {
-      const statusCounts: Record<string, number> = {};
+      const statusCounts: Record<string, number> = {
+        pending: 0,
+        processing: 0,
+        completed: 0,
+        failed: 0,
+        partial_failure: 0,
+        cancelled: 0,
+      };
       for (const d of docs) {
         statusCounts[d.status] = (statusCounts[d.status] ?? 0) + 1;
       }
