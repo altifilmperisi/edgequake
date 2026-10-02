@@ -66,7 +66,7 @@ pub use lineage::{
 };
 pub use merge_limits::{
     apply_local_merge_async_clamp, apply_source_ids_limit, max_source_ids_per_entity_from_env,
-    max_source_ids_per_relation_from_env, merge_max_async_from_env, merge_source_ids,
+    max_source_ids_per_relation_from_env, merge_max_async_requested_from_env, merge_source_ids,
     parse_max_source_ids, parse_merge_max_async, should_skip_description_update_keep,
     source_chunk_ids_from_properties, source_ids_limit_method_from_env, truncate_keep_doc_diverse,
     SourceIdsLimitMethod, DEFAULT_MAX_SOURCE_IDS, DEFAULT_MERGE_MAX_ASYNC, LOCAL_MERGE_MAX_ASYNC,
@@ -481,7 +481,7 @@ impl Default for MergerConfig {
             description_similarity_threshold: threshold,
             force_llm_summary_on_merge: force_llm_summary_on_merge_from_env(),
             summary_max_tokens: summary_max_tokens_from_env(),
-            merge_max_async: merge_max_async_from_env(),
+            merge_max_async: merge_max_async_requested_from_env(),
             max_source_ids_per_entity: max_source_ids_per_entity_from_env(),
             max_source_ids_per_relation: max_source_ids_per_relation_from_env(),
             source_ids_limit_method: source_ids_limit_method_from_env(),
@@ -490,6 +490,15 @@ impl Default for MergerConfig {
 }
 
 impl MergerConfig {
+    /// Bind merge fan-out to the LLM provider that will serve the merge.
+    ///
+    /// The configured `merge_max_async` is the *requested* figure; local
+    /// providers (Ollama / LM Studio) are capped, cloud providers are not.
+    pub fn for_provider(mut self, provider_name: &str) -> Self {
+        self.merge_max_async = apply_local_merge_async_clamp(self.merge_max_async, provider_name);
+        self
+    }
+
     /// SSOT policy view for P7a description merge decisions.
     pub fn description_merge_policy(&self) -> DescriptionMergePolicy {
         DescriptionMergePolicy::from_parts(

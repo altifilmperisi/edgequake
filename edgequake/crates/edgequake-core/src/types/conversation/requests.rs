@@ -81,6 +81,17 @@ pub struct UpdateMessageRequest {
     pub llm_provider: Option<String>,
     /// LLM model used (lineage). @implements SPEC-032
     pub llm_model: Option<String>,
+    /// Generation finish reason (`stop`, `interrupted`, …). @implements SPEC-155 B3
+    pub finish_reason: Option<String>,
+}
+
+/// Request to set user feedback on a message. @implements SPEC-155 B2
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct SetMessageFeedbackRequest {
+    /// `up`, `down`, or clear when absent/null.
+    pub rating: Option<String>,
+    /// Optional free-text reason.
+    pub reason: Option<String>,
 }
 
 /// Request to create a folder.

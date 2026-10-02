@@ -93,6 +93,12 @@ pub struct StreamAccumulator {
     /// First chunk timestamp (for TTFT - time to first token)
     first_chunk_time: Option<Instant>,
 
+    /// When an opening <think>/<thinking> tag was first observed
+    think_open_time: Option<Instant>,
+
+    /// Duration of the first closed think block (ms), if observed
+    thinking_time_ms: Option<u64>,
+
     /// API response metadata (populated from final chunk if available)
     metadata: ApiResponseMetadata,
 
@@ -109,6 +115,8 @@ impl StreamAccumulator {
             char_count: 0,
             start_time: Instant::now(),
             first_chunk_time: None,
+            think_open_time: None,
+            thinking_time_ms: None,
             metadata: ApiResponseMetadata::default(),
             is_complete: false,
         }
@@ -123,6 +131,27 @@ impl StreamAccumulator {
         self.content.push_str(chunk);
         self.chunk_count += 1;
         self.char_count += chunk.len() as u32;
+        self.track_cot_timing();
+    }
+
+    /// Track wall-clock for the first `<think>` / `<thinking>` block (SPEC-155).
+    fn track_cot_timing(&mut self) {
+        if self.thinking_time_ms.is_some() {
+            return;
+        }
+        let lower = self.content.to_ascii_lowercase();
+        if self.think_open_time.is_none() {
+            if lower.contains("<think>") || lower.contains("<thinking>") {
+                self.think_open_time = Some(Instant::now());
+            } else {
+                return;
+            }
+        }
+        if lower.contains("</think>") || lower.contains("</thinking>") {
+            if let Some(opened) = self.think_open_time {
+                self.thinking_time_ms = Some(opened.elapsed().as_millis() as u64);
+            }
+        }
     }
 
     /// Set metadata from the API response.
@@ -165,6 +194,11 @@ impl StreamAccumulator {
     pub fn ttft_ms(&self) -> Option<u64> {
         self.first_chunk_time
             .map(|t| t.duration_since(self.start_time).as_millis() as u64)
+    }
+
+    /// Duration of the first closed CoT think block, if observed.
+    pub fn thinking_time_ms(&self) -> Option<u64> {
+        self.thinking_time_ms
     }
 
     /// Get chunk count (NOT token count).
@@ -257,6 +291,19 @@ mod tests {
         // Should use actual count, not estimate
         assert_eq!(acc.estimated_tokens(), 50);
         assert_eq!(acc.actual_tokens(), Some(50));
+    }
+
+    #[test]
+    fn test_thinking_time_ms_from_think_tags() {
+        let mut acc = StreamAccumulator::new();
+        assert!(acc.thinking_time_ms().is_none());
+        acc.append_content("<think>plan");
+        assert!(acc.thinking_time_ms().is_none());
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        acc.append_content("</think>answer");
+        let ms = acc.thinking_time_ms();
+        assert!(ms.is_some());
+        assert!(ms.unwrap() >= 1);
     }
 
     #[test]

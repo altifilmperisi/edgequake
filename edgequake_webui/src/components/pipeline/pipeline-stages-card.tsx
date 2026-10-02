@@ -124,7 +124,7 @@ export function PipelineStagesCard() {
           {!status?.is_busy && !isActive && totalDocs > 0 && (
             <Badge
               variant="outline"
-              className="text-green-500 border-green-500"
+              className="text-green-700 border-green-600 dark:text-green-400 dark:border-green-500"
             >
               <CheckCircle className="h-3 w-3 mr-1" />
               Idle

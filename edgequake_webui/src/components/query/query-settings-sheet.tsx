@@ -35,7 +35,6 @@ import { Textarea } from '@/components/ui/textarea';
 import {
   Tooltip,
   TooltipContent,
-  TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import type { DocumentFilter } from '@/types/query';
@@ -340,21 +339,19 @@ export function QuerySettingsSheet({
                   <Label htmlFor="system-prompt" className="text-sm font-medium">
                     {t('query.settings.systemPromptLabel', 'Custom Instructions')}
                   </Label>
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger aria-label="System prompt help">
-                        <Info className="h-3.5 w-3.5 text-muted-foreground" />
-                      </TooltipTrigger>
-                      <TooltipContent side="top" className="max-w-[240px]">
-                        <p className="text-xs leading-snug">
-                          {t(
-                            'query.settings.systemPromptHint',
-                            'Additional instructions injected into the RAG prompt. Use this to steer tone, format, or domain focus without replacing the core prompt.',
-                          )}
-                        </p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger aria-label="System prompt help">
+                      <Info className="h-3.5 w-3.5 text-muted-foreground" />
+                    </TooltipTrigger>
+                    <TooltipContent side="top" className="max-w-[240px]">
+                      <p className="text-xs leading-snug">
+                        {t(
+                          'query.settings.systemPromptHint',
+                          'Additional instructions injected into the RAG prompt. Use this to steer tone, format, or domain focus without replacing the core prompt.',
+                        )}
+                      </p>
+                    </TooltipContent>
+                  </Tooltip>
                 </div>
                 <Textarea
                   id="system-prompt"

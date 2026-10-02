@@ -71,10 +71,30 @@ Parent: [README](README.md) · ECs: [09](09-edge-cases.md) · Plan: [10](10-impl
 | 58 | `knowledge_dz` | PW | W7 |
 | 59 | `ws_delete_confirm` | PW | W7 |
 | 60 | `login_autocomplete` | PW | W1 |
-| 61 | `query_compose_while_stream` | PW | W7 |
-| 62 | `query_ime_enter` | PW | W7 |
-| 63 | `query_aria_live` | axe+PW | W7 |
+| 61 | `query_compose_while_stream` | PW mock | W7Q |
+| 62 | `query_ime_enter` | PW mock | W7Q |
+| 63 | `query_aria_live` | axe+PW | W7Q |
 | 65 | `answer_on_graph` | PW | W6 |
+| 90 | `query_stop_keeps_partial` | PW mock | W7Q |
+| 91 | `query_inline_retry` | PW mock | W7Q |
+| 92 | `query_stream_phases` | PW mock | W7Q |
+| 93 | `query_jump_to_latest` | PW mock | W7Q |
+| 94 | `query_regenerate_safe` | PW mock | W7Q |
+| 95 | `query_citation_popover` | PW mock | W7Q |
+| 96 | `query_sources_a11y` | axe+PW | W7Q |
+| 97 | `query_citations_srp` | size lint | W7Q |
+| 98 | `query_persisted_chunk_parity` | vitest | W7Q |
+| 99 | `query_mode_menu` | PW mock | W7Q |
+| 100 | `query_draft_shortcuts` | PW mock | W7Q |
+| 101 | `query_empty_corpus` | PW mock | W7Q |
+| 102 | `query_history_xl_dock` | PW 768/1280 | W7Q |
+| 103 | `query_history_search_all` | PW mock | W7Q |
+| 104 | `query_history_single_mount` | PW mock | W7Q |
+| 105 | `query_history_no_token_rerender` | vitest | W7Q |
+| 106 | `query_module_size` | size lint | W7Q |
+| 107 | `e2e_spec155_chat_stage_events` | cargo | W7Q |
+| 108 | `e2e_spec155_message_feedback` | cargo | W7Q |
+| 109 | `e2e_spec155_chat_abort_partial` | cargo | W7Q |
 | 70 | `lang_switch` | PW | W1 |
 | 71 | `html_lang` | PW | W1 |
 | 72 | `locale_parity` | node script CI | W2/W8 |

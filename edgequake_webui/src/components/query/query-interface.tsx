@@ -1,49 +1,52 @@
 /**
  * @module QueryInterface
- * @description Main query interface component for RAG knowledge graph queries.
- *
- * @implements UC0201 - User submits a natural language query
- * @implements UC0202 - System retrieves relevant context from knowledge graph
- * @implements UC0203 - System generates augmented response with citations
- * @implements FEAT0007 - Natural Language Query Processing
- * @implements FEAT0101-0106 - Query mode selection (naive, local, global, hybrid, mix, bypass)
- * @implements FEAT0734 - Streaming responses with chain-of-thought display
+ * @description Main query interface — composer, stream, history (SPEC-155 W7Q).
  */
 "use client";
 
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Textarea } from "@/components/ui/textarea";
+import {
+  TooltipProvider,
+} from "@/components/ui/tooltip";
 import { useQueryInterface } from "@/hooks/use-query-interface";
-import { ImagePlus, Plus, Send, StopCircle, X } from "lucide-react";
-import { useRef } from "react";
+import { useMediaQuery } from "@/hooks/use-media-query";
+import { useQueryScope } from "@/hooks/use-query-scope";
+import { ArrowDown, PanelRight, Plus } from "lucide-react";
+import { useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ChatMessage } from "./chat-message";
+import { ChatMessage } from "./message";
+import { Composer } from "./composer";
+import { ModelChip } from "./composer/model-chip";
+import { SlashMenu } from "./composer/slash-menu";
+import { useQueryComposerShortcuts } from "./composer/use-query-composer-shortcuts";
 import { ConversationHistoryPanelV2 } from "./conversation-history-panel-v2";
 import { MobileHistoryPanel } from "./mobile-history-panel";
 import { QueryEmptyState } from "./query-empty-state";
-import { LoadingMessage, NonStreamingLoadingIndicator } from "./query-loading-indicators";
-import { QueryModeSelector } from "./query-mode-selector";
-import { QueryScopeBar } from "./query-scope-bar";
 import { QuerySettingsSheet } from "./query-settings-sheet";
-
-/** Safari fires compositionend before confirming Enter; guard that race. */
-const IME_RACE_MS = 50;
+import { useQueryUIStore } from "@/stores/use-query-ui-store";
 
 export function QueryInterface() {
   const { t } = useTranslation();
-  const composingRef = useRef(false);
-  const compositionEndedAtRef = useRef(0);
+  const isXl = useMediaQuery("(min-width: 1280px)");
+  const historyOpen = useQueryUIStore((s) => s.historyPanelOpen);
+  const toggleHistory = useQueryUIStore((s) => s.toggleHistoryPanel);
+
   const {
     input,
     streamingState,
+    stage,
+    stageDetail,
     pendingMessage,
     messages,
     isLoading,
+    isStreaming,
     querySettings,
     setQuerySettings,
     scrollRef,
     scrollAnchorRef,
+    showJumpPill,
+    jumpToLatest,
     inputRef,
     attachedImages,
     imageInputRef,
@@ -52,286 +55,297 @@ export function QueryInterface() {
     handleSubmit,
     handleStop,
     handleRegenerate,
+    handleRetry,
     handleSuggestionClick,
+    handleEditMessage,
     handleNewConversation,
     handleImageInputChange,
     removeImage,
     handlePaste,
     handleDrop,
     handleDragOver,
+    queuedMessage,
+    queueMessage,
+    clearQueue,
   } = useQueryInterface();
 
+  const [scopePickerOpen, setScopePickerOpen] = useState(false);
+  const [slashMenuOpen, setSlashMenuOpen] = useState(false);
+  const scope = useQueryScope();
+
+  const focusComposer = useCallback(() => {
+    inputRef.current?.focus();
+  }, [inputRef]);
+
+  const openSlashMenu = useCallback(() => setSlashMenuOpen(true), []);
+
+  // Global `@`: focus the composer and seed a mention token (menu opens from the text).
+  const startMention = useCallback(() => {
+    const needsSpace = input.length > 0 && !/\s$/.test(input);
+    handleInputChange(`${input}${needsSpace ? " " : ""}@`);
+    requestAnimationFrame(() => {
+      const el = inputRef.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(el.value.length, el.value.length);
+    });
+  }, [handleInputChange, input, inputRef]);
+
+  useQueryComposerShortcuts({
+    inputRef,
+    input,
+    onStartMention: startMention,
+    onOpenSlashMenu: openSlashMenu,
+    onFocusComposer: focusComposer,
+  });
+
+  const statusAnnouncement = (() => {
+    // Prefer stream-session stage (state machine) over coarse streamingState
+    if (stage === "retrieving") {
+      return t("query.stage.retrieving", "Searching knowledge…");
+    }
+    if (stage === "reading") {
+      return t("query.stage.reading", "Reading sources…");
+    }
+    if (stage === "thinking") {
+      return t("query.stage.thinking", "Thinking…");
+    }
+    if (stage === "generating" || streamingState === "generating") {
+      return t("query.stage.generating", "Writing answer…");
+    }
+    if (stage === "complete" || streamingState === "complete") {
+      return t("query.stage.complete", "Answer ready");
+    }
+    if (stage === "error" || streamingState === "error") {
+      return t("query.stage.error", "Failed");
+    }
+    if (stage === "stopped") {
+      return t("query.stage.stopped", "Stopped");
+    }
+    if (streamingState === "thinking") {
+      return t("query.stage.retrieving", "Searching knowledge…");
+    }
+    return "";
+  })();
+
   return (
-    <div className="flex h-full min-h-0">
-      <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-        <header
-          className="flex items-center justify-between border-b px-page py-2 shrink-0 bg-background/80 backdrop-blur-sm gap-2"
-          role="banner"
-        >
-          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-            <MobileHistoryPanel />
-            <h1 className="shrink-0 text-base sm:text-lg font-semibold tracking-tight">
-              {t("query.title", "Query")}
-            </h1>
-            <span className="hidden min-w-0 truncate whitespace-nowrap text-xs text-muted-foreground xl:inline">
-              {querySettings.mode === "bypass"
-                ? t("query.chatSubtitle", "General chat — no knowledge graph retrieval")
-                : t("query.subtitle", "Ask questions about your knowledge graph")}
-            </span>
-          </div>
-          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleNewConversation}
-              disabled={isLoading}
-              className="gap-1"
-            >
-              <Plus className="h-4 w-4" />
-              <span className="hidden sm:inline">{t("query.newConversation", "New")}</span>
-            </Button>
+    <TooltipProvider delayDuration={200}>
+      <div className="flex h-full min-h-0">
+        <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+          <header
+            className="flex items-center justify-between border-b px-page py-2 shrink-0 bg-background/80 backdrop-blur-sm gap-2"
+            role="banner"
+          >
+            <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+              {!isXl ? <MobileHistoryPanel /> : null}
+              <h1 className="shrink-0 text-base sm:text-lg font-semibold tracking-tight">
+                {t("query.title", "Query")}
+              </h1>
+              <span className="hidden min-w-0 truncate whitespace-nowrap text-xs text-muted-foreground xl:inline">
+                {querySettings.mode === "bypass"
+                  ? t(
+                      "query.chatSubtitle",
+                      "General chat — no knowledge graph retrieval",
+                    )
+                  : t(
+                      "query.subtitle",
+                      "Ask questions about your knowledge graph",
+                    )}
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleNewConversation}
+                className="gap-1"
+                data-testid="query-new"
+              >
+                <Plus className="h-4 w-4" />
+                <span className="hidden sm:inline">
+                  {t("query.newConversation", "New")}
+                </span>
+              </Button>
 
-            {/* Mode selector stays in header — most-changed query setting */}
-            <QueryModeSelector
-              value={querySettings.mode}
-              onChange={(mode) => setQuerySettings({ mode })}
-              disabled={isLoading}
-            />
+              {isXl ? (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={toggleHistory}
+                  aria-label={t("query.history.toggle", "Toggle history")}
+                  aria-pressed={historyOpen}
+                  data-testid="query-history-toggle"
+                >
+                  <PanelRight className="h-4 w-4" />
+                </Button>
+              ) : null}
 
-            {/* Provider, document filter, and advanced options moved into settings sheet */}
-            <QuerySettingsSheet
-              settings={{
-                stream: querySettings.stream,
-                topK: querySettings.topK,
-                temperature: querySettings.temperature,
-                maxTokens: querySettings.maxTokens,
-                systemPrompt: querySettings.systemPrompt,
-                fullChunkContent: querySettings.fullChunkContent,
-              }}
-              onSettingsChange={(updates) => setQuerySettings(updates)}
-              disabled={isLoading}
-              providerModel={
-                querySettings.provider && querySettings.model
-                  ? `${querySettings.provider}/${querySettings.model}`
-                  : ""
-              }
-              onProviderModelChange={(fullModelId) => {
-                if (!fullModelId) {
-                  setQuerySettings({ provider: undefined, model: undefined });
-                } else {
-                  const parts = fullModelId.split("/");
-                  const provider = parts[0];
-                  const model = parts.slice(1).join("/");
-                  setQuerySettings({ provider, model });
+              <QuerySettingsSheet
+                settings={{
+                  stream: querySettings.stream,
+                  topK: querySettings.topK,
+                  temperature: querySettings.temperature,
+                  maxTokens: querySettings.maxTokens,
+                  systemPrompt: querySettings.systemPrompt,
+                  fullChunkContent: querySettings.fullChunkContent,
+                }}
+                onSettingsChange={(updates) => setQuerySettings(updates)}
+                providerModel={
+                  querySettings.provider && querySettings.model
+                    ? `${querySettings.provider}/${querySettings.model}`
+                    : ""
                 }
-              }}
-              documentFilter={querySettings.documentFilter}
-              onDocumentFilterChange={(documentFilter) => setQuerySettings({ documentFilter })}
-              scopedDocumentIds={querySettings.scopedDocumentIds ?? []}
-              onScopedDocumentIdsChange={(ids) => setQuerySettings({ scopedDocumentIds: ids })}
-            />
-          </div>
-        </header>
+                onProviderModelChange={(fullModelId) => {
+                  if (!fullModelId) {
+                    setQuerySettings({
+                      provider: undefined,
+                      model: undefined,
+                    });
+                  } else {
+                    const parts = fullModelId.split("/");
+                    const provider = parts[0];
+                    const model = parts.slice(1).join("/");
+                    setQuerySettings({ provider, model });
+                  }
+                }}
+                documentFilter={querySettings.documentFilter}
+                onDocumentFilterChange={(documentFilter) =>
+                  setQuerySettings({ documentFilter })
+                }
+                scopedDocumentIds={scope.ids}
+                onScopedDocumentIdsChange={scope.setDocumentIds}
+              />
+            </div>
+          </header>
 
-        <div className="flex-1 min-h-0 overflow-hidden">
-          <ScrollArea ref={scrollRef} className="h-full">
-            <div
-              className="max-w-4xl lg:max-w-5xl mx-auto px-page pt-page pb-6"
-              role="log"
-              aria-live="polite"
-              aria-label={t("query.messageList", "Conversation messages")}
-            >
-              {messages.length === 0 && !isLoading ? (
-                <QueryEmptyState
-                  onSuggestionClick={handleSuggestionClick}
-                  mode={querySettings.mode}
-                />
-              ) : (
-                <>
-                  {messages.map((message, index) => (
+          {/* Single status live region — not on the message list (Q03/Q24) */}
+          <div className="sr-only" role="status" aria-live="polite" aria-atomic>
+            {statusAnnouncement}
+          </div>
+
+          <div className="flex-1 min-h-0 overflow-hidden relative">
+            <ScrollArea ref={scrollRef} className="h-full">
+              <div
+                className="max-w-4xl lg:max-w-5xl mx-auto px-page pt-page pb-6"
+                aria-label={t("query.messageList", "Conversation messages")}
+              >
+                {messages.length === 0 && !isLoading ? (
+                  <QueryEmptyState
+                    onSuggestionClick={handleSuggestionClick}
+                    mode={querySettings.mode}
+                  />
+                ) : (
+                  messages.map((message, index) => (
                     <ChatMessage
-                      key={message.id}
-                      message={message}
+                      key={`${message.role}-${message.id}-${index}`}
+                      message={{
+                        ...message,
+                        stopped:
+                          message.stopped ||
+                          (Boolean(pendingMessage?.id === message.id) &&
+                            stage === "stopped"),
+                      }}
                       onRegenerate={
                         message.role === "assistant" &&
                         index === messages.length - 1
                           ? handleRegenerate
                           : undefined
                       }
+                      onRetry={
+                        message.isError && index === messages.length - 1
+                          ? handleRetry
+                          : undefined
+                      }
+                      onContinue={
+                        stage === "stopped" &&
+                        index === messages.length - 1
+                          ? handleRetry
+                          : undefined
+                      }
+                      onEdit={
+                        message.role === "user"
+                          ? () => handleEditMessage(message.id)
+                          : undefined
+                      }
                       isLast={index === messages.length - 1}
+                      stage={
+                        index === messages.length - 1 ? stage : null
+                      }
+                      stageDetail={
+                        index === messages.length - 1
+                          ? stageDetail
+                          : undefined
+                      }
                     />
-                  ))}
-                  {isLoading &&
-                    streamingState === "thinking" &&
-                    (!pendingMessage || !pendingMessage.content) && (
-                      <LoadingMessage />
-                    )}
-                  {isLoading &&
-                    streamingState === "generating" &&
-                    !pendingMessage && <NonStreamingLoadingIndicator />}
-                </>
-              )}
-              <div ref={scrollAnchorRef} className="h-32" />
-            </div>
-          </ScrollArea>
-        </div>
+                  ))
+                )}
+                <div ref={scrollAnchorRef} className="h-32" />
+              </div>
+            </ScrollArea>
 
-        <div
-          className="border-t px-page py-3 bg-background shrink-0 relative z-10"
-          role="form"
-          aria-label={t("query.form", "Query form")}
-        >
-          <form onSubmit={handleSubmit} className="max-w-4xl lg:max-w-5xl mx-auto">
-            {/* SPEC-031: Always-visible scope toolbar — shows "All docs ▾" when
-                no scope set, pills when docs selected. Enables feature discovery
-                without requiring users to open Settings. */}
-            <QueryScopeBar
-              selectedIds={querySettings.scopedDocumentIds ?? []}
-              onSelectionChange={(ids) => setQuerySettings({ scopedDocumentIds: ids })}
-              disabled={isLoading}
-            />
-            <input
-              ref={imageInputRef}
-              type="file"
-              accept="image/jpeg,image/png,image/gif,image/webp"
-              multiple
-              className="sr-only"
-              aria-label={t("query.attachImages", "Attach images")}
-              onChange={handleImageInputChange}
-            />
-            {/* SPEC-100: reserve attachment row height when files are pending */}
-            <div
-              className={
-                attachedImages.length > 0
-                  ? "mb-2 min-h-16"
-                  : "mb-0 min-h-0 overflow-hidden"
+            {showJumpPill ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                className="absolute bottom-4 left-1/2 -translate-x-1/2 gap-1 shadow-md z-20"
+                onClick={jumpToLatest}
+                data-testid="query-jump-latest"
+              >
+                <ArrowDown className="h-3.5 w-3.5" />
+                {t("query.jumpToLatest", "Jump to latest")}
+              </Button>
+            ) : null}
+          </div>
+
+          <div className="px-page pt-2 pb-4 bg-gradient-to-t from-background via-background to-transparent shrink-0 relative z-10">
+            <Composer
+              input={input}
+              slashMenu={
+                slashMenuOpen ? (
+                  <SlashMenu
+                    onNewChat={() => {
+                      handleNewConversation();
+                      setSlashMenuOpen(false);
+                    }}
+                    onClose={() => setSlashMenuOpen(false)}
+                  />
+                ) : null
               }
-              data-testid="spec100-query-attachments-slot"
-            >
-              {attachedImages.length > 0 && (
-                <div
-                  className="flex flex-wrap gap-2"
-                  role="list"
-                  aria-label={t("query.attachedImages", "Attached images")}
-                >
-                  {attachedImages.map((img, idx) => (
-                    <div
-                      key={idx}
-                      role="listitem"
-                      className="relative group w-16 h-16 rounded border overflow-hidden flex-shrink-0"
-                    >
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={img.preview}
-                        alt={`Attachment ${idx + 1}`}
-                        className="w-full h-full object-cover"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => removeImage(idx)}
-                        className="absolute top-0.5 right-0.5 bg-black/60 rounded-full p-0.5 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
-                        aria-label={t("query.removeImage", `Remove image ${idx + 1}`)}
-                      >
-                        <X className="h-3 w-3 text-white" aria-hidden="true" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-            <div
-              className="relative"
+              onInputChange={(value) => {
+                handleInputChange(value);
+                setSlashMenuOpen(value === "/");
+              }}
+              onSubmit={handleSubmit}
+              onStop={handleStop}
+              isStreaming={isStreaming}
+              queuedMessage={queuedMessage}
+              onClearQueue={clearQueue}
+              onQueue={queueMessage}
+              mode={querySettings.mode}
+              onModeChange={(mode) => setQuerySettings({ mode })}
+              scope={scope}
+              attachedImages={attachedImages}
+              onRemoveImage={removeImage}
+              onImageButtonClick={() => imageInputRef.current?.click()}
+              imageInputRef={imageInputRef}
+              onImageInputChange={handleImageInputChange}
+              maxImages={maxImages}
+              onPaste={handlePaste}
               onDrop={handleDrop}
               onDragOver={handleDragOver}
-            >
-              <Textarea
-                ref={inputRef}
-                value={input}
-                onChange={handleInputChange}
-                onPaste={handlePaste}
-                placeholder={t("query.placeholder", "Ask a question...")}
-                className="min-h-[56px] max-h-[200px] resize-none pr-24 py-4 text-base query-input focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:border-primary transition-all duration-200"
-                rows={1}
-                onCompositionStart={() => {
-                  composingRef.current = true;
-                }}
-                onCompositionEnd={() => {
-                  composingRef.current = false;
-                  compositionEndedAtRef.current = performance.now();
-                }}
-                onKeyDown={(event) => {
-                  if (event.key !== "Enter" || event.shiftKey) return;
-                  const native = event.nativeEvent;
-                  const ime =
-                    native.isComposing ||
-                    // eslint-disable-next-line @typescript-eslint/no-deprecated -- IME keyCode 229
-                    native.keyCode === 229 ||
-                    composingRef.current ||
-                    performance.now() - compositionEndedAtRef.current < IME_RACE_MS;
-                  if (ime) {
-                    event.preventDefault();
-                    return;
-                  }
-                  event.preventDefault();
-                  void handleSubmit();
-                }}
-                disabled={isLoading}
-                aria-label={t("query.placeholder", "Ask a question")}
-                aria-describedby="query-hint"
-              />
-              <span id="query-hint" className="sr-only">
-                Press Enter to send, Shift+Enter for new line
-              </span>
-              <div className="absolute right-3 bottom-3 flex items-center gap-2">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => imageInputRef.current?.click()}
-                  disabled={isLoading || attachedImages.length >= maxImages}
-                  className="h-8 w-8 p-0"
-                  aria-label={t("query.attachImages", "Attach images")}
-                  title={t("query.attachImages", "Attach images")}
-                >
-                  <ImagePlus className="h-4 w-4" aria-hidden="true" />
-                </Button>
-                {isLoading ? (
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    onClick={handleStop}
-                    className="h-9"
-                    aria-label={t("query.stop", "Stop generating")}
-                  >
-                    <StopCircle className="h-4 w-4 mr-1" aria-hidden="true" />
-                    Stop
-                  </Button>
-                ) : (
-                  <Button
-                    type="submit"
-                    size="sm"
-                    disabled={!input.trim()}
-                    className="h-8"
-                    aria-label={t("query.submit", "Send message")}
-                  >
-                    <Send className="h-4 w-4" aria-hidden="true" />
-                  </Button>
-                )}
-              </div>
-            </div>
-            <p
-              className="text-xs text-muted-foreground mt-2 text-center"
-              aria-hidden="true"
-            >
-              {t("query.hint", "Press Enter to send, Shift+Enter for new line")}
-            </p>
-          </form>
+              inputRef={inputRef}
+              modelSlot={<ModelChip />}
+              scopePickerOpen={scopePickerOpen}
+              onScopePickerOpenChange={setScopePickerOpen}
+            />
+          </div>
         </div>
-      </div>
 
-      <ConversationHistoryPanelV2 />
-    </div>
+        {/* History: docked only at xl+ (Q21); mobile uses sheet */}
+        {isXl ? <ConversationHistoryPanelV2 /> : null}
+      </div>
+    </TooltipProvider>
   );
 }
 

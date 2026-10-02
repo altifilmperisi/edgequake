@@ -181,8 +181,7 @@ pub async fn get_graph(
             })
             .await?;
 
-        let edges: Vec<GraphEdgeResponse> =
-            filtered_edges.into_iter().map(edge_response).collect();
+        let edges: Vec<GraphEdgeResponse> = filtered_edges.into_iter().map(edge_response).collect();
 
         (nodes, edges, false)
     };

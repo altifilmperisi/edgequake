@@ -35,6 +35,18 @@ use crate::error::{Result, StorageError};
 // Data Structures
 // ============================================================================
 
+/// Lightweight PDF header: everything needed to authorise and size a download
+/// without loading the (possibly large) blob.
+#[derive(Debug, Clone)]
+pub struct PdfBlobInfo {
+    /// Workspace the PDF belongs to (isolation check).
+    pub workspace_id: Uuid,
+    /// Original filename.
+    pub filename: String,
+    /// Exact stored byte length.
+    pub total_bytes: u64,
+}
+
 /// PDF document stored in database.
 ///
 /// This structure represents a PDF file in the `pdf_documents` table with
@@ -339,6 +351,35 @@ pub trait PdfDocumentStorage: Send + Sync {
     /// * `Ok(None)` - PDF not found
     /// * `Err(StorageError)` - If retrieval fails
     async fn get_pdf(&self, pdf_id: &Uuid) -> Result<Option<PdfDocument>>;
+
+    /// Get PDF authorisation/size info **without** loading the blob.
+    ///
+    /// Backends that keep bytes in a separate row should override this; the
+    /// default loads the whole PDF (correct, just not cheap).
+    async fn get_pdf_blob_info(&self, pdf_id: &Uuid) -> Result<Option<PdfBlobInfo>> {
+        Ok(self.get_pdf(pdf_id).await?.map(|pdf| PdfBlobInfo {
+            workspace_id: pdf.workspace_id,
+            filename: pdf.filename,
+            total_bytes: pdf.pdf_data.len() as u64,
+        }))
+    }
+
+    /// Read the inclusive byte window `start..=end` of a stored PDF.
+    ///
+    /// Powers HTTP `Range` downloads so the viewer can load pages on demand.
+    /// Callers must pass a window already validated against
+    /// [`PdfBlobInfo::total_bytes`]. The default slices a full read.
+    async fn get_pdf_bytes_range(
+        &self,
+        pdf_id: &Uuid,
+        start: u64,
+        end: u64,
+    ) -> Result<Option<Vec<u8>>> {
+        Ok(self.get_pdf(pdf_id).await?.and_then(|pdf| {
+            let (s, e) = (start as usize, end as usize);
+            (e < pdf.pdf_data.len() && s <= e).then(|| pdf.pdf_data[s..=e].to_vec())
+        }))
+    }
 
     /// Find PDF by checksum (deduplication).
     ///

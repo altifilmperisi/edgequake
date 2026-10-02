@@ -47,6 +47,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::runtime::Handle;
 use tokio::sync::mpsc;
 
+use crate::services::run_progress::{RunPhaseId, RunTaskId};
+use crate::services::RunProgressWriter;
+
 /// Document-level converting progress bands (never regress across mixed groups).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConvertingProgressBand {
@@ -145,6 +148,8 @@ pub struct PipelineProgressCallback {
     last_stage_progress_bits: AtomicU64,
     /// Single-writer queue for ordered metadata patches (optional).
     metadata_writer: Option<MetadataWriterHandle>,
+    /// SPEC-155: typed run-progress ledger writer (pages / figures / …).
+    run_progress: Option<RunProgressWriter>,
 }
 
 impl PipelineProgressCallback {
@@ -183,6 +188,7 @@ impl PipelineProgressCallback {
             metadata_seq: AtomicU64::new(0),
             last_stage_progress_bits: AtomicU64::new(0f64.to_bits()),
             metadata_writer: None,
+            run_progress: None,
         }
     }
 
@@ -273,9 +279,11 @@ impl PipelineProgressCallback {
                 }
             }
         });
+        let run_progress = RunProgressWriter::spawn(document_id.clone(), Arc::clone(&kv_storage));
         self.document_id = Some(document_id);
         self.kv_storage = Some(kv_storage);
         self.metadata_writer = Some(MetadataWriterHandle { tx });
+        self.run_progress = Some(run_progress);
         self
     }
 
@@ -328,6 +336,37 @@ impl PipelineProgressCallback {
         };
         let mapped = self.map_band_progress(band, local_progress);
         self.update_document_metadata(message, mapped);
+    }
+
+    /// SPEC-155: structured figure analyze counters into the run-progress ledger.
+    pub fn report_figure_progress(&self, completed: usize, total: usize) {
+        if let Some(ref rp) = self.run_progress {
+            rp.task(RunTaskId::Figures, completed as u64, total as u64, None);
+        }
+    }
+
+    /// SPEC-155: structured page counters into the run-progress ledger.
+    pub fn report_pages_progress(&self, completed: usize, total: usize) {
+        if let Some(ref rp) = self.run_progress {
+            rp.task(
+                RunTaskId::Pages,
+                completed as u64,
+                total.max(1) as u64,
+                None,
+            );
+        }
+    }
+
+    /// Mark Prepare complete (pages + figures done) before extract handoff.
+    pub fn complete_prepare_phase(&self) {
+        if let Some(ref rp) = self.run_progress {
+            rp.complete_phase(RunPhaseId::Prepare);
+            // Best-effort immediate flush so list poll sees frozen Prepare.
+            let rp = rp.clone();
+            self.runtime_handle.spawn(async move {
+                rp.flush_now().await;
+            });
+        }
     }
 
     fn map_band_progress(&self, band: ConvertingProgressBand, local: f64) -> f64 {
@@ -392,6 +431,7 @@ impl PipelineProgressCallback {
     ///
     /// Call only when convert + page assets + optional multimodal analyze are done.
     pub fn complete_pdf_conversion_phase(&self) {
+        self.complete_prepare_phase();
         let state = self.pipeline_state.clone();
         let track_id = self.task_id.clone();
         self.runtime_handle.spawn(async move {
@@ -533,6 +573,7 @@ impl ConversionProgressCallback for PipelineProgressCallback {
             None,
         );
 
+        self.report_pages_progress(completed, total);
         self.update_document_metadata(
             format!("Converting PDF to Markdown ({completed}/{total} pages)"),
             self.ocr_progress_fraction(completed),
@@ -620,6 +661,10 @@ impl ConversionProgressCallback for PipelineProgressCallback {
         };
         let time_due = self.should_update_metadata(2_000);
         let should_update = is_first_completed || is_last_page || milestone || time_due;
+
+        // SPEC-155: always advance the typed pages ledger (monotonic), even when
+        // legacy message writes are throttled.
+        self.report_pages_progress(completed, total);
 
         if should_update {
             self.last_metadata_page.store(page_num, Ordering::SeqCst);

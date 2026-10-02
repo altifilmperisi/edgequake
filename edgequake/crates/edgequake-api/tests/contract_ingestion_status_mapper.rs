@@ -267,6 +267,7 @@ async fn contract_dual_ssot_merge_cancelled_over_kv_embedding() {
         display_status: None,
         ui_phase: None,
         progress_counts: None,
+        run_progress: None,
         queue_position: None,
         eta_seconds: None,
         eta_basis: None,

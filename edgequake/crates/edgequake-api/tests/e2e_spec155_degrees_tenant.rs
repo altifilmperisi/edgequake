@@ -30,7 +30,8 @@ async fn extract_json(response: axum::response::Response) -> Value {
 }
 
 async fn setup_workspace(state: &AppState, suffix: &str) -> (Uuid, Uuid) {
-    let tenant = Tenant::new(format!("DT-{suffix}"), format!("dt-{suffix}")).with_plan(TenantPlan::Pro);
+    let tenant =
+        Tenant::new(format!("DT-{suffix}"), format!("dt-{suffix}")).with_plan(TenantPlan::Pro);
     let tenant = state.workspace_service.create_tenant(tenant).await.unwrap();
     let ws = state
         .workspace_service
@@ -52,10 +53,7 @@ async fn e2e_spec155_degrees_tenant() {
     let (tenant_a, ws_a) = setup_workspace(&state, "a").await;
     let (tenant_b, ws_b) = setup_workspace(&state, "b").await;
 
-    for (id, tenant, ws) in [
-        ("NODE_A", tenant_a, ws_a),
-        ("NODE_B", tenant_b, ws_b),
-    ] {
+    for (id, tenant, ws) in [("NODE_A", tenant_a, ws_a), ("NODE_B", tenant_b, ws_b)] {
         let mut props = HashMap::new();
         props.insert("entity_type".into(), json!("PERSON"));
         props.insert("tenant_id".into(), json!(tenant.to_string()));
@@ -106,5 +104,8 @@ async fn e2e_spec155_degrees_tenant() {
     let degrees = body["degrees"].as_array().expect("degrees array");
     assert_eq!(degrees.len(), 1);
     assert_eq!(degrees[0]["node_id"], "NODE_A");
-    assert!(degrees[0]["degree"].is_object(), "degree must be object SSOT");
+    assert!(
+        degrees[0]["degree"].is_object(),
+        "degree must be object SSOT"
+    );
 }

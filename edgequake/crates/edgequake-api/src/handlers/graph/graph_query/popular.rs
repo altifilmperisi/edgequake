@@ -9,9 +9,7 @@ use axum::{
 };
 
 use crate::error::ApiResult;
-use crate::handlers::graph::graph_dto::{
-    degrees_breakdown_for_workspace, workspace_graph_totals,
-};
+use crate::handlers::graph::graph_dto::{degrees_breakdown_for_workspace, workspace_graph_totals};
 use crate::handlers::graph_types::*;
 use crate::middleware::TenantContext;
 use crate::services::{

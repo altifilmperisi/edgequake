@@ -230,6 +230,8 @@ pub async fn chat_completion_stream(
 
         // Use StreamAccumulator for proper token tracking
         let mut accumulator = StreamAccumulator::new();
+        // SPEC-155 B3: client dropped SSE before token loop finished (partial persist).
+        let mut client_disconnected_mid_stream = false;
         // Track message context for saving after streaming completes
         #[allow(unused_assignments)]
         let mut saved_message_context: Option<MessageContext> = None;
@@ -475,6 +477,22 @@ pub async fn chat_completion_stream(
 
         let retrieval_start = std::time::Instant::now();
 
+        if tx
+            .send(ChatStreamEvent::Stage {
+                stage: "retrieving".to_string(),
+                detail: None,
+            })
+            .await
+            .is_err()
+        {
+            ErrorEvent::log_stream_disconnect(
+                &stream_request_id_spawn,
+                "chat_stream",
+                "stage_retrieving",
+            );
+            return;
+        }
+
         let stream_result = execute_sota_query_stream_with_auth_fallback(
             &state_clone,
             engine_request,
@@ -509,13 +527,14 @@ pub async fn chat_completion_stream(
                 sources_for_verify = sources.clone();
 
                 let retrieval_elapsed_ms = retrieval_start.elapsed().as_millis() as u64;
+                let retrieval_summary = format!(
+                    "Retrieved context via {used_mode} ({} sources in {retrieval_elapsed_ms}ms)",
+                    sources.len()
+                );
 
                 // SPEC-083 X-22: emit Thinking before Context (keep variant live).
                 let thinking = ChatStreamEvent::Thinking {
-                    content: format!(
-                        "Retrieved context via {used_mode} ({} sources in {retrieval_elapsed_ms}ms)",
-                        sources.len()
-                    ),
+                    content: retrieval_summary.clone(),
                 };
                 if tx.send(thinking).await.is_err() {
                     ErrorEvent::log_stream_disconnect(
@@ -526,28 +545,58 @@ pub async fn chat_completion_stream(
                     return;
                 }
 
-                if !sources.is_empty() {
-                    let context_event = ChatStreamEvent::Context {
-                        sources: sources.clone(),
-                        query_mode: Some(used_mode.to_string()),
-                        retrieval_time_ms: Some(retrieval_elapsed_ms),
-                        subgraph: saved_subgraph.clone(),
-                    };
-                    if tx.send(context_event).await.is_err() {
-                        ErrorEvent::log_stream_disconnect(
-                            &stream_request_id_spawn,
-                            "chat_stream",
-                            "context_event",
-                        );
-                        return;
-                    }
-                    info!(
-                        "Sent context event with {} sources ({} entities, {} relationships, {} chunks)",
-                        sources.len(),
-                        context.entities.len(),
-                        context.relationships.len(),
-                        context.chunks.len()
+                if tx
+                    .send(ChatStreamEvent::Stage {
+                        stage: "reading".to_string(),
+                        detail: Some(retrieval_summary),
+                    })
+                    .await
+                    .is_err()
+                {
+                    ErrorEvent::log_stream_disconnect(
+                        &stream_request_id_spawn,
+                        "chat_stream",
+                        "stage_reading",
                     );
+                    return;
+                }
+
+                let context_event = ChatStreamEvent::Context {
+                    sources: sources.clone(),
+                    query_mode: Some(used_mode.to_string()),
+                    retrieval_time_ms: Some(retrieval_elapsed_ms),
+                    subgraph: saved_subgraph.clone(),
+                };
+                if tx.send(context_event).await.is_err() {
+                    ErrorEvent::log_stream_disconnect(
+                        &stream_request_id_spawn,
+                        "chat_stream",
+                        "context_event",
+                    );
+                    return;
+                }
+                info!(
+                    "Sent context event with {} sources ({} entities, {} relationships, {} chunks)",
+                    sources.len(),
+                    context.entities.len(),
+                    context.relationships.len(),
+                    context.chunks.len()
+                );
+
+                if tx
+                    .send(ChatStreamEvent::Stage {
+                        stage: "generating".to_string(),
+                        detail: None,
+                    })
+                    .await
+                    .is_err()
+                {
+                    ErrorEvent::log_stream_disconnect(
+                        &stream_request_id_spawn,
+                        "chat_stream",
+                        "stage_generating",
+                    );
+                    return;
                 }
 
                 // Stream tokens
@@ -566,6 +615,7 @@ pub async fn chat_completion_stream(
                                     "chat_stream",
                                     "token_stream",
                                 );
+                                client_disconnected_mid_stream = true;
                                 break;
                             }
                         }
@@ -612,6 +662,16 @@ pub async fn chat_completion_stream(
         let duration_ms = accumulator.duration_ms();
         let tokens_used = accumulator.estimated_tokens();
         let full_content = accumulator.content().to_string();
+
+        // SPEC-155 B3: pre-token disconnects return above without persisting; here we have
+        // accumulated text (or an interrupted empty stream — skip in that case).
+        if !super::stream_persist::should_persist_stream_assistant(&full_content) {
+            return;
+        }
+
+        let finish_reason =
+            super::stream_persist::assistant_stream_finish_reason(client_disconnected_mid_stream);
+
         // SPEC-142: persist + Done carry verified document+page links.
         let verified = crate::services::verified_citations::verified_answer(
             &full_content,
@@ -660,11 +720,14 @@ pub async fn chat_completion_stream(
                             mode: Some(mode),
                             tokens_used: Some(tokens_used as i32),
                             duration_ms: Some(duration_ms as i32),
-                            thinking_time_ms: None,
+                            thinking_time_ms: accumulator
+                                .thinking_time_ms()
+                                .map(|ms| ms as i32),
                             context: saved_message_context, // Save context for source citations!
                             is_error: None,
                             llm_provider: used_provider.clone(),
                             llm_model: used_model.clone(),
+                            finish_reason: finish_reason.clone(),
                         },
                     )
                     .await
@@ -685,8 +748,14 @@ pub async fn chat_completion_stream(
                     chunk_count = accumulator.chunk_count(),
                     llm_provider = ?used_provider,
                     llm_model = ?used_model,
+                    finish_reason = ?finish_reason,
+                    stream_interrupted = client_disconnected_mid_stream,
                     "Streaming chat completion successful"
                 );
+
+                if client_disconnected_mid_stream {
+                    return;
+                }
 
                 let _ = tx
                     .send(ChatStreamEvent::Done {

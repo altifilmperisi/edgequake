@@ -128,6 +128,15 @@ pub struct Message {
     /// LLM model used (lineage tracking). @implements SPEC-032
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub llm_model: Option<String>,
+    /// User thumbs feedback (`up` | `down`). @implements SPEC-155 B2
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub feedback_rating: Option<String>,
+    /// Optional feedback reason. @implements SPEC-155 B2
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub feedback_reason: Option<String>,
+    /// Stream / generation finish reason. @implements SPEC-155 B3
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub finish_reason: Option<String>,
     /// Creation timestamp.
     pub created_at: chrono::DateTime<chrono::Utc>,
     /// Last update timestamp.
@@ -152,6 +161,9 @@ impl Message {
             is_error: false,
             llm_provider: None,
             llm_model: None,
+            feedback_rating: None,
+            feedback_reason: None,
+            finish_reason: None,
             created_at: now,
             updated_at: now,
         }
@@ -174,6 +186,9 @@ impl Message {
             is_error: false,
             llm_provider: None,
             llm_model: None,
+            feedback_rating: None,
+            feedback_reason: None,
+            finish_reason: None,
             created_at: now,
             updated_at: now,
         }
@@ -196,6 +211,9 @@ impl Message {
             is_error: false,
             llm_provider: None,
             llm_model: None,
+            feedback_rating: None,
+            feedback_reason: None,
+            finish_reason: None,
             created_at: now,
             updated_at: now,
         }

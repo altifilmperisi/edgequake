@@ -47,6 +47,11 @@ export interface DocumentPickerPopoverProps {
   onSelectionChange: (ids: string[]) => void;
   disabled?: boolean;
   trigger?: React.ReactNode;
+  /** Controlled open state (e.g. `@` shortcut). */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  /** Called with the title when a document is added (chip labels). */
+  onDocumentTitle?: (id: string, title: string) => void;
 }
 
 export function DocumentPickerPopover({
@@ -54,9 +59,13 @@ export function DocumentPickerPopover({
   onSelectionChange,
   disabled = false,
   trigger,
+  open: openProp,
+  onOpenChange: onOpenChangeProp,
+  onDocumentTitle,
 }: DocumentPickerPopoverProps) {
   const { t } = useTranslation();
-  const [open, setOpen] = useState(false);
+  const [openUncontrolled, setOpenUncontrolled] = useState(false);
+  const open = openProp ?? openUncontrolled;
   const [search, setSearch] = useState('');
   const searchRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -73,16 +82,26 @@ export function DocumentPickerPopover({
 
   const toggle = useCallback(
     (item: DocumentSearchItem) => {
+      const adding = !selectedSet.has(item.id);
       onSelectionChange(
-        selectedSet.has(item.id)
-          ? selectedIds.filter((id) => id !== item.id)
-          : [...selectedIds, item.id],
+        adding
+          ? [...selectedIds, item.id]
+          : selectedIds.filter((id) => id !== item.id),
       );
+      if (adding) onDocumentTitle?.(item.id, item.title);
     },
-    [selectedIds, selectedSet, onSelectionChange],
+    [selectedIds, selectedSet, onSelectionChange, onDocumentTitle],
   );
 
   const clearAll = useCallback(() => onSelectionChange([]), [onSelectionChange]);
+
+  const setOpen = useCallback(
+    (next: boolean) => {
+      if (onOpenChangeProp) onOpenChangeProp(next);
+      else setOpenUncontrolled(next);
+    },
+    [onOpenChangeProp],
+  );
 
   const handleOpenChange = (next: boolean) => {
     setOpen(next);

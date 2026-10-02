@@ -13,9 +13,29 @@ import { buildHeaders } from "@/lib/api/client";
 
 export type PdfFileSource =
   | string
-  | { url: string }
+  | { url: string; httpHeaders?: Record<string, string> }
   | { data: ArrayBuffer | Uint8Array }
   | null;
+
+/**
+ * pdf.js loader options shared by every viewer (must be a stable reference —
+ * react-pdf reloads the document when `options` changes identity).
+ *
+ * - `disableAutoFetch`: never download the rest of the file in the background;
+ *   fetch only the byte ranges backing pages that are actually rendered.
+ * - `disableStream`: pdf.js opens with one plain GET to learn the size. With
+ *   streaming ON it keeps reading that response to the end (whole file, in the
+ *   background, defeating range loading). With streaming OFF it cancels that
+ *   probe as soon as the headers prove `Accept-Ranges: bytes`. A server without
+ *   range support still works: the probe simply completes (one full download).
+ * - `rangeChunkSize`: 128 KiB chunks keep first-paint small without a request
+ *   storm on long documents.
+ */
+export const PDF_LOAD_OPTIONS = {
+  disableAutoFetch: true,
+  disableStream: true,
+  rangeChunkSize: 131072,
+};
 
 /** API paths that serve binary PDF bytes behind auth middleware. */
 export function isApiProtectedPdfUrl(url: string): boolean {
@@ -36,7 +56,28 @@ export function extractPdfSourceUrl(file: PdfFileSource): string | null {
 }
 
 /**
+ * Describe a protected PDF URL for pdf.js: URL + session headers, no body fetch.
+ *
+ * pdf.js then issues `Range` requests itself (the API answers `206`), so only
+ * the first chunk is needed to paint page 1. Servers that ignore `Range`
+ * degrade to a single streamed `200`, never to a failure.
+ */
+export function buildAuthenticatedPdfSource(url: string): {
+  url: string;
+  httpHeaders: Record<string, string>;
+} {
+  const headers = buildHeaders();
+  headers.delete("Content-Type");
+  const httpHeaders: Record<string, string> = {};
+  headers.forEach((value, key) => {
+    httpHeaders[key] = value;
+  });
+  return { url, httpHeaders };
+}
+
+/**
  * Fetch a protected PDF URL with session headers and return bytes for react-pdf.
+ * Whole-file download: prefer {@link buildAuthenticatedPdfSource} for viewing.
  */
 export async function fetchAuthenticatedPdfData(
   url: string,

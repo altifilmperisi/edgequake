@@ -98,10 +98,10 @@ export function DocumentHeader({
 
   const pipelineButtonClass =
     alertMode === 'stuck'
-      ? 'gap-1 text-rose-600 border-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/40'
+      ? 'text-rose-600 border-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/40'
       : alertMode === 'queued' || (working === 0 && queued > 0)
-        ? 'gap-1 text-amber-700 border-amber-300 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-950/40'
-        : 'gap-1 text-sky-700 border-sky-300 hover:bg-sky-50 dark:text-sky-300 dark:border-sky-800 dark:hover:bg-sky-950/40';
+        ? 'text-amber-700 border-amber-300 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-950/40'
+        : 'text-sky-700 border-sky-300 hover:bg-sky-50 dark:text-sky-300 dark:border-sky-800 dark:hover:bg-sky-950/40';
 
   const pipelineButtonLabel =
     alertMode === 'stuck'
@@ -190,7 +190,7 @@ export function DocumentHeader({
             onClick={onRefresh}
             data-testid="documents-refresh-button"
           >
-            <RefreshCw className="h-4 w-4 mr-1" />
+            <RefreshCw className="h-4 w-4" />
             {t('documents.refresh')}
           </Button>
 

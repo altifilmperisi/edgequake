@@ -16,12 +16,17 @@ export function isOrphanFailedAttention(run: IngestionRunView): boolean {
   );
 }
 
+/** SPEC-155: claims to be working but the server has been silent too long. */
+export function isStalledAttention(run: IngestionRunView): boolean {
+  return typeof run.stalledForMs === "number";
+}
+
 /**
  * Live work + brief cancelled acknowledgement (TTL applied later).
  * Stopping always stays; cancelled passes partition then retention filter.
  */
 export function isLiveWorkingOrQueued(run: IngestionRunView): boolean {
-  if (isOrphanFailedAttention(run)) return false;
+  if (isOrphanFailedAttention(run) || isStalledAttention(run)) return false;
   // LAW-28: keep Stopping… / Cancelled on ActiveRuns (TTL applied later).
   if (
     run.stage === "stopping" ||
@@ -49,7 +54,7 @@ export function partitionActiveRuns(runs: IngestionRunView[]): {
   const working: IngestionRunView[] = [];
   const attention: IngestionRunView[] = [];
   for (const run of runs) {
-    if (isOrphanFailedAttention(run)) {
+    if (isOrphanFailedAttention(run) || isStalledAttention(run)) {
       attention.push(run);
     } else if (isLiveWorkingOrQueued(run)) {
       working.push(run);

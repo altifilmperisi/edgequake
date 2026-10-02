@@ -213,6 +213,10 @@ fn write_processing_stage(
         Value::String(Utc::now().to_rfc3339()),
     );
     obj.remove("error_message");
+    // SPEC-155: new run — wipe prior ledger so Prepare/Extract do not inherit
+    // counters from the previous attempt.
+    crate::services::clear_run_progress(obj);
+    crate::services::clear_progress_counts(obj);
 }
 
 /// Zero/remove graph + cost leftovers that lie about a finished run.

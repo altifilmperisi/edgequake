@@ -2,6 +2,7 @@
 
 import { ContentRenderer } from '@/components/document/content-renderer';
 import { MetadataSidebar } from '@/components/document/metadata-sidebar';
+import { DetailLifecycleBadge } from '@/components/documents/detail-lifecycle-badge';
 import { DocumentDownloadMenu } from '@/components/documents/document-download-menu';
 import { ProgressPanelRow } from '@/components/documents/progress-panel-row';
 import { PDFViewer } from '@/components/documents/pdf-viewer';
@@ -16,7 +17,6 @@ import { usePageHealth } from '@/hooks/use-page-health';
 import { resolveDetailLifecycle } from '@/lib/documents/detail-lifecycle';
 import { pdfCurrentPageForMode } from '@/lib/documents/page-sync-mode';
 import { SideBySideViewer } from '@/components/documents/side-by-side-viewer';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ResizablePanel } from '@/components/ui/resizable-panel';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -24,13 +24,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { usePageSyncController } from '@/hooks/use-page-sync-controller';
 import { shouldUsePdfReprocessPanel } from '@/hooks/use-reprocess-tracking';
 import {
-    cancelTask,
     getDocument,
     getPdfContent,
     getPdfDownloadUrl,
     includeDocumentAssetsFromPdf,
     reprocessDocument,
 } from '@/lib/api/edgequake';
+import { cancelDocumentRun } from '@/lib/documents/cancel-document-run';
 import {
   abortAdmit,
   admitQueuingToastId,
@@ -155,7 +155,14 @@ export default function DocumentViewPage() {
 
   // SPEC-051: Cancel mutation for the detail page.
   const cancelMutationDetail = useMutation({
-    mutationFn: (trackId: string) => cancelTask(trackId),
+    // SPEC-155: document-keyed — an orphan row without a track_id still cancels.
+    mutationFn: async (doc: { id: string; track_id?: string | null }) => {
+      const outcome = await cancelDocumentRun(queryClient, {
+        documentId: doc.id,
+        trackId: doc.track_id,
+      });
+      if (outcome === 'failed') throw new Error('Cancel failed');
+    },
     onSuccess: () => {
       toast.success(
         t('documents.cancel.success', 'Document processing cancelled'),
@@ -566,52 +573,21 @@ export default function DocumentViewPage() {
           </div>
           
           <div className="flex items-center gap-1 shrink-0">
-            {lifecycle.showSpinner && (
-              <Badge
-                variant="outline"
-                className="text-xs"
-                data-testid="detail-lifecycle-badge"
-              >
-                <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                {lifecycle.label}
-              </Badge>
-            )}
-            {!lifecycle.showSpinner && lifecycle.kind === 'partial' && (
-              <Badge
-                variant="outline"
-                className="text-xs border-orange-500 text-orange-500"
-                data-testid="detail-lifecycle-badge"
-              >
-                <AlertCircle className="h-3 w-3 mr-1" />
-                {lifecycle.label}
-              </Badge>
-            )}
-            {!lifecycle.showSpinner && lifecycle.kind === 'failed' && (
-              <Badge
-                variant="destructive"
-                className="text-xs"
-                data-testid="detail-lifecycle-badge"
-              >
-                <AlertCircle className="h-3 w-3 mr-1" />
-                {lifecycle.label}
-              </Badge>
-            )}
-            {!lifecycle.showSpinner && isCancelled && (
-              <Badge
-                variant="outline"
-                className="text-xs border-gray-500 text-gray-500"
-                data-testid="detail-lifecycle-badge"
-              >
-                <StopCircle className="h-3 w-3 mr-1" />
-                {lifecycle.label}
-              </Badge>
-            )}
+            <DetailLifecycleBadge lifecycle={lifecycle} />
             <DocumentDownloadMenu
               document={documentWithContent}
               markdownContent={documentWithContent.content}
               variant="icon"
             />
-            <Button variant="ghost" size="sm" className="h-8" onClick={handleViewInGraph}>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={handleViewInGraph}
+              title={t('documents.detail.viewInGraph', 'View in knowledge graph')}
+              aria-label={t('documents.detail.viewInGraph', 'View in knowledge graph')}
+              data-testid="detail-view-in-graph"
+            >
               <Network className="h-3.5 w-3.5" />
             </Button>
             {/* SPEC-051 GAP-051-01: Reprocess — hidden while in-flight (lifecycle SSOT). */}
@@ -650,16 +626,12 @@ export default function DocumentViewPage() {
                 {t('documents.reprocess.action', 'Reprocess')}
               </Button>
             )}
-            {lifecycle.canCancel && document?.track_id && (
+            {lifecycle.canCancel && document && (
               <Button
                 variant="outline"
                 size="sm"
                 className="h-8 gap-1.5 text-destructive border-destructive/30 hover:bg-destructive/10"
-                onClick={() => {
-                  if (document.track_id) {
-                    cancelMutationDetail.mutate(document.track_id);
-                  }
-                }}
+                onClick={() => cancelMutationDetail.mutate(document)}
                 disabled={cancelMutationDetail.isPending}
                 data-testid="detail-page-cancel-button"
               >

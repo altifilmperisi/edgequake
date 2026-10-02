@@ -189,6 +189,27 @@ pub fn allow_local_high_concurrency() -> bool {
     )
 }
 
+/// Cap a fan-out figure for capacity-bound local providers (SSOT).
+///
+/// First principle: a concurrency limit is a property of the **upstream that
+/// is actually called**, never of the process default. Local inference servers
+/// (Ollama / LM Studio) are compute-bound, so extra fan-out only queues; cloud
+/// APIs are latency-bound, so fan-out hides round-trip time. Callers pass the
+/// provider name of the unit of work being scheduled (embedding provider for
+/// embeds, LLM provider for merges, ...), so a Mistral workspace is never
+/// throttled just because the process default happens to be Ollama.
+///
+/// `local_cap` applies to local providers unless
+/// [`ALLOW_LOCAL_HIGH_CONCURRENCY_ENV`] is set. Always returns `>= 1`.
+pub fn cap_for_local_provider(provider_name: &str, requested: usize, local_cap: usize) -> usize {
+    let requested = requested.max(1);
+    if is_local_extraction_provider(provider_name) && !allow_local_high_concurrency() {
+        requested.min(local_cap.max(1))
+    } else {
+        requested
+    }
+}
+
 /// Cap concurrent extractions for capacity-bound local providers.
 ///
 /// Ollama defaults to ~1 parallel sequence (`OLLAMA_NUM_PARALLEL`). Cloud-scale

@@ -62,7 +62,7 @@ export function DocumentFilters({
         onValueChange={(v) => onStatusChange(v as DocStatus)}
       >
         <SelectTrigger
-          className="w-40 h-10"
+          className="w-44 h-9"
           aria-label={t('documents.filter.status', 'Filter by status')}
         >
           <SelectValue placeholder={t('documents.filter.status')} />
@@ -82,8 +82,8 @@ export function DocumentFilters({
       <div className="h-6 w-px bg-border hidden sm:block" />
 
       {/* Sort Controls — date shortcuts; full column sort lives in table headers */}
-      <div className="flex items-center gap-1.5">
-        <span className="text-sm text-muted-foreground whitespace-nowrap">
+      <div className="flex h-9 items-center gap-1" role="group" aria-label={t('documents.filter.sortBy')}>
+        <span className="mr-0.5 text-sm leading-none text-muted-foreground whitespace-nowrap">
           {t('documents.filter.sortBy')}
         </span>
         <Button

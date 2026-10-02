@@ -288,6 +288,7 @@ pub fn progress_from_document_metadata(
     let progress_01 = meta_f32(obj, "stage_progress");
     // LAW-IS1: structured progress_counts is SSOT; message regex is fallback only.
     let counts = crate::services::resolve_progress_counts(obj, &message);
+    let run_progress = crate::services::run_progress_from_metadata(obj);
     let mode = meta_str(obj, "reprocess_mode").or_else(|| meta_str(obj, "mode"));
     let cost_usd = meta_f64(obj, "cost_usd");
     let updated_at = meta_str(obj, "updated_at").unwrap_or_else(|| Utc::now().to_rfc3339());
@@ -317,6 +318,7 @@ pub fn progress_from_document_metadata(
         stage_status,
         message: message.clone(),
         counts,
+        run_progress,
         progress_01,
         mode,
         cost_usd,

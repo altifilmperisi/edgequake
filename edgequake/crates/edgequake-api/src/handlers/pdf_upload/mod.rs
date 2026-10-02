@@ -4,10 +4,12 @@
 //! - `types`: DTOs and request/response structs
 //! - `upload`: Main upload handler
 //! - `status`: Status, listing, deletion, progress handlers
+//! - `byte_range`: HTTP `Range` parsing for on-demand PDF byte serving
 //! - `content`: Download and content retrieval handlers
 //! - `helpers`: Internal utilities (storage access, task creation, page counting)
 //! - `operations`: Retry and cancel handlers
 
+pub mod byte_range;
 pub mod content;
 mod helpers;
 pub mod operations;

@@ -215,9 +215,7 @@ impl GraphEdgeResponse {
             .or_else(|| edge.properties.get("id"))
             .and_then(|v| v.as_str())
             .map(str::to_string)
-            .unwrap_or_else(|| {
-                Self::stable_id(&edge.source, &relationship_type, &edge.target)
-            });
+            .unwrap_or_else(|| Self::stable_id(&edge.source, &relationship_type, &edge.target));
         Self {
             id,
             source: edge.source,

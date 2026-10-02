@@ -140,3 +140,5 @@ cargo test -p edgequake-api --test spec027_api_contract
 - Touched files ≤ 500 lines (target ≤ 300)
 - Graph: filter/search cause no Sigma rebuild; export matches canvas
 - Every F-155 maps to an EC and a named test
+
+- [13-run-progress-ledger.md](./13-run-progress-ledger.md) — Prepare/Extract typed progress ledger (2026-10-02)

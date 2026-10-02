@@ -23,6 +23,7 @@ fn decide(
         has_active_ingest_task: ingest,
         has_active_deletion_task: deletion,
         cancel_intent: cancel,
+        tombstoned: false,
     })
 }
 
@@ -42,6 +43,35 @@ fn matrix_lifecycle_exclusive_never_admits() {
         assert_eq!(
             decide(status, true, true, true, false, false),
             ReprocessAdmitDecision::Skip(expected)
+        );
+    }
+}
+
+/// The 2026-10 incident: a batch delete tombstoned the document, cleanup timed
+/// out, and the row still read `failed`. The projection said "reprocess me";
+/// the authority said "never". Authority wins for every status, even `force`.
+#[test]
+fn matrix_tombstone_beats_any_stale_status_even_force_full() {
+    for status in [
+        "failed",
+        "cancelled",
+        "partial_failure",
+        "completed",
+        "processing",
+    ] {
+        let d = evaluate_reprocess_admission(ReprocessAdmitContext {
+            status: Some(status),
+            force: true,
+            restart_from_scratch: true,
+            has_active_ingest_task: false,
+            has_active_deletion_task: false,
+            cancel_intent: false,
+            tombstoned: true,
+        });
+        assert_eq!(
+            d,
+            ReprocessAdmitDecision::Skip(ReprocessSkipReason::Tombstoned),
+            "status={status}"
         );
     }
 }
@@ -105,4 +135,5 @@ fn matrix_skip_reason_keys_stable_for_api() {
     );
     assert_eq!(ReprocessSkipReason::DeleteFailed.as_str(), "delete_failed");
     assert_eq!(ReprocessSkipReason::NotFound.as_str(), "not_found");
+    assert_eq!(ReprocessSkipReason::Tombstoned.as_str(), "tombstoned");
 }

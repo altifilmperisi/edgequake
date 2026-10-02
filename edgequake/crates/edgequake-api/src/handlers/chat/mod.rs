@@ -97,6 +97,7 @@ pub mod completion;
 pub mod conversation_guard;
 pub mod history;
 pub mod lineage;
+pub mod stream_persist;
 pub mod streaming;
 pub mod validation;
 

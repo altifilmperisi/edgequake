@@ -3,6 +3,7 @@
  * Extends the SPEC-017 tenant seed pattern with full surface coverage.
  */
 import type { Page } from "@playwright/test";
+import { installHermeticGuard, SEED_PATH } from "./mock-hermetic";
 import {
   FIXTURE_100,
   FIXTURE_EMPTY,
@@ -32,7 +33,59 @@ export type Spec155MockOptions = {
   graph?: FixtureGraph;
   documents?: Array<Record<string, unknown>>;
   emptyDocs?: boolean;
+  /** Override chat SSE scenario (SPEC-155 W7Q). */
+  chatScenario?: import("./mock-chat-sse").MockChatScenario;
+  /** When provided, every chat POST body is pushed here (stream flag + payload). */
+  chatRequests?: ChatRequestCapture[];
+  /** Collects `METHOD /path` of API calls no mock covered (answered 404). */
+  unmocked?: string[];
 };
+
+export type ChatRequestCapture = { stream: boolean; body: Record<string, unknown> };
+
+/** LLM catalog served by `GET /models/llm` (one streaming, one non-streaming). */
+export const MOCK_LLM_CATALOG = {
+  default_provider: "openai",
+  default_model: "gpt-5-nano",
+  models: [
+    mockLlm("openai", "OpenAI", "gpt-5-nano", "GPT-5 Nano", { vision: true }),
+    mockLlm("openai", "OpenAI", "gpt-5-mini", "GPT-5 Mini", { thinking: true }),
+    mockLlm("ollama", "Ollama", "gemma3:latest", "Gemma 3", {}),
+    mockLlm("ollama", "Ollama", "batch-only", "Batch only", { streaming: false }),
+  ],
+};
+
+function mockLlm(
+  provider: string,
+  providerName: string,
+  name: string,
+  display: string,
+  caps: { vision?: boolean; thinking?: boolean; streaming?: boolean },
+) {
+  return {
+    provider,
+    provider_display_name: providerName,
+    name,
+    display_name: display,
+    model_type: "llm",
+    description: "",
+    deprecated: false,
+    available: true,
+    tags: [],
+    cost: { input_per_1k: 0, output_per_1k: 0, embedding_per_1k: 0, image_per_unit: 0 },
+    capabilities: {
+      context_length: 128000,
+      max_output_tokens: 4096,
+      supports_vision: !!caps.vision,
+      supports_function_calling: true,
+      supports_json_mode: true,
+      supports_streaming: caps.streaming !== false,
+      supports_system_message: true,
+      embedding_dimension: 0,
+      supports_thinking: !!caps.thinking,
+    },
+  };
+}
 
 const DEFAULT_DOCS = [
   {
@@ -65,6 +118,19 @@ function json(data: unknown, status = 200) {
   };
 }
 
+function captureChat(
+  options: Spec155MockOptions,
+  request: import("@playwright/test").Request,
+  stream: boolean,
+): void {
+  if (!options.chatRequests) return;
+  try {
+    options.chatRequests.push({ stream, body: request.postDataJSON() ?? {} });
+  } catch {
+    options.chatRequests.push({ stream, body: {} });
+  }
+}
+
 function sseBody(events: Array<{ event?: string; data: unknown }>): string {
   return events
     .map((e) => {
@@ -77,7 +143,9 @@ function sseBody(events: Array<{ event?: string; data: unknown }>): string {
 }
 
 export async function seedSpec155Tenant(page: Page): Promise<void> {
-  await page.goto("/", { waitUntil: "domcontentloaded" });
+  // Seed on a blank same-origin document so the app never boots tenant-less
+  // (that boot fired un-tenanted API calls and a WebSocket before the reload).
+  await page.goto(SEED_PATH, { waitUntil: "domcontentloaded" });
   await page.evaluate(
     ({ tenant, workspace }) => {
       localStorage.clear();
@@ -122,6 +190,9 @@ export async function mockSpec155Api(
   const kg = toKnowledgeGraphResponse(graph);
   const docs = options.emptyDocs ? [] : (options.documents ?? DEFAULT_DOCS);
 
+  // Must be first: lowest priority catch-all + local WebSocket (see mock-hermetic).
+  await installHermeticGuard(page, options.unmocked);
+
   await page.route("**/health**", (route) =>
     route.fulfill(
       json({
@@ -160,7 +231,16 @@ export async function mockSpec155Api(
     route.fulfill(json({ providers: [], default_provider: "mock" })),
   );
   await page.route("**/api/v1/tasks**", (route) =>
-    route.fulfill(json({ items: [], total: 0, page: 1, page_size: 50 })),
+    route.fulfill(
+      json({
+        tasks: [],
+        items: [],
+        total: 0,
+        page: 1,
+        page_size: 50,
+        statistics: { pending: 0, processing: 0, indexed: 0, failed: 0, cancelled: 0 },
+      }),
+    ),
   );
 
   await page.route("**/api/v1/tenants/*/workspaces**", (route) =>
@@ -309,65 +389,238 @@ export async function mockSpec155Api(
     return route.fulfill(json(kg));
   });
 
-  await page.route("**/api/v1/conversations**", (route) =>
-    route.fulfill(
+  // In-memory conversations filled from stream done events (SPEC-155)
+  const convStore = new Map<
+    string,
+    {
+      id: string;
+      title: string;
+      messages: Array<Record<string, unknown>>;
+      updated_at: string;
+    }
+  >();
+
+  await page.route("**/api/v1/conversations**", async (route) => {
+    const url = new URL(route.request().url());
+    const path = url.pathname;
+    const method = route.request().method();
+
+    // GET /conversations/:id
+    const detailMatch = path.match(/\/api\/v1\/conversations\/([^/]+)\/?$/);
+    if (method === "GET" && detailMatch && !path.endsWith("/conversations")) {
+      const id = decodeURIComponent(detailMatch[1]);
+      const conv = convStore.get(id);
+      if (conv) {
+        return route.fulfill(
+          json({
+            ...conv,
+            created_at: conv.updated_at,
+            mode: "mix",
+            message_count: conv.messages.length,
+          }),
+        );
+      }
+      return route.fulfill(
+        json({
+          id,
+          title: "Conversation",
+          messages: [],
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          mode: "mix",
+          message_count: 0,
+        }),
+      );
+    }
+
+    // List
+    const items = Array.from(convStore.values()).map((c) => ({
+      id: c.id,
+      title: c.title,
+      updated_at: c.updated_at,
+      created_at: c.updated_at,
+      mode: "mix",
+      message_count: c.messages.length,
+    }));
+    return route.fulfill(
       json({
-        items: [],
+        items,
         pagination: {
           has_more: false,
           next_cursor: null,
           prev_cursor: null,
-          total: 0,
+          total: items.length,
         },
       }),
-    ),
-  );
+    );
+  });
 
   await page.route("**/api/v1/chat/completions/stream**", async (route) => {
-    const subgraph = {
-      entities: kg.nodes.slice(0, 5).map((n) => ({
-        id: `ent:${n.label}`,
-        graph_node_id: n.id,
-        name: n.label,
-        entity_type: n.node_type,
-        score: 0.9,
-        degree: n.degree,
-      })),
-      relationships: kg.edges.slice(0, 4).map((e) => ({
-        source: e.source,
-        target: e.target,
-        relation_type: e.relationship_type,
-        score: 0.8,
-      })),
-    };
-    const body = sseBody([
-      { event: "context", data: { type: "context", subgraph, sources: [] } },
-      {
-        event: "token",
-        data: { type: "token", content: "Mock answer about " },
-      },
-      {
-        event: "token",
-        data: { type: "token", content: kg.nodes[0]?.label ?? "entities" },
-      },
-      {
-        event: "done",
-        data: {
+    captureChat(options, route.request(), true);
+    const { SCENARIO_HAPPY, sseBodyFromEvents } = await import("./mock-chat-sse");
+    const scenario = options.chatScenario ?? SCENARIO_HAPPY;
+    let events = scenario.events;
+    if (!options.chatScenario && kg.nodes.length > 0) {
+      const subgraph = {
+        entities: kg.nodes.slice(0, 5).map((n) => ({
+          id: `ent:${n.label}`,
+          graph_node_id: n.id,
+          name: n.label,
+          entity_type: n.node_type,
+          score: 0.9,
+          degree: n.degree,
+        })),
+        relationships: kg.edges.slice(0, 4).map((e) => ({
+          source: e.source,
+          target: e.target,
+          relation_type: e.relationship_type,
+          score: 0.8,
+        })),
+      };
+      events = [
+        {
+          type: "conversation",
+          conversation_id: "conv-spec155-001",
+          user_message_id: "msg-user-001",
+        },
+        { type: "stage", stage: "retrieving" },
+        {
+          type: "context",
+          sources: [
+            {
+              source_type: "chunk",
+              id: "chunk-1",
+              score: 0.9,
+              snippet: "Mock passage",
+              document_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+              file_path: "lightrag.pdf",
+              page_start: 3,
+            },
+          ],
+          subgraph,
+          query_mode: "mix",
+          retrieval_time_ms: 10,
+        },
+        { type: "stage", stage: "generating" },
+        { type: "token", content: "Mock answer about " },
+        { type: "token", content: kg.nodes[0]?.label ?? "entities" },
+        {
           type: "done",
-          answer: `Mock answer about ${kg.nodes[0]?.label ?? "entities"}.`,
+          assistant_message_id: "msg-asst-001",
           tokens_used: 42,
           duration_ms: 120,
+          answer: `Mock answer about ${kg.nodes[0]?.label ?? "entities"}.`,
           llm_provider: "mock",
           llm_model: "mock",
-          subgraph,
         },
-      },
-    ]);
+      ];
+    }
+
+    // Persist conversation from scenario so reload/merge keeps CoT content
+    const convEvt = events.find((e) => e.type === "conversation") as
+      | { conversation_id: string; user_message_id: string }
+      | undefined;
+    const doneEvt = events.find((e) => e.type === "done") as
+      | {
+          assistant_message_id: string;
+          answer?: string;
+          tokens_used?: number;
+          duration_ms?: number;
+        }
+      | undefined;
+    const ctxEvt = events.find((e) => e.type === "context") as
+      | { sources: Array<Record<string, unknown>> }
+      | undefined;
+    const tokenText = events
+      .filter((e) => e.type === "token")
+      .map((e) => (e as { content: string }).content)
+      .join("");
+    if (convEvt) {
+      const answer = doneEvt?.answer ?? tokenText;
+      const now = new Date().toISOString();
+      convStore.set(convEvt.conversation_id, {
+        id: convEvt.conversation_id,
+        title: "Mock conversation",
+        updated_at: now,
+        messages: [
+          {
+            message_id: convEvt.user_message_id,
+            role: "user",
+            content: "user query",
+            created_at: now,
+          },
+          {
+            message_id: doneEvt?.assistant_message_id ?? "msg-asst",
+            role: "assistant",
+            content: answer,
+            created_at: now,
+            tokens_used: doneEvt?.tokens_used,
+            duration_ms: doneEvt?.duration_ms,
+            // Backend persists retrieval context with the assistant message.
+            context: ctxEvt ? { sources: ctxEvt.sources } : undefined,
+          },
+        ],
+      });
+    }
+
+    const delayMs = options.chatScenario?.delayMs ?? 0;
+    if (delayMs > 0 && events.length > 0) {
+      // Playwright fulfill doesn't stream chunks; simulate a slow start so Stop is clickable.
+      await new Promise((r) => setTimeout(r, Math.min(delayMs * 8, 2000)));
+    }
+
     await route.fulfill({
       status: 200,
       contentType: "text/event-stream",
-      body,
+      headers: { "Cache-Control": "no-cache", "X-Accel-Buffering": "no" },
+      body: sseBodyFromEvents(events),
     });
+  });
+
+  // Non-stream chat completions POST
+  await page.route("**/api/v1/chat/completions**", async (route) => {
+    if (route.request().url().includes("/stream")) {
+      await route.fallback();
+      return;
+    }
+    captureChat(options, route.request(), false);
+    // Mirror the backend: the blocking path persists the exchange server-side.
+    const now = new Date().toISOString();
+    convStore.set("conv-spec155-001", {
+      id: "conv-spec155-001",
+      title: "Mock conversation",
+      updated_at: now,
+      messages: [
+        { message_id: "u1", role: "user", content: "user query", created_at: now },
+        {
+          message_id: "a1",
+          role: "assistant",
+          content: "Mock non-stream answer",
+          created_at: now,
+          tokens_used: 10,
+          duration_ms: 50,
+        },
+      ],
+    });
+    await route.fulfill(
+      json({
+        conversation_id: "conv-spec155-001",
+        user_message_id: "u1",
+        assistant_message_id: "a1",
+        content: "Mock non-stream answer",
+        mode: "mix",
+        sources: [],
+        stats: {
+          embedding_time_ms: 1,
+          retrieval_time_ms: 1,
+          generation_time_ms: 1,
+          total_time_ms: 3,
+          sources_retrieved: 0,
+        },
+        tokens_used: 10,
+        duration_ms: 50,
+      }),
+    );
   });
 
   await page.route("**/api/v1/costs**", (route) =>
@@ -396,8 +649,23 @@ export async function mockSpec155Api(
     ),
   );
 
+  // Registered after the generic documents route so it wins (Playwright: last match first).
+  await page.route("**/api/v1/documents/search**", (route) => {
+    const q = (new URL(route.request().url()).searchParams.get("q") ?? "").toLowerCase();
+    const items = docs
+      .filter((d) => d.status === "completed")
+      .filter((d) => !q || String(d.title).toLowerCase().includes(q))
+      .map((d) => ({ id: d.id, title: d.title, status: d.status, created_at: d.created_at }));
+    return route.fulfill(json({ items, total: items.length, has_more: false }));
+  });
+
   await page.route("**/api/v1/models**", (route) =>
     route.fulfill(json({ items: [{ id: "mock", provider: "mock", name: "Mock" }] })),
+  );
+
+  // Registered after the generic models route so it wins.
+  await page.route("**/api/v1/models/llm**", (route) =>
+    route.fulfill(json(MOCK_LLM_CATALOG)),
   );
 
   await page.route("**/api/v1/providers**", (route) =>

@@ -37,6 +37,7 @@ interface StreamingMarkdownRendererProps {
   className?: string;
   /** Callback for citation clicks */
   onCitationClick?: (citationId: string) => void;
+  resolveCitation?: import('./citation-resolver').CitationResolver;
   /**
    * Optional line range to highlight (1-based inclusive).
    * WHY: Chunk selection in document detail needs to highlight
@@ -313,6 +314,7 @@ export const StreamingMarkdownRenderer = memo(function StreamingMarkdownRenderer
   isStreaming = false,
   className,
   onCitationClick,
+  resolveCitation,
   highlightLineRange,
   revealPage = null,
 }: StreamingMarkdownRendererProps) {
@@ -480,6 +482,7 @@ export const StreamingMarkdownRenderer = memo(function StreamingMarkdownRenderer
           tokens={tokens}
           isStreaming={false}
           onSourceClick={onCitationClick}
+          resolveCitation={resolveCitation}
           highlightedIndices={highlightedIndices}
           revealPage={revealPage}
         />
@@ -488,6 +491,7 @@ export const StreamingMarkdownRenderer = memo(function StreamingMarkdownRenderer
           tokens={tokens}
           isStreaming={isStreaming}
           onSourceClick={onCitationClick}
+          resolveCitation={resolveCitation}
           highlightedIndices={highlightedIndices}
         />
       )}

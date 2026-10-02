@@ -36,6 +36,7 @@ pub mod document_page_layout_persist;
 pub mod document_quota;
 pub mod document_reingest;
 pub mod document_task_cleanup;
+pub mod document_tombstone;
 pub mod document_vector_storage;
 pub mod entity_graph_lookup;
 pub mod entity_merge;
@@ -113,6 +114,8 @@ pub mod reprocess_stage_reset;
 pub mod retract_document_indexes;
 pub mod retrieval_id_cache;
 pub mod route_registry;
+pub mod run_progress;
+pub mod run_progress_writer;
 pub mod session_storage;
 pub mod source_reference_builder;
 pub mod staging_admission;
@@ -153,7 +156,7 @@ pub use content_hasher::ContentHasher;
 pub use converting_subprogress::{
     report_vision_figure_analyze, report_vision_figure_analyze_ex, vision_figure_analyze_message,
     vision_figure_analyze_message_local, vision_figure_analyze_progress_01,
-    ConvertingSubstepReporter, VisionFigureProgressOpts,
+    ConvertingSubstepReporter, ConvertingSubstepUpdate, VisionFigureProgressOpts,
 };
 pub use document_assets::{
     document_mm_assets_root, mm_assets_base_dir, multimodal_asset_base_dir,
@@ -323,6 +326,15 @@ pub use retract_document_indexes::{
     retract_document_indexes, retract_document_indexes_checked, retract_on_cancel_total,
 };
 pub use retrieval_id_cache::{global_retrieval_cache, new_retrieval_id, RetrievalIdCache};
+pub use run_progress::{
+    apply_event as apply_run_progress_event, apply_run_progress_to_metadata, apply_task,
+    clamp_monotonic as clamp_run_progress_monotonic, clear_run_progress, derive_current_stage,
+    derive_progress_counts, derive_stage_message, derive_stage_progress01, insert_run_progress,
+    run_progress_from_metadata, run_progress_from_value, RunPhaseId, RunPhaseProgress,
+    RunPhaseState, RunProgress, RunProgressEvent, RunTaskId, RunTaskProgress, RunTaskUnit,
+    RUN_PROGRESS_KEY,
+};
+pub use run_progress_writer::RunProgressWriter;
 pub use source_reference_builder::{build_sources_from_context, is_injection_source};
 pub use staging_admission::{
     promote_staging_to_final, release_staging_reservation, rollback_staging,

@@ -79,7 +79,7 @@ test.describe("SPEC-037 Full Passage Text", () => {
     });
     await page.keyboard.press("Escape");
 
-    await page.getByRole("textbox", { name: "Ask a question..." }).fill(
+    await page.getByRole("combobox", { name: /ask a question/i }).fill(
       "What is retrieval augmented generation?",
     );
     await page.getByRole("button", { name: /send/i }).click();
@@ -114,7 +114,7 @@ test.describe("SPEC-037 Full Passage Text", () => {
     }
     await page.keyboard.press("Escape");
 
-    await page.getByRole("textbox", { name: "Ask a question..." }).fill(
+    await page.getByRole("combobox", { name: /ask a question/i }).fill(
       "Explain knowledge graphs briefly",
     );
     await page.getByRole("button", { name: /send/i }).click();

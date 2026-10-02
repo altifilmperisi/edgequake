@@ -973,10 +973,15 @@ select:focus,
   box-shadow: 0 0 0 3px oklch(from var(--primary) l c h / 0.15);
 }
 
-/* Query input enhanced focus */
-.query-input:focus {
-  border-color: oklch(0.65 0.2 290);
-  box-shadow: 0 0 0 3px oklch(0.65 0.2 290 / 0.15);
+/* Query composer textarea lives inside a shell that owns focus chrome.
+ * Kill competing global focus rings so the edge does not look double-bordered. */
+.query-input,
+.query-input:focus,
+.query-input:focus-visible {
+  border: none !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  outline: none !important;
 }
 
 /* ============================================

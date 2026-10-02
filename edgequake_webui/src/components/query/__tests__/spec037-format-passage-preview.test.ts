@@ -1,16 +1,6 @@
 import { describe, expect, it } from "bun:test";
 
-/** Mirror of source-citations formatPassagePreview (SPEC-037). */
-function formatPassagePreview(content: string, fullChunkContent: boolean): string {
-  const clean = content.replace(/[*_`~#]+/g, "").trim();
-  if (fullChunkContent) {
-    return clean || content;
-  }
-  if (clean.length > 220) {
-    return clean.slice(0, 220).replace(/[*_`~]+$/, "") + "…";
-  }
-  return clean || content.slice(0, 220);
-}
+import { formatPassagePreview } from "@/lib/citations/passage-text";
 
 describe("SPEC-037 formatPassagePreview", () => {
   it("returns full text when fullChunkContent is true", () => {

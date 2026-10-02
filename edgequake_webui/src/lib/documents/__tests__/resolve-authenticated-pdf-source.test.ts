@@ -3,6 +3,8 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  buildAuthenticatedPdfSource,
+  PDF_LOAD_OPTIONS,
   extractPdfSourceUrl,
   fetchAuthenticatedPdfBlobUrl,
   fetchAuthenticatedPdfData,
@@ -100,5 +102,24 @@ describe("resolve-authenticated-pdf-source", () => {
     expect(blobUrl).toBe("blob:mock-pdf-url");
     const headers = vi.mocked(fetch).mock.calls[0]![1]?.headers as Headers;
     expect(headers.get("Authorization")).toBe("Bearer test-token-149");
+  });
+
+  it("describes a protected PDF for pdf.js without downloading the body", () => {
+    const fetchMock = vi.mocked(fetch);
+    const src = buildAuthenticatedPdfSource(
+      "http://api/api/v1/documents/pdf/abc/download",
+    );
+    expect(src.url).toBe("http://api/api/v1/documents/pdf/abc/download");
+    expect(src.httpHeaders.authorization).toBe("Bearer test-token-149");
+    expect(src.httpHeaders["x-workspace-id"]).toBe("ws-1");
+    // JSON content-type would make no sense on a binary GET.
+    expect(src.httpHeaders["content-type"]).toBeUndefined();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("loads on demand: no background prefetch, 128 KiB range chunks", () => {
+    expect(PDF_LOAD_OPTIONS.disableAutoFetch).toBe(true);
+    expect(PDF_LOAD_OPTIONS.disableStream).toBe(true);
+    expect(PDF_LOAD_OPTIONS.rangeChunkSize).toBe(131072);
   });
 });

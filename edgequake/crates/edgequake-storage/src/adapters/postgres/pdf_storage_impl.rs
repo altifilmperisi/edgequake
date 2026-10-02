@@ -340,6 +340,52 @@ impl PdfDocumentStorage for PostgresPdfStorage {
             .await
     }
 
+    async fn get_pdf_blob_info(&self, pdf_id: &Uuid) -> Result<Option<PdfBlobInfo>> {
+        let row = sqlx::query(
+            r#"
+            SELECT d.workspace_id, d.filename, octet_length(b.pdf_data)::bigint AS total_bytes
+            FROM pdf_documents d
+            INNER JOIN pdf_document_blobs b ON b.pdf_id = d.pdf_id
+            WHERE d.pdf_id = $1
+            LIMIT 1
+            "#,
+        )
+        .bind(pdf_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| StorageError::Database(format!("Failed to fetch PDF info: {e}")))?;
+        Ok(row.map(|r| PdfBlobInfo {
+            workspace_id: r.get("workspace_id"),
+            filename: r.get("filename"),
+            total_bytes: r.get::<i64, _>("total_bytes").max(0) as u64,
+        }))
+    }
+
+    async fn get_pdf_bytes_range(
+        &self,
+        pdf_id: &Uuid,
+        start: u64,
+        end: u64,
+    ) -> Result<Option<Vec<u8>>> {
+        // `substring(bytea FROM n FOR len)` is 1-based and runs inside Postgres,
+        // so only the requested window crosses the wire.
+        let from = i32::try_from(start + 1)
+            .map_err(|_| StorageError::Database("PDF range start out of bounds".into()))?;
+        let len = i32::try_from(end - start + 1)
+            .map_err(|_| StorageError::Database("PDF range length out of bounds".into()))?;
+        let row = sqlx::query(
+            "SELECT substring(pdf_data FROM $2 FOR $3) AS chunk \
+             FROM pdf_document_blobs WHERE pdf_id = $1",
+        )
+        .bind(pdf_id)
+        .bind(from)
+        .bind(len)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| StorageError::Database(format!("Failed to fetch PDF range: {e}")))?;
+        Ok(row.map(|r| r.get::<Vec<u8>, _>("chunk")))
+    }
+
     async fn find_pdf_by_checksum(
         &self,
         workspace_id: &Uuid,

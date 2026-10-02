@@ -16,6 +16,7 @@ import { cn } from '@/lib/utils';
 import type { Token, Tokens } from 'marked';
 import { lazy, memo, Suspense, useId } from 'react';
 import { MarkdownInlineTokens } from './MarkdownInlineTokens';
+import type { CitationResolver } from './citation-resolver';
 import type { AlertType } from './utils/configure-marked';
 import { MathTokenRenderer } from './MathTokenRenderer';
 import { sanitizeHtml } from './utils/sanitize-html';
@@ -30,6 +31,7 @@ interface MarkdownTokensProps {
   isStreaming?: boolean;
   className?: string;
   onSourceClick?: (sourceId: string) => void;
+  resolveCitation?: CitationResolver;
   /**
    * Set of token indices that should be visually highlighted.
    * WHY: Supports chunk/line selection in document detail without
@@ -44,6 +46,7 @@ interface TokenRendererProps {
   isStreaming?: boolean;
   isLastToken?: boolean;
   onSourceClick?: (sourceId: string) => void;
+  resolveCitation?: CitationResolver;
 }
 
 // Skeleton loader for code blocks
@@ -87,6 +90,7 @@ const TokenRenderer = memo(function TokenRenderer({
   isStreaming = false,
   isLastToken = false,
   onSourceClick,
+  resolveCitation,
 }: TokenRendererProps) {
   switch (token.type) {
     case 'heading': {
@@ -107,6 +111,7 @@ const TokenRenderer = memo(function TokenRenderer({
             tokens={heading.tokens}
             done={!isStreaming || !isLastToken}
             onSourceClick={onSourceClick}
+            resolveCitation={resolveCitation}
           />
         </Tag>
       );
@@ -121,6 +126,7 @@ const TokenRenderer = memo(function TokenRenderer({
             tokens={paragraph.tokens}
             done={!isStreaming || !isLastToken}
             onSourceClick={onSourceClick}
+            resolveCitation={resolveCitation}
           />
         </p>
       );
@@ -164,6 +170,7 @@ const TokenRenderer = memo(function TokenRenderer({
             tokens={blockquote.tokens}
             isStreaming={isStreaming}
             onSourceClick={onSourceClick}
+            resolveCitation={resolveCitation}
           />
         </blockquote>
       );
@@ -231,6 +238,7 @@ const TokenRenderer = memo(function TokenRenderer({
                       tokens={cell.tokens}
                       done
                       onSourceClick={onSourceClick}
+                      resolveCitation={resolveCitation}
                     />
                   </th>
                 ))}
@@ -256,6 +264,7 @@ const TokenRenderer = memo(function TokenRenderer({
                         tokens={cell.tokens}
                         done
                         onSourceClick={onSourceClick}
+                        resolveCitation={resolveCitation}
                       />
                     </td>
                   ))}
@@ -328,6 +337,7 @@ const TokenRenderer = memo(function TokenRenderer({
             tokens={text.tokens}
             done={!isStreaming || !isLastToken}
             onSourceClick={onSourceClick}
+            resolveCitation={resolveCitation}
           />
         );
       }
@@ -355,6 +365,7 @@ export const MarkdownTokens = memo(function MarkdownTokens({
   isStreaming = false,
   className,
   onSourceClick,
+  resolveCitation,
   highlightedIndices,
 }: MarkdownTokensProps) {
   const baseId = useId();
@@ -371,6 +382,7 @@ export const MarkdownTokens = memo(function MarkdownTokens({
             isStreaming={isStreaming}
             isLastToken={index === tokens.length - 1}
             onSourceClick={onSourceClick}
+            resolveCitation={resolveCitation}
           />
         );
 

@@ -64,6 +64,8 @@ export interface QuerySettings {
    * @implements SPEC-031: Explicit document scope selection
    */
   scopedDocumentIds?: string[];
+  /** Display titles for `scopedDocumentIds` (chip labels; filled by `@` mentions / picker). */
+  scopedDocumentTitles?: Record<string, string>;
   /**
    * When true, stream context events request full chunk text (content_granularity: agent).
    * @implements SPEC-037

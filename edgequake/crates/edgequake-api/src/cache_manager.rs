@@ -184,6 +184,9 @@ mod tests {
             is_error: false,
             llm_provider: None,
             llm_model: None,
+            feedback_rating: None,
+            feedback_reason: None,
+            finish_reason: None,
             created_at: now,
             updated_at: now,
         }

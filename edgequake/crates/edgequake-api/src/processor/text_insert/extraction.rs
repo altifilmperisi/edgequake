@@ -172,28 +172,11 @@ impl DocumentTaskProcessor {
                     &processed_text,
                 )
                 .await;
-                let kv_for_chunks = Arc::clone(&self.kv_storage);
-                let doc_for_chunks = document_id.clone();
-                let ws_for_chunks = data.workspace_id.clone();
-                let provider_for_chunks = provider_lineage.extraction_provider.clone();
-                let text_for_chunks = processed_text.clone();
-                let on_chunk: Option<edgequake_pipeline::ChunkExtractedCallback> =
-                    Some(std::sync::Arc::new(move |chunk_id, result| {
-                        let kv = Arc::clone(&kv_for_chunks);
-                        let doc = doc_for_chunks.clone();
-                        let ws = ws_for_chunks.clone();
-                        let provider = provider_for_chunks.clone();
-                        let text = text_for_chunks.clone();
-                        tokio::spawn(async move {
-                            super::pipeline_checkpoint::save_partial_chunk_extraction(
-                                &kv, &doc, &ws, &provider, &text, &chunk_id, result,
-                            )
-                            .await;
-                        });
-                    }));
                 // SPEC-151: content-hash reuse for page reprocess (excluded pages = dirty).
                 // Use hybrid loader so splice hash mismatch does not wipe the snapshot (EC-151-20).
                 // Fail closed when there is nothing reusable — never LLM the whole document.
+                // WHY before writer spawn (SPEC-156 / SRP): do not open a checkpoint
+                // consumer for a path that returns before any chunk completes.
                 let reuse_index = if let Some(ref excluded) = data.reuse_excluded_pages {
                     if excluded.is_empty() {
                         None
@@ -248,6 +231,20 @@ impl DocumentTaskProcessor {
                 } else {
                     None
                 };
+                // SPEC-156: single-writer coalescing partial checkpoint (no
+                // per-chunk tokio::spawn RMW races / O(N²) rewrite).
+                let partial_writer = crate::processor::partial_chunk_checkpoint_writer::PartialChunkCheckpointWriter::spawn(
+                    document_id.clone(),
+                    data.workspace_id.clone(),
+                    provider_lineage.extraction_provider.clone(),
+                    &processed_text,
+                    Arc::clone(&self.kv_storage),
+                );
+                let writer_for_cb = partial_writer.clone();
+                let on_chunk: Option<edgequake_pipeline::ChunkExtractedCallback> =
+                    Some(std::sync::Arc::new(move |chunk_id, result| {
+                        writer_for_cb.submit(chunk_id, result);
+                    }));
                 let fresh_result = match pipeline
                     .process_with_resilience_cancellable_reuse(
                         &document_id,
@@ -308,6 +305,7 @@ impl DocumentTaskProcessor {
                             self.pipeline_state
                                 .document_failed(&document_id, &error_msg)
                                 .await;
+                            partial_writer.flush_now().await;
                             return Err(edgequake_tasks::TaskError::Process(error_msg));
                         }
 
@@ -382,6 +380,7 @@ impl DocumentTaskProcessor {
                                 &error_msg,
                             )
                             .await;
+                            partial_writer.flush_now().await;
                             return Err(edgequake_tasks::TaskError::Cancelled(error_msg));
                         }
                         error!(
@@ -438,6 +437,7 @@ impl DocumentTaskProcessor {
                             .document_failed(&document_id, &error_msg)
                             .await;
 
+                        partial_writer.flush_now().await;
                         return Err(edgequake_tasks::TaskError::Process(error_msg));
                     }
                 };
@@ -463,6 +463,7 @@ impl DocumentTaskProcessor {
                         "Failed to save pipeline checkpoint — processing continues without checkpoint"
                     );
                 } else {
+                    partial_writer.flush_now().await;
                     super::pipeline_checkpoint::clear_partial_chunk_checkpoint(
                         &self.kv_storage,
                         &document_id,
@@ -593,44 +594,19 @@ impl DocumentTaskProcessor {
         })
     }
 
-    /// Fire-and-forget KV progress while embedding sub-batches run.
+    /// Fire-and-forget progress while embedding sub-batches run (SPEC-155 ledger).
     fn build_embed_progress_callback(&self, document_id: &str) -> EmbedProgressCallback {
-        let doc_id_for_embed = document_id.to_string();
-        let kv_for_embed = Arc::clone(&self.kv_storage);
+        let run_progress = crate::services::RunProgressWriter::spawn(
+            document_id.to_string(),
+            Arc::clone(&self.kv_storage),
+        );
         Arc::new(move |update: EmbedProgressUpdate| {
-            let doc_id_clone = doc_id_for_embed.clone();
-            let kv_clone = Arc::clone(&kv_for_embed);
-            let stage = update.stage;
-            let current = update.current;
-            let total = update.total;
-
-            tokio::spawn(async move {
-                let pct = if total == 0 {
-                    100u32
-                } else {
-                    ((current as f64 / total as f64) * 100.0).round() as u32
-                };
-                let label = stage;
-                // Always emit N/M + structured progress_counts (LAW-IS1).
-                let msg = format!("Embedding {label}: {current}/{total} ({pct}%)");
-                let _ =
-                    crate::services::patch_document_metadata(&kv_clone, &doc_id_clone, |updated| {
-                        updated.insert("current_stage".to_string(), json!("embedding"));
-                        crate::services::sync_progress_counts_from_message(updated, &msg);
-                        updated.insert("stage_message".to_string(), json!(msg));
-                        // Overall ingest band is 0.99–1.0 (SPEC/#197): 0.99 means
-                        // "embedding sub-stage started", not "chunks almost done".
-                        updated.insert(
-                            "stage_progress".to_string(),
-                            json!(0.99 + (0.01 * pct as f64 / 100.0)),
-                        );
-                        updated.insert(
-                            "updated_at".to_string(),
-                            json!(chrono::Utc::now().to_rfc3339()),
-                        );
-                    })
-                    .await;
-            });
+            run_progress.task(
+                crate::services::RunTaskId::Embeddings,
+                update.current as u64,
+                update.total as u64,
+                None,
+            );
         })
     }
 }

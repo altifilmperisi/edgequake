@@ -136,3 +136,33 @@ export function patchDocumentsCancelOptimistic(
     },
   );
 }
+
+/**
+ * Patch documents list cache to terminal Cancelled by document id.
+ * For orphan rows with no `track_id`, where no Stopping… phase exists.
+ */
+export function patchDocumentsCancelledByDocumentId(
+  queryClient: QueryClient,
+  documentId: string,
+): void {
+  queryClient.setQueriesData(
+    { queryKey: ["documents"] },
+    (oldData: DocumentsQueryData | undefined) => {
+      if (!oldData?.items) return oldData;
+      return {
+        ...oldData,
+        items: oldData.items.map((doc) =>
+          doc.id === documentId
+            ? {
+                ...doc,
+                status: "cancelled" as Document["status"],
+                current_stage: "cancelled",
+                ui_phase: "terminal",
+                display_status: "cancelled",
+              }
+            : doc,
+        ),
+      };
+    },
+  );
+}

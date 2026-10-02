@@ -1,48 +1,39 @@
 "use client";
 
-/**
- * Mobile History Panel Component
- *
- * A slide-over panel for accessing conversation history on mobile devices.
- * Uses the Sheet component for the sliding animation.
- */
-
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
-    Sheet,
-    SheetContent,
-    SheetHeader,
-    SheetTitle,
-    SheetTrigger,
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
 } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-    useConversations,
-    useDeleteConversation,
-} from "@/hooks/use-conversations";
+import { useConversations } from "@/hooks/use-conversations";
+import { formatConversationDate } from "@/lib/query/format-conversation-date";
 import { cn } from "@/lib/utils";
-import { useQueryUIStore } from "@/stores/use-query-ui-store";
+import {
+  useActiveConversationId,
+  useConversationFilters,
+  useQueryUIStore,
+} from "@/stores/use-query-ui-store";
 import type { ServerConversation } from "@/types";
 import {
-    Archive,
-    ChevronRight,
-    Clock,
-    Loader2,
-    Menu,
-    MessageSquare,
-    Pin,
-    Plus,
-    Search,
-    Trash2,
+  Archive,
+  Clock,
+  Loader2,
+  Menu,
+  MessageSquare,
+  Pin,
+  Plus,
+  Search,
+  Trash2,
 } from "lucide-react";
 import { memo, useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { FolderSidebar } from "./folder-sidebar";
-
-// ============================================================================
-// Conversation Item (Mobile-optimized)
-// ============================================================================
+import { useConversationDeleteUndo } from "./history/delete-undo";
 
 interface MobileConversationItemProps {
   conversation: ServerConversation;
@@ -57,112 +48,91 @@ const MobileConversationItem = memo(function MobileConversationItem({
   onSelect,
   onDelete,
 }: MobileConversationItemProps) {
-  const { t } = useTranslation();
-  const [showDelete] = useState(false);
+  const { t, i18n } = useTranslation();
 
-  const formattedDate = useMemo(() => {
-    const date = new Date(conversation.updated_at);
-    const now = new Date();
-    const diffDays = Math.floor(
-      (now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24)
-    );
-
-    if (diffDays === 0) {
-      return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-    } else if (diffDays === 1) {
-      return t("common.yesterday", "Yesterday");
-    } else if (diffDays < 7) {
-      return date.toLocaleDateString([], { weekday: "short" });
-    } else {
-      return date.toLocaleDateString([], { month: "short", day: "numeric" });
-    }
-  }, [conversation.updated_at, t]);
-
-  // Swipe to delete functionality
-  const handleTouchStart = useCallback(() => {
-    // Could implement swipe gestures here
-  }, []);
+  const formattedDate = useMemo(
+    () =>
+      formatConversationDate(conversation.updated_at, i18n.language, {
+        yesterday: t("common.yesterday", "Yesterday"),
+      }),
+    [conversation.updated_at, i18n.language, t],
+  );
 
   return (
     <div
       className={cn(
         "group flex items-center gap-3 px-4 py-3 border-b active:bg-muted transition-colors",
-        isActive && "bg-primary/5 border-l-2 border-l-primary"
+        isActive && "bg-primary/5 border-l-2 border-l-primary",
       )}
       onClick={onSelect}
-      onTouchStart={handleTouchStart}
-      role="button"
+      role="option"
+      aria-selected={isActive}
       tabIndex={0}
+      data-testid={`mobile-conversation-${conversation.id}`}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onSelect();
+        }
+      }}
     >
-      {/* Icon */}
       <div
         className={cn(
           "w-10 h-10 rounded-full flex items-center justify-center shrink-0",
-          isActive ? "bg-primary/15" : "bg-muted/50"
+          isActive ? "bg-primary/15" : "bg-muted/50",
         )}
       >
         <MessageSquare
           className={cn(
             "h-5 w-5",
-            isActive ? "text-primary" : "text-muted-foreground"
+            isActive ? "text-primary" : "text-muted-foreground",
           )}
         />
       </div>
 
-      {/* Content */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5">
           <p className="text-sm font-medium truncate flex-1">
             {conversation.title}
           </p>
-          {conversation.is_pinned && (
+          {conversation.is_pinned ? (
             <Pin className="h-3 w-3 text-amber-500 shrink-0" />
-          )}
-          {conversation.is_archived && (
+          ) : null}
+          {conversation.is_archived ? (
             <Archive className="h-3 w-3 text-muted-foreground shrink-0" />
-          )}
+          ) : null}
         </div>
         <div className="flex items-center gap-2 mt-0.5">
           <Clock className="h-3 w-3 text-muted-foreground" />
-          <p className="text-xs text-muted-foreground">
-            {formattedDate}
-          </p>
+          <p className="text-xs text-muted-foreground">{formattedDate}</p>
           <span className="text-muted-foreground">·</span>
           <p className="text-xs text-muted-foreground">
             {conversation.message_count} {t("query.messages", "messages")}
           </p>
         </div>
-        {conversation.last_message_preview && (
+        {conversation.last_message_preview ? (
           <p className="text-xs text-muted-foreground truncate mt-1">
             {conversation.last_message_preview}
           </p>
-        )}
+        ) : null}
       </div>
 
-      {/* Delete button (swipe or long-press reveal) */}
-      {showDelete && (
-        <Button
-          variant="destructive"
-          size="icon"
-          className="h-8 w-8 shrink-0"
-          onClick={(e) => {
-            e.stopPropagation();
-            onDelete();
-          }}
-        >
-          <Trash2 className="h-4 w-4" />
-        </Button>
-      )}
-
-      {/* Chevron */}
-      <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="h-8 w-8 shrink-0 opacity-0 group-focus-within:opacity-100 group-hover:opacity-100"
+        aria-label={t("common.delete", "Delete")}
+        onClick={(e) => {
+          e.stopPropagation();
+          onDelete();
+        }}
+      >
+        <Trash2 className="h-4 w-4 text-muted-foreground" />
+      </Button>
     </div>
   );
 });
-
-// ============================================================================
-// Loading Skeleton
-// ============================================================================
 
 function MobileConversationSkeleton() {
   return (
@@ -176,10 +146,6 @@ function MobileConversationSkeleton() {
   );
 }
 
-// ============================================================================
-// Main Mobile History Panel
-// ============================================================================
-
 interface MobileHistoryPanelProps {
   className?: string;
 }
@@ -187,9 +153,11 @@ interface MobileHistoryPanelProps {
 export function MobileHistoryPanel({ className }: MobileHistoryPanelProps) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
-  const store = useQueryUIStore();
+  const { filters, setFilters } = useConversationFilters();
+  const setActiveConversation = useQueryUIStore((s) => s.setActiveConversation);
+  const activeConversationId = useActiveConversationId();
+  const { scheduleDelete } = useConversationDeleteUndo();
 
-  // Query with filters
   const {
     data,
     isLoading,
@@ -197,45 +165,32 @@ export function MobileHistoryPanel({ className }: MobileHistoryPanelProps) {
     hasNextPage,
     fetchNextPage,
   } = useConversations({
-    mode: store.filters.mode ?? undefined,
-    archived: store.filters.archived,
-    pinned: store.filters.pinned ?? undefined,
-    folder_id: store.filters.folderId ?? undefined,
-    unfiled: store.filters.unfiled || undefined,
-    search: store.filters.search || undefined,
+    mode: filters.mode ?? undefined,
+    archived: filters.archived,
+    pinned: filters.pinned ?? undefined,
+    folder_id: filters.folderId ?? undefined,
+    unfiled: filters.unfiled || undefined,
+    search: filters.search || undefined,
   });
 
-  const deleteConversation = useDeleteConversation();
-
-  // Flatten pages
-  const conversations = useMemo(() => {
-    return data?.pages.flatMap((page) => page.items) ?? [];
-  }, [data]);
-
-  // Handle search
-  const handleSearchChange = useCallback(
-    (value: string) => {
-      store.setFilters({ search: value });
-    },
-    [store]
+  const conversations = useMemo(
+    () => data?.pages.flatMap((page) => page.items) ?? [],
+    [data],
   );
 
-  // Handle conversation selection
   const handleSelectConversation = useCallback(
     (conversationId: string) => {
-      store.setActiveConversation(conversationId);
-      setOpen(false); // Close panel after selection on mobile
+      setActiveConversation(conversationId);
+      setOpen(false);
     },
-    [store]
+    [setActiveConversation],
   );
 
-  // Handle new conversation
   const handleNewConversation = useCallback(() => {
-    store.setActiveConversation(null);
+    setActiveConversation(null);
     setOpen(false);
-  }, [store]);
+  }, [setActiveConversation]);
 
-  // Handle scroll to load more
   const handleScroll = useCallback(
     (e: React.UIEvent<HTMLDivElement>) => {
       const target = e.currentTarget;
@@ -246,7 +201,7 @@ export function MobileHistoryPanel({ className }: MobileHistoryPanelProps) {
         fetchNextPage();
       }
     },
-    [hasNextPage, isFetchingNextPage, fetchNextPage]
+    [hasNextPage, isFetchingNextPage, fetchNextPage],
   );
 
   return (
@@ -257,16 +212,16 @@ export function MobileHistoryPanel({ className }: MobileHistoryPanelProps) {
           size="icon"
           className={cn("md:hidden h-9 w-9", className)}
           aria-label={t("query.history.open", "Open conversation history")}
+          data-testid="query-mobile-history"
         >
           <Menu className="h-5 w-5" />
         </Button>
       </SheetTrigger>
       <SheetContent side="left" size="md" className="w-full sm:w-96 p-0 flex flex-col">
-        {/* Header */}
-        <SheetHeader className="border-b bg-muted/20">
+        <SheetHeader className="border-b bg-muted/20 px-5 py-3">
           <div className="flex items-center justify-between gap-2">
             <SheetTitle className="text-base">
-              {t("query.history.title", "Conversations")}
+              {t("query.history.title", "History")}
             </SheetTitle>
             <Button
               variant="ghost"
@@ -280,29 +235,28 @@ export function MobileHistoryPanel({ className }: MobileHistoryPanelProps) {
           </div>
         </SheetHeader>
 
-        {/* Search */}
-        <div className="px-5 py-3 border-b sm:px-6">
+        <div className="px-5 py-3 border-b">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               placeholder={t("query.history.search", "Search conversations...")}
-              value={store.filters.search}
-              onChange={(e) => handleSearchChange(e.target.value)}
+              value={filters.search}
+              onChange={(e) => setFilters({ search: e.target.value })}
               className="h-10 pl-10 text-sm"
+              data-testid="query-mobile-history-search"
             />
           </div>
         </div>
 
-        {/* Folders */}
-        <div className="px-5 py-3 border-b sm:px-6">
+        <div className="px-5 py-3 border-b">
           <FolderSidebar />
         </div>
 
-        {/* Conversation List */}
         <div
           className="flex-1 overflow-y-auto"
+          role="listbox"
+          aria-label={t("query.history.title", "History")}
           onScroll={handleScroll}
-          style={{ maxHeight: "calc(100vh - 220px)" }}
         >
           {isLoading ? (
             <div>
@@ -316,19 +270,15 @@ export function MobileHistoryPanel({ className }: MobileHistoryPanelProps) {
                 <MessageSquare className="h-8 w-8 text-muted-foreground/50" />
               </div>
               <p className="text-sm text-muted-foreground mb-2">
-                {store.filters.search
+                {filters.search
                   ? t("query.history.noResults", "No conversations found")
                   : t("query.history.empty", "No conversations yet")}
               </p>
-              {!store.filters.search && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleNewConversation}
-                >
+              {!filters.search ? (
+                <Button variant="outline" size="sm" onClick={handleNewConversation}>
                   {t("query.history.startFirst", "Start your first conversation")}
                 </Button>
-              )}
+              ) : null}
             </div>
           ) : (
             <div>
@@ -336,23 +286,23 @@ export function MobileHistoryPanel({ className }: MobileHistoryPanelProps) {
                 <MobileConversationItem
                   key={conversation.id}
                   conversation={conversation}
-                  isActive={conversation.id === store.activeConversationId}
+                  isActive={conversation.id === activeConversationId}
                   onSelect={() => handleSelectConversation(conversation.id)}
                   onDelete={() => {
-                    deleteConversation.mutate(conversation.id);
-                    if (store.activeConversationId === conversation.id) {
-                      store.setActiveConversation(null);
-                    }
+                    scheduleDelete(conversation, () => {
+                      if (activeConversationId === conversation.id) {
+                        setActiveConversation(null);
+                      }
+                    });
                   }}
                 />
               ))}
 
-              {/* Load more indicator */}
-              {isFetchingNextPage && (
+              {isFetchingNextPage ? (
                 <div className="flex items-center justify-center py-4">
                   <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
                 </div>
-              )}
+              ) : null}
             </div>
           )}
         </div>

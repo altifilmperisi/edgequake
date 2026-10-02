@@ -97,10 +97,7 @@ async fn e2e_spec155_edge_id_multigraph() {
         "expected multigraph parallel edges, got {edges:?}"
     );
 
-    let ids: Vec<&str> = edges
-        .iter()
-        .filter_map(|e| e["id"].as_str())
-        .collect();
+    let ids: Vec<&str> = edges.iter().filter_map(|e| e["id"].as_str()).collect();
     assert!(
         ids.iter().any(|id| id.contains("WORKS_AT")),
         "stable id must include relation_type: {ids:?}"

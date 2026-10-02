@@ -278,6 +278,10 @@ export
 
 # Environment variables (can be overridden from shell)
 OPENAI_API_KEY ?= $(shell echo $$OPENAI_API_KEY)
+# SECURITY: export so recipes read $$OPENAI_API_KEY at run time. Never inline
+# $(OPENAI_API_KEY) in a command string: make expands it textually, leaking the
+# secret into `ps`, make echo and bash job-control "Terminated" messages.
+export OPENAI_API_KEY
 # SPEC-124 Langfuse: do NOT use `?= $(shell echo $$VAR)` here.
 # When unset, that defines an empty Make var; bare `export` above then exports
 # LANGFUSE_*='' into every recipe, and `LANGFUSE_FOO="$(LANGFUSE_FOO)"` on
@@ -289,7 +293,10 @@ OPENAI_API_KEY ?= $(shell echo $$OPENAI_API_KEY)
 # Hierarchy (outer → inner):
 #   WORKER_THREADS ⊃ MAX_TASKS_PER_TENANT ⊃ PDF_VISION_JOBS ⊃ PDF_CONCURRENCY
 #     ⊃ MM_IMAGE_CONCURRENCY ⊃ MAX_CONCURRENT_EXTRACTIONS
-# Peak vision in-flight ≈ PDF_VISION_JOBS × PDF_CONCURRENCY (cloud: 4×4=16).
+# Peak vision in-flight ≈ PDF_VISION_JOBS × min(PDF_CONCURRENCY, cloud clamp 2).
+# Makefile may set CONCURRENCY=4, but runtime `compute_safe_pdf_resource_profile`
+# clamps cloud page concurrency to 2 (SPEC-156). Effective cloud peak ≈ 4×2=8
+# when VISION_JOBS=4 — not 4×4=16.
 # Dial down if provider 429s or RSS climbs; set MEM_LIMIT so budget code is aware.
 # Low-RAM override example: WORKER_THREADS=4 MAX_TASKS_PER_TENANT=2 \
 #   EDGEQUAKE_PDF_VISION_JOBS=1 EDGEQUAKE_PDF_CONCURRENCY=1
@@ -377,19 +384,34 @@ else
   EDGEQUAKE_DEFAULT_EMBEDDING_DIMENSION ?= 768
 endif
 
-# Provider-aware ingest concurrency (must follow DEFAULT_LLM_PROVIDER resolution).
-# Ollama ~1 parallel sequence — cloud-scale fan-out (32) causes connection storms.
-# Local profile also clamps workers / embed / merge (parity with extract=2).
-ifeq ($(EDGEQUAKE_DEFAULT_LLM_PROVIDER),$(filter $(EDGEQUAKE_DEFAULT_LLM_PROVIDER),ollama lmstudio lm-studio lm_studio))
-  WORKER_THREADS ?= 2
-  MAX_TASKS_PER_TENANT ?= 1
+# Provider-aware ingest concurrency.
+#
+# First principle: a concurrency limit belongs to the upstream that is actually
+# called, not to the process default. The runtime already derives extraction /
+# embedding / merge fan-out and the worker-pool + per-tenant ingest clamp from the
+# provider of each workspace (`cap_for_local_provider`, `PipelineConfig::
+# from_env_for_provider`, `resolve_worker_pool_limits`). Pinning those knobs here
+# from the *default* provider silently throttled cloud (e.g. Mistral) workspaces
+# to a single in-flight call whenever `.env` defaulted to Ollama — so they are NOT
+# pinned. Only what the runtime cannot derive is set below: vision/GPU memory
+# guards (keyed by the vision provider) and local-server tuning (keyed by the
+# default provider).
+LOCAL_LLM_PROVIDERS := ollama lmstudio lm-studio lm_studio
+EDGEQUAKE_VISION_PROVIDER_RESOLVED := $(or $(EDGEQUAKE_VISION_PROVIDER),$(EDGEQUAKE_DEFAULT_LLM_PROVIDER))
+
+ifneq ($(filter $(EDGEQUAKE_VISION_PROVIDER_RESOLVED),$(LOCAL_LLM_PROVIDERS)),)
+  # Local vision: single GPU, memory-bound — serialize page/image/PDF jobs.
   EDGEQUAKE_PDF_CONCURRENCY ?= 1
   EDGEQUAKE_PDF_VISION_JOBS ?= 1
   EDGEQUAKE_MM_IMAGE_CONCURRENCY ?= 1
-  # Serial local extract: Ollama `-np 1` + gate budget 1 (reliability plan).
-  EDGEQUAKE_MAX_CONCURRENT_EXTRACTIONS ?= 1
-  EDGEQUAKE_EMBED_MAX_ASYNC ?= 1
-  EDGEQUAKE_MERGE_MAX_ASYNC ?= 1
+else
+  EDGEQUAKE_PDF_CONCURRENCY ?= 4
+  EDGEQUAKE_PDF_VISION_JOBS ?= 4
+  EDGEQUAKE_MM_IMAGE_CONCURRENCY ?= 8
+endif
+
+ifneq ($(filter $(EDGEQUAKE_DEFAULT_LLM_PROVIDER),$(LOCAL_LLM_PROVIDERS)),)
+  # Local server tuning: Ollama `-np 1` + provider gate budget 1.
   EDGEQUAKE_LOCAL_MAX_INFLIGHT ?= 1
   EDGEQUAKE_PROVIDER_BUDGET ?= 1
   EDGEQUAKE_EXTRACT_REASONING_EFFORT ?= none
@@ -397,11 +419,10 @@ ifeq ($(EDGEQUAKE_DEFAULT_LLM_PROVIDER),$(filter $(EDGEQUAKE_DEFAULT_LLM_PROVIDE
   # Leave headroom for interactive HTTP reads under gemma4 ingest.
   DATABASE_POOL_SIZE ?= 16
 else
+  # Cloud default: raise the *requests*; the runtime still clamps any local
+  # workspace back down, so these can never storm an Ollama/LM Studio server.
   WORKER_THREADS ?= 16
   MAX_TASKS_PER_TENANT ?= 12
-  EDGEQUAKE_PDF_CONCURRENCY ?= 4
-  EDGEQUAKE_PDF_VISION_JOBS ?= 4
-  EDGEQUAKE_MM_IMAGE_CONCURRENCY ?= 8
   EDGEQUAKE_MAX_CONCURRENT_EXTRACTIONS ?= 32
   EDGEQUAKE_EMBED_MAX_ASYNC ?= 8
   EDGEQUAKE_MERGE_MAX_ASYNC ?= 8
@@ -740,7 +761,27 @@ check-deps: ## Check that required dependencies are installed
 	@command -v pnpm >/dev/null 2>&1 || command -v bun >/dev/null 2>&1 || { echo "$(RED)❌ pnpm/bun not found. Install pnpm or Bun$(RESET)"; exit 1; }
 	@command -v docker >/dev/null 2>&1 || { echo "$(YELLOW)⚠️  docker not found. Some features require Docker$(RESET)"; }
 	@echo "$(GREEN)✓ All required dependencies found$(RESET)"
+	@$(MAKE) check-build-disk --no-print-directory
 	@$(MAKE) check-no-orbstack-kill --no-print-directory
+
+# Fail fast when the cargo target volume is (nearly) full: otherwise the linker dies
+# mid-build with "errno=28 No space left on device" and `make dev` never starts.
+# Never deletes anything itself; it prints the safe, regenerable clean-up commands.
+MIN_BUILD_FREE_GB ?= 3
+check-build-disk: ## Fail early if the cargo target volume has too little free space
+	@_t="$${CARGO_TARGET_DIR:-$$(cd $(BACKEND_DIR) && cargo metadata --no-deps --format-version 1 2>/dev/null | python3 -c 'import sys,json;print(json.load(sys.stdin)["target_directory"])' 2>/dev/null)}"; \
+	[ -n "$$_t" ] || _t="$(BACKEND_DIR)"; [ -d "$$_t" ] || _t="$(BACKEND_DIR)"; \
+	_free_kb=$$(df -Pk "$$_t" | awk 'NR==2{print $$4}'); \
+	_free_gb=$$(( _free_kb / 1048576 )); \
+	if [ "$$_free_gb" -lt "$(MIN_BUILD_FREE_GB)" ]; then \
+		echo "$(RED)❌ Only $${_free_gb} GiB free on the cargo target volume ($$_t); need >= $(MIN_BUILD_FREE_GB) GiB to link.$(RESET)"; \
+		echo "   Safe clean-up (regenerable build output only):"; \
+		echo "     rm -rf $$_t/debug/incremental"; \
+		echo "     find $$_t/debug/deps -maxdepth 1 -type f -perm +111 ! -name '*.*' -size +20M -mtime +0 -delete"; \
+		echo "     (or: cargo clean)"; \
+		exit 1; \
+	fi; \
+	echo "$(GREEN)✓ Build disk OK: $${_free_gb} GiB free$(RESET)"
 
 check-ports: sync-dev-ports ## Validate configured ports without killing unrelated processes
 	@echo "$(BLUE)Checking selected ports from $(DEV_PORTS_ENV)...$(RESET)"
@@ -807,7 +848,7 @@ dev: kill-app check-deps check-ports ## Start full development stack without aut
 	@echo "$(BOLD)$(BLUE)🚀 Starting EdgeQuake Development Stack$(RESET)"
 	@echo "$(YELLOW)→ Previous app processes killed; starting fresh$(RESET)"
 	@# OODA-09: Dynamically select provider based on OPENAI_API_KEY
-	@if [ -n "$(OPENAI_API_KEY)" ]; then \
+	@if [ -n "$$OPENAI_API_KEY" ]; then \
 		echo "$(BOLD)$(YELLOW)📝 Using OpenAI provider (OPENAI_API_KEY detected)$(RESET)"; \
 	else \
 		echo "$(BOLD)$(YELLOW)📝 Using Ollama as default LLM provider$(RESET)"; \
@@ -829,7 +870,7 @@ dev: kill-app check-deps check-ports ## Start full development stack without aut
 	else \
 		echo "  $(BLUE)Auth$(RESET):     disabled (default local mode)"; \
 	fi
-	@if [ -n "$(OPENAI_API_KEY)" ]; then \
+	@if [ -n "$$OPENAI_API_KEY" ]; then \
 		echo "  $(BLUE)Provider$(RESET): OpenAI"; \
 	else \
 		echo "  $(BLUE)Provider$(RESET): Ollama (http://localhost:11434)"; \
@@ -862,11 +903,11 @@ dev: kill-app check-deps check-ports ## Start full development stack without aut
 	sleep 0.3; \
 	echo "$(YELLOW)→ Starting backend on port $$BACKEND_PORT (DATABASE_URL port: $$(printf '%s' $$_EFF_DB_URL | sed -E 's|.*:([0-9]+)/.*|\1|'))...$(RESET)"; \
 	$(APPLY_LANGFUSE_ENV_EFFECTIVE); \
-	if [ -n "$(OPENAI_API_KEY)" ]; then \
+	if [ -n "$$OPENAI_API_KEY" ]; then \
 		(cd $(BACKEND_DIR) && \
 			PORT="$$BACKEND_PORT" \
 			DATABASE_URL="$$_EFF_DB_URL" \
-			OPENAI_API_KEY="$(OPENAI_API_KEY)" \
+			OPENAI_API_KEY="$$OPENAI_API_KEY" \
 			EDGEQUAKE_DEV_MODE="$(DEV_EDGEQUAKE_DEV_MODE)" \
 		EDGEQUAKE_AUTH_ENABLED="$(DEV_AUTH_ENABLED)" \
 		AUTH_ENABLED="$(DEV_AUTH_ENABLED)" \
@@ -962,7 +1003,7 @@ dev-bg: check-deps check-ports ## Start full development stack in BACKGROUND wit
 	@echo ""
 	@echo "$(BOLD)$(BLUE)🤖 Starting EdgeQuake in Background Mode (Agentic)$(RESET)"
 	@echo "$(YELLOW)→ Incremental startup: healthy services are reused; Docker is touched only when needed$(RESET)"
-	@if [ -n "$(OPENAI_API_KEY)" ]; then \
+	@if [ -n "$$OPENAI_API_KEY" ]; then \
 		echo "$(BOLD)$(YELLOW)📝 Using OpenAI provider$(RESET)"; \
 	else \
 		echo "$(BOLD)$(YELLOW)📝 Using Ollama as default LLM provider$(RESET)"; \
@@ -1040,7 +1081,7 @@ dev-bg: check-deps check-ports ## Start full development stack in BACKGROUND wit
 	else \
 		echo "  $(BLUE)Auth$(RESET): disabled (default local mode)"; \
 	fi
-	@if [ -n "$(OPENAI_API_KEY)" ]; then \
+	@if [ -n "$$OPENAI_API_KEY" ]; then \
 		echo "  $(BLUE)LLM Provider$(RESET): openai (gpt-5-nano)"; \
 		echo "  $(BLUE)Embedding$(RESET): openai (text-embedding-3-small, 1536d)"; \
 	elif [ -n "$(MISTRAL_API_KEY)" ]; then \
@@ -1200,7 +1241,7 @@ backend-dev: db-wait ## Run backend in development mode with PostgreSQL (uses .e
 	cd $(BACKEND_DIR) && \
 		PORT="$(BACKEND_PORT)" \
 		DATABASE_URL="$$_EFF_DB_URL" \
-		OPENAI_API_KEY="$(OPENAI_API_KEY)" \
+		OPENAI_API_KEY="$$OPENAI_API_KEY" \
 		EDGEQUAKE_DEV_MODE="$(DEV_EDGEQUAKE_DEV_MODE)" \
 		EDGEQUAKE_AUTH_ENABLED="$(DEV_AUTH_ENABLED)" \
 		AUTH_ENABLED="$(DEV_AUTH_ENABLED)" \
@@ -1229,7 +1270,7 @@ backend-db: db-wait ## Run backend with PostgreSQL storage (uses .env configurat
 	cd $(BACKEND_DIR) && \
 		PORT="$(BACKEND_PORT)" \
 		DATABASE_URL="$$_EFF_DB_URL" \
-		OPENAI_API_KEY="$(OPENAI_API_KEY)" \
+		OPENAI_API_KEY="$$OPENAI_API_KEY" \
 		EDGEQUAKE_DEV_MODE="$(DEV_EDGEQUAKE_DEV_MODE)" \
 		EDGEQUAKE_AUTH_ENABLED="$(DEV_AUTH_ENABLED)" \
 		AUTH_ENABLED="$(DEV_AUTH_ENABLED)" \
@@ -1298,8 +1339,10 @@ backend-bg: sync-dev-ports db-wait ## Run backend in background with PostgreSQL 
 	echo "$(YELLOW)→ Freeing port $${BACKEND_PORT:-$(BACKEND_PORT)} before backend-bg start (OrbStack/Docker skipped)$(RESET)"; \
 	$(SAFE_KILL_LISTEN_PORTS) "$${BACKEND_PORT:-$(BACKEND_PORT)}"; \
 	sleep 0.3; \
-	_BIN="$(BACKEND_DIR)/target/debug/edgequake"; \
-	if [ -x "$$_BIN" ]; then _RUN="exec $$_BIN"; else _RUN="cd $(BACKEND_DIR) && exec cargo run"; fi; \
+	_TDIR="$${CARGO_TARGET_DIR:-$$(cd $(BACKEND_DIR) && cargo metadata --no-deps --format-version 1 2>/dev/null | python3 -c 'import sys,json;print(json.load(sys.stdin)["target_directory"])' 2>/dev/null)}"; \
+	_BIN="$${_TDIR:-$(BACKEND_DIR)/target}/debug/edgequake"; \
+	if [ ! -x "$$_BIN" ]; then _BIN="$(BACKEND_DIR)/target/debug/edgequake"; fi; \
+	if [ -x "$$_BIN" ]; then echo "$(GREEN)→ Using binary $$_BIN$(RESET)"; _RUN="exec $$_BIN"; else _RUN="cd $(BACKEND_DIR) && exec cargo run"; fi; \
 	if [ -n "$$MISTRAL_API_KEY" ] || [ -n "$(MISTRAL_API_KEY)" ]; then \
 		_MISTRAL_KEY="$${MISTRAL_API_KEY:-$(MISTRAL_API_KEY)}"; \
 		echo "$(YELLOW)→ MISTRAL_API_KEY detected - using Mistral as default provider$(RESET)"; \
@@ -1309,7 +1352,7 @@ backend-bg: sync-dev-ports db-wait ## Run backend in background with PostgreSQL 
 		printf '%s\n' "export DATABASE_URL=\"$$_EFF_DB_URL\"" >> /tmp/edgequake-start.sh; \
 		$(BACKEND_STABILITY_EXPORTS) \
 		printf '%s\n' "export MISTRAL_API_KEY=\"$$_MISTRAL_KEY\"" >> /tmp/edgequake-start.sh; \
-		[ -n "$(OPENAI_API_KEY)" ] && printf '%s\n' "export OPENAI_API_KEY=\"$(OPENAI_API_KEY)\"" >> /tmp/edgequake-start.sh; \
+		[ -n "$$OPENAI_API_KEY" ] && printf '%s\n' "export OPENAI_API_KEY=\"$$OPENAI_API_KEY\"" >> /tmp/edgequake-start.sh; \
 		[ -n "$$ANTHROPIC_API_KEY" ] && printf '%s\n' "export ANTHROPIC_API_KEY=\"$$ANTHROPIC_API_KEY\"" >> /tmp/edgequake-start.sh; \
 		printf '%s\n' "export EDGEQUAKE_DEV_MODE=\"$(DEV_EDGEQUAKE_DEV_MODE)\"" >> /tmp/edgequake-start.sh; \
 		printf '%s\n' "export EDGEQUAKE_AUTH_ENABLED=\"$(DEV_AUTH_ENABLED)\"" >> /tmp/edgequake-start.sh; \
@@ -1326,14 +1369,14 @@ backend-bg: sync-dev-ports db-wait ## Run backend in background with PostgreSQL 
 		printf '%s\n' "$$_RUN" >> /tmp/edgequake-start.sh; \
 		chmod +x /tmp/edgequake-start.sh; \
 		/bin/bash -lc 'nohup /tmp/edgequake-start.sh > /tmp/edgequake-backend.log 2>&1 < /dev/null & backend_pid=$$!; disown "$$backend_pid"; printf "%s\n" "$$backend_pid" > /tmp/edgequake-backend.pid'; \
-	elif [ -n "$(OPENAI_API_KEY)" ]; then \
+	elif [ -n "$$OPENAI_API_KEY" ]; then \
 		echo "$(YELLOW)→ OPENAI_API_KEY detected - using OpenAI as default provider$(RESET)"; \
 		printf '%s\n' "#!/bin/bash" > /tmp/edgequake-start.sh; \
 		printf '%s\n' "set -a && . \"$(DEV_PORTS_ENV)\" && set +a" >> /tmp/edgequake-start.sh; \
 		printf '%s\n' "export PORT=\"$${BACKEND_PORT:-8090}\"" >> /tmp/edgequake-start.sh; \
 		printf '%s\n' "export DATABASE_URL=\"$$_EFF_DB_URL\"" >> /tmp/edgequake-start.sh; \
 		$(BACKEND_STABILITY_EXPORTS) \
-		printf '%s\n' "export OPENAI_API_KEY=\"$(OPENAI_API_KEY)\"" >> /tmp/edgequake-start.sh; \
+		printf '%s\n' "export OPENAI_API_KEY=\"$$OPENAI_API_KEY\"" >> /tmp/edgequake-start.sh; \
 		[ -n "$$MISTRAL_API_KEY" ] && printf '%s\n' "export MISTRAL_API_KEY=\"$$MISTRAL_API_KEY\"" >> /tmp/edgequake-start.sh; \
 		[ -n "$$ANTHROPIC_API_KEY" ] && printf '%s\n' "export ANTHROPIC_API_KEY=\"$$ANTHROPIC_API_KEY\"" >> /tmp/edgequake-start.sh; \
 		printf '%s\n' "export EDGEQUAKE_DEV_MODE=\"$(DEV_EDGEQUAKE_DEV_MODE)\"" >> /tmp/edgequake-start.sh; \
@@ -2671,7 +2714,7 @@ stack: ## ⚡ One command: pull all GHCR images and start API + Web UI + DB  (<3
 	@echo "  No Rust toolchain, no Node.js, no local build needed."
 	@echo "  Pulling prebuilt images from GitHub Container Registry..."
 	@echo ""
-	@if [ -n "$(OPENAI_API_KEY)" ]; then \
+	@if [ -n "$$OPENAI_API_KEY" ]; then \
 		echo "  $(GREEN)OPENAI_API_KEY detected → using OpenAI provider$(RESET)"; \
 	else \
 		echo "  $(YELLOW)No API key → using Ollama (ensure Ollama runs on port 11434)$(RESET)"; \
@@ -2679,15 +2722,15 @@ stack: ## ⚡ One command: pull all GHCR images and start API + Web UI + DB  (<3
 	@echo ""
 	@echo "$(YELLOW)→ Pulling images...$(RESET)"
 	@$(APPLY_LANGFUSE_ENV); \
-	EDGEQUAKE_LLM_PROVIDER=$${EDGEQUAKE_LLM_PROVIDER:-$$([ -n "$(OPENAI_API_KEY)" ] && echo "openai" || echo "ollama")} \
-	OPENAI_API_KEY="$(OPENAI_API_KEY)" \
+	EDGEQUAKE_LLM_PROVIDER=$${EDGEQUAKE_LLM_PROVIDER:-$$([ -n "$$OPENAI_API_KEY" ] && echo "openai" || echo "ollama")} \
+	OPENAI_API_KEY="$$OPENAI_API_KEY" \
 	EDGEQUAKE_VERSION=$${EDGEQUAKE_VERSION:-latest} \
 	docker compose -f $(QUICKSTART_COMPOSE) pull
 	@echo ""
 	@echo "$(YELLOW)→ Starting services...$(RESET)"
 	@$(APPLY_LANGFUSE_ENV); \
-	EDGEQUAKE_LLM_PROVIDER=$${EDGEQUAKE_LLM_PROVIDER:-$$([ -n "$(OPENAI_API_KEY)" ] && echo "openai" || echo "ollama")} \
-	OPENAI_API_KEY="$(OPENAI_API_KEY)" \
+	EDGEQUAKE_LLM_PROVIDER=$${EDGEQUAKE_LLM_PROVIDER:-$$([ -n "$$OPENAI_API_KEY" ] && echo "openai" || echo "ollama")} \
+	OPENAI_API_KEY="$$OPENAI_API_KEY" \
 	EDGEQUAKE_VERSION=$${EDGEQUAKE_VERSION:-latest} \
 	docker compose -f $(QUICKSTART_COMPOSE) up -d
 	@echo ""

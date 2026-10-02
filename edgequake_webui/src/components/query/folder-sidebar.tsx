@@ -247,7 +247,8 @@ export function FolderSidebar({ className }: FolderSidebarProps) {
   const [isCreating, setIsCreating] = useState(false);
   const [isRootDragOver, setIsRootDragOver] = useState(false);
 
-  const store = useQueryUIStore();
+  const filters = useQueryUIStore((s) => s.filters);
+  const setFilters = useQueryUIStore((s) => s.setFilters);
   const { data: folders, isLoading } = useFolders();
   const createFolder = useCreateFolder();
   const updateFolder = useUpdateFolder();
@@ -335,14 +336,14 @@ export function FolderSidebar({ className }: FolderSidebarProps) {
     deleteFolder.mutate(folderToDelete, {
       onSuccess: () => {
         // If the deleted folder was selected, clear the filter
-        if (store.filters.folderId === folderToDelete) {
-          store.setFilters({ folderId: null });
+        if (filters.folderId === folderToDelete) {
+          setFilters({ folderId: null });
         }
         setFolderToDelete(null);
         setDeleteDialogOpen(false);
       },
     });
-  }, [folderToDelete, deleteFolder, store]);
+  }, [folderToDelete, deleteFolder, filters.folderId, setFilters]);
 
   return (
     <div className={cn("space-y-1", className)}>
@@ -353,12 +354,12 @@ export function FolderSidebar({ className }: FolderSidebarProps) {
           "flex w-full items-center gap-2 px-2 py-1.5 rounded-md transition-all duration-150",
           isRootDragOver
             ? "bg-primary/20 border-2 border-dashed border-primary ring-1 ring-primary/30"
-            : store.filters.unfiled && !store.filters.folderId
+            : filters.unfiled && !filters.folderId
               ? "bg-primary/10 text-primary"
               : "hover:bg-muted/60 text-muted-foreground hover:text-foreground",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1",
         )}
-        onClick={() => store.setFilters({ folderId: null, unfiled: true })}
+        onClick={() => setFilters({ folderId: null, unfiled: true })}
         onDragOver={handleRootDragOver}
         onDragLeave={handleRootDragLeave}
         onDrop={handleRootDrop}
@@ -380,8 +381,8 @@ export function FolderSidebar({ className }: FolderSidebarProps) {
             <FolderItem
               key={folder.id}
               folder={folder}
-              isActive={store.filters.folderId === folder.id}
-              onSelect={() => store.setFilters({ folderId: folder.id, unfiled: false })}
+              isActive={filters.folderId === folder.id}
+              onSelect={() => setFilters({ folderId: folder.id, unfiled: false })}
               onRename={(name) =>
                 updateFolder.mutate({ id: folder.id, data: { name } })
               }

@@ -333,13 +333,7 @@ pub async fn reset_deleting_status(
                 .and_then(|v| v.as_str())
                 .unwrap_or_default();
             if current == "deleting" || current == "delete_failed" {
-                obj.insert("status".to_string(), serde_json::json!("delete_failed"));
-                obj.insert(
-                    "current_stage".to_string(),
-                    serde_json::json!("delete_failed"),
-                );
-                obj.insert("stage_message".to_string(), serde_json::json!(reason));
-                obj.insert("error_message".to_string(), serde_json::json!(reason));
+                crate::services::document_tombstone::apply_delete_failed_fields(obj, reason);
                 let _ = crate::services::upsert_metadata_kv_with_index(
                     state.storage.kv_storage.as_ref(),
                     &metadata_key,

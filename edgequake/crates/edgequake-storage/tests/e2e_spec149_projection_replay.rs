@@ -2224,3 +2224,121 @@ async fn legacy_shared_node_round_trip(namespace: &str, legacy_has_chunk_ids: bo
         );
     }
 }
+
+/// Regression: two `document_batch` events at the same object_revision must ack
+/// without Postgres 21000 on projection_visibility (adobe projecting stall).
+#[tokio::test]
+async fn multi_batch_same_revision_ack_does_not_cardinality_violate() {
+    let Some((config, pool, tenant_id, workspace_id)) =
+        setup_scope("spec149_multi_batch_ack").await
+    else {
+        return;
+    };
+    let document_id = Uuid::new_v4();
+    let committer = PgIngestionCommitter::new(pool.clone());
+
+    for ordinal in [0u64, 1u64] {
+        let chunk_id = Uuid::new_v4();
+        let fact_id = Uuid::new_v4();
+        let fact = serde_json::json!({
+            "schema": "edgequake.graph.fact.v1",
+            "kind": "node",
+            "node_id": format!("MULTI_BATCH_NODE_{ordinal}"),
+            "properties": {
+                "entity_type": "TEST",
+                "description": format!("batch {ordinal}"),
+                "tenant_id": tenant_id,
+                "workspace_id": workspace_id,
+            }
+        });
+        let embedding = serde_json::json!({
+            "schema": "edgequake.embedding.v1",
+            "family": "chunk",
+            "subject_id": chunk_id,
+            "workspace_id": workspace_id,
+            "model_id": "spec149-multi-batch",
+            "dimensions": 3,
+            "embedding": [0.1, 0.2, 0.3],
+            "legacy_vector_id": format!("{document_id}-chunk-{ordinal}"),
+        });
+        let canonical = format!("{tenant_id}:{workspace_id}:{document_id}:1:{ordinal}");
+        let command = PreparedIngestionBatch {
+            scope: AccessScope::new(TenantId::new(tenant_id), WorkspaceId::new(workspace_id)),
+            document_id: DocumentId::new(document_id),
+            ingest_generation: 1,
+            batch_ordinal: ordinal,
+            expected_revision: if ordinal == 0 { Some(0) } else { Some(1) },
+            idempotency_key: format!("spec149-multi-batch-{document_id}-{ordinal}"),
+            schema_version: 1,
+            canonical_digest: Sha256::digest(canonical.as_bytes()).into(),
+            chunks: vec![record(
+                chunk_id,
+                serde_json::json!({
+                    "chunk_index": ordinal,
+                    "content": format!("multi batch {ordinal}"),
+                    "metadata": {"legacy_chunk_key": format!("{document_id}-chunk-{ordinal}")}
+                }),
+            )],
+            facts: vec![record(fact_id, fact.clone())],
+            contributions: vec![record(fact_id, fact)],
+            embeddings: vec![record(chunk_id, embedding)],
+        };
+        committer
+            .commit_batch(&command)
+            .await
+            .unwrap_or_else(|e| panic!("commit batch {ordinal}: {e}"));
+    }
+
+    let pending: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM projection_deliveries d \
+         JOIN projection_events e USING (event_id) \
+         WHERE e.object_id = $1 AND d.state = 'pending'",
+    )
+    .bind(document_id)
+    .fetch_one(&pool)
+    .await
+    .expect("count pending");
+    assert!(
+        pending >= 4,
+        "expected graph+vector deliveries for two batches, got {pending}"
+    );
+
+    let worker = replay_worker(pool.clone(), config, None).await;
+    // One claim must cover both batches for a role; ack must not 21000.
+    let report = worker
+        .run_once()
+        .await
+        .expect("first replay must not fail on visibility ON CONFLICT");
+    assert!(
+        report.claimed > 0,
+        "worker must claim multi-batch deliveries"
+    );
+    assert_eq!(report.quarantined, 0, "multi-batch ack must not quarantine");
+
+    drain_document(&worker, &pool, document_id).await;
+
+    let unsettled: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM projection_deliveries d \
+         JOIN projection_events e USING (event_id) \
+         WHERE e.object_id = $1 AND d.state <> 'applied'",
+    )
+    .bind(document_id)
+    .fetch_one(&pool)
+    .await
+    .expect("count unsettled");
+    assert_eq!(
+        unsettled, 0,
+        "all multi-batch deliveries must reach applied"
+    );
+
+    let visibility: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM projection_visibility WHERE object_id = $1")
+            .bind(document_id)
+            .fetch_one(&pool)
+            .await
+            .expect("count visibility");
+    assert!(
+        visibility >= 1,
+        "shared object_revision must leave at least one visibility row"
+    );
+}

@@ -30,6 +30,7 @@ import {
   updateConversation,
   updateMessage,
 } from "@/lib/api/conversations";
+import { useTenantQueryReady } from "@/hooks/use-tenant-query-ready";
 import { conversationKeys } from "@/lib/api/query-keys";
 import type {
   ConversationFilterParams,
@@ -54,8 +55,10 @@ import { toast } from "sonner";
 // ============================================================================
 
 export function useConversations(filters?: ConversationFilterParams) {
+  const ready = useTenantQueryReady();
   return useInfiniteQuery({
     queryKey: conversationKeys.list(filters ?? {}),
+    enabled: ready,
     queryFn: async ({ pageParam }) => {
       return listConversations({
         cursor: pageParam as string | undefined,

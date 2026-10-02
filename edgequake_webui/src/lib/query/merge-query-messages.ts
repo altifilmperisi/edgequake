@@ -22,13 +22,17 @@ export function mergeQueryMessages(
     }
   }
 
-  if (pendingMessage?.content) {
-    const lastServerMsg = serverMessages[serverMessages.length - 1];
-    const alreadyFromServer =
-      lastServerMsg?.role === "assistant" &&
-      lastServerMsg.content === pendingMessage.content;
-    if (!alreadyFromServer) {
-      result.push(pendingMessage);
+  if (pendingMessage) {
+    const includeEmptyStopped = Boolean(pendingMessage.stopped);
+    if (pendingMessage.content || includeEmptyStopped) {
+      const lastServerMsg = serverMessages[serverMessages.length - 1];
+      const alreadyFromServer =
+        lastServerMsg?.role === "assistant" &&
+        pendingMessage.content &&
+        lastServerMsg.content === pendingMessage.content;
+      if (!alreadyFromServer) {
+        result.push(pendingMessage);
+      }
     }
   }
 

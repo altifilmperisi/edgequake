@@ -44,6 +44,7 @@ use crate::{
     cancellation::CancellationRegistry,
     error::{TaskError, TaskResult},
     fairness_hold::{ClaimFairnessPolicy, DEFAULT_FAIRNESS_HOLD_TTL},
+    heartbeat_interval_for_lease_ttl,
     queue::TaskQueue,
     storage::TaskStorage,
     task_lease_ttl_from_env,
@@ -820,7 +821,7 @@ impl WorkerPool {
                     let heartbeat_cancel = cancel_token.clone();
                     let _heartbeat_guard = HeartbeatGuard(tokio::spawn(async move {
                         let mut interval =
-                            tokio::time::interval(tokio::time::Duration::from_secs(60));
+                            tokio::time::interval(heartbeat_interval_for_lease_ttl(heartbeat_ttl));
                         interval.tick().await;
                         loop {
                             interval.tick().await;
@@ -859,9 +860,10 @@ impl WorkerPool {
                                     break;
                                 }
                                 Err(e) => {
-                                    debug!(
-                                        "Lease refresh failed for task {}: {}",
-                                        heartbeat_track_id, e
+                                    warn!(
+                                        task_id = %heartbeat_track_id,
+                                        error = %e,
+                                        "Lease refresh failed — will retry next heartbeat"
                                     );
                                 }
                             }

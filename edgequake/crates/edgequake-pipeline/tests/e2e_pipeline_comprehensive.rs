@@ -327,18 +327,13 @@ mod gleaning_tests {
         let config = GleaningConfig::default();
 
         assert_eq!(config.max_gleaning, 1);
-        assert!(!config.always_glean);
     }
 
     #[test]
     fn test_gleaning_config_custom() {
-        let config = GleaningConfig {
-            max_gleaning: 3,
-            always_glean: true,
-        };
+        let config = GleaningConfig { max_gleaning: 3 };
 
         assert_eq!(config.max_gleaning, 3);
-        assert!(config.always_glean);
     }
 }
 

@@ -44,6 +44,11 @@ export interface ServerMessage {
   llm_provider?: string | null;
   /** LLM model used (lineage tracking). @implements SPEC-032 */
   llm_model?: string | null;
+  /** User thumbs feedback (SPEC-155 B2) */
+  feedback_rating?: "up" | "down" | null;
+  feedback_reason?: string | null;
+  /** Stream finish reason e.g. stop | interrupted (SPEC-155 B3) */
+  finish_reason?: string | null;
 }
 
 export interface ServerMessageContext {
@@ -71,6 +76,14 @@ export interface MessageSource {
   page_start?: number;
   /** PDF page number (1-indexed) where this chunk ends. May exceed page_start (SPEC-135 span). */
   page_end?: number;
+  /** Source line range start (parity with live SourceReference — SPEC-155 Q16). */
+  start_line?: number;
+  /** Source line range end. */
+  end_line?: number;
+  /** Chunk position index within the document. */
+  chunk_index?: number;
+  /** Prompt `[N]` / API reference_id for citation alignment. */
+  reference_id?: number;
 }
 
 /** Entity returned in context with source tracking */

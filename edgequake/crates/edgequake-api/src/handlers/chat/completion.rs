@@ -373,6 +373,7 @@ pub async fn chat_completion(
                 is_error: None,
                 llm_provider: used_provider.clone(),
                 llm_model: used_model.clone(),
+                finish_reason: Some("stop".to_string()),
             },
         )
         .await

@@ -23,6 +23,7 @@
     "previous": "上一页",
     "copy": "复制",
     "copied": "已复制！",
+    "undo": "撤销",
     "upload": "上传",
     "download": "下载",
     "tryAgain": "重试",
@@ -84,7 +85,8 @@
       "title": "最近活动",
       "subtitle": "最新文档上传和处理",
       "noActivity": "暂无活动",
-      "uploadFirst": "上传您的第一个文档"
+      "uploadFirst": "上传您的第一个文档",
+      "viewAll_other": "查看全部 {{count}} 个文档"
     },
     "system": {
       "title": "系统状态",
@@ -95,7 +97,14 @@
       "version": "版本",
       "storage": "存储",
       "llmProvider": "LLM 提供者"
-    }
+    },
+    "allSettled": "所有文档均已处理",
+    "attention": {
+      "processing": "{{count}} 个处理中",
+      "queued": "{{count}} 个排队中",
+      "failed": "{{count}} 个失败"
+    },
+    "documentsOnly_other": "{{count}} 个文档"
   },
   "header": {
     "documents": "文档",
@@ -152,7 +161,8 @@
       "uploadDropWithLimit": "Drag & drop or click to upload • TXT, MD, JSON, PDF, PNG, JPG, GIF, WEBP (max {{limit}}) · DOCX/Excel not supported",
       "uploadWhileWorking": "Add more files anytime · max {{limit}}",
       "pdfParserHint": "Choose a PDF parser override for this upload, or keep the workspace default.",
-      "pdfParser": "Parser for this upload",
+      "pdfParser": "本次上传的解析器",
+      "pdfParserShort": "解析器",
       "pdfParserDefault": "Workspace Default",
       "pdfParserDefaultWithValue": "Workspace Default ({{value}})",
       "pdfParserVision": "Vision",
@@ -200,6 +210,7 @@
       "reprocess": "重新处理",
       "delete": "删除",
       "viewInGraph": "打开图谱",
+      "finishDelete": "完成删除",
       "cancel": "取消提取",
       "copyId": "复制 ID",
       "viewPdf": "查看 PDF"
@@ -441,7 +452,7 @@
       "startedDesc": "正在扫描输入目录以查找新文档..."
     },
     "bulk": {
-      "selected": "已选择 {{count}} 个文档",
+      "selected": "已选择 {{count}} 项",
       "select": "选择",
       "selectAll": "全选",
       "delete": "删除",
@@ -480,6 +491,9 @@
         "pdfToMdAria": "PDF 驱动 Markdown — Markdown 跟随 PDF 页",
         "mdToPdfAria": "Markdown 驱动 PDF — PDF 跟随 Markdown 页"
       }
+    },
+    "detail": {
+      "viewInGraph": "在知识图谱中查看"
     }
   },
   "graph": {
@@ -642,7 +656,9 @@
       "naive": "片段",
       "naiveDescription": "仅文档片段检索（向量 + 可选 BM25），不走知识图谱。适合精确措辞、数字与引用，速度最快。",
       "bypass": "对话",
-      "bypassDescription": "跳过检索，仅把对话历史与当前问题发给 LLM。适合普通闲聊或不需要 RAG 时。"
+      "bypassDescription": "跳过检索，仅把对话历史与当前问题发给 LLM。适合普通闲聊或不需要 RAG 时。",
+      "menuTitle": "检索模式",
+      "recommendedBadge": "推荐"
     },
     "settings": {
       "title": "查询设置",
@@ -655,7 +671,7 @@
     "response": {
       "tokens": "{{count}} 个令牌",
       "duration": "{{ms}}毫秒",
-      "thinking": "思考中...",
+      "thinking": "正在思考…",
       "thoughtFor": "思考了 {{seconds}}秒"
     },
     "sources": {
@@ -664,14 +680,171 @@
       "relationships": "关系",
       "documents": "文档"
     },
+    "citations": {
+      "confidence": {
+        "strong": "强",
+        "good": "良好",
+        "related": "相关",
+        "mentioned": "提及"
+      },
+      "confidencePercentTitle": "置信度 {{pct}}%",
+      "confidenceAria": "置信度：{{pct}}%",
+      "untitled": "无标题",
+      "untitledDocument": "无标题文档",
+      "noSourceDocuments": "无来源文档",
+      "documentCount_one": "{{count}} 个文档",
+      "documentCount_other": "{{count}} 个文档",
+      "passageCount_one": "{{count}} 个段落",
+      "passageCount_other": "{{count}} 个段落",
+      "sourceDocumentsList": "来源文档",
+      "openDocumentTitle": "打开：{{title}}",
+      "openDocumentAria": "打开文档：{{title}}",
+      "showLess": "收起",
+      "morePassages_one": "另有 {{count}} 个段落",
+      "morePassages_other": "另有 {{count}} 个段落",
+      "openPassageTitle": "点击在文档查看器中高亮此段落",
+      "openPassageAria": "打开段落 {{index}}：{{preview}}{{ellipsis}}",
+      "pageRangeAria": "第 {{start}} 至 {{end}} 页",
+      "pageSingleAria": "第 {{page}} 页",
+      "openPdfPageTitle": "在 PDF 第 {{page}} 页打开",
+      "goToPageAria": "在文档查看器中转到 {{pageAria}}",
+      "lineRange": "第 {{start}}–{{end}} 行",
+      "pageHeader": "第 {{page}} 页",
+      "openPdfAtPageAria": "在 PDF 第 {{page}} 页打开",
+      "jumpToPageTitle": "跳转到文档查看器第 {{page}} 页",
+      "noKnowledge": "未提取知识",
+      "keyTopics": "关键主题",
+      "matchPercent": "匹配 {{pct}}%",
+      "viewSourceDocument": "查看来源文档",
+      "exploreInGraph": "在图谱中探索",
+      "moreTopics": "另有 {{count}} 个",
+      "connections": "关联",
+      "viewSource": "查看来源",
+      "moreConnections": "另有 {{count}} 个关联",
+      "exploreGraphTitle": "探索知识图谱",
+      "exploreGraphSubtitle": "{{topics}} 个主题 · {{connections}} 个关联",
+      "exploreGraphAria": "探索包含 {{topics}} 个主题和 {{connections}} 个关联的图谱",
+      "openGraphExplorer": "打开图谱浏览器",
+      "sourceCount_one": "{{count}} 个来源",
+      "sourceCount_other": "{{count}} 个来源",
+      "topicCount_one": "{{count}} 个主题",
+      "topicCount_other": "{{count}} 个主题",
+      "panelAria": "来源引用：{{sources}} 个来源，{{topics}} 个主题，置信度 {{confidence}}",
+      "tabDocs": "文档",
+      "tabTopics": "主题",
+      "tabGraph": "图谱",
+      "inlineSource": "来源 #{{index}}",
+      "inlineDocument": "文档：{{id}}",
+      "noSourcesFound": "No sources found",
+      "sourcesLabel": "Sources",
+      "more": "+{{count}} more",
+      "entityCount": "{{count}} entities",
+      "sourceCount": "{{count}} 个来源",
+      "topicCount": "{{count}} 个主题",
+      "openSource": "打开来源",
+      "openSourcePage": "打开来源 · {{page}}",
+      "openSourceAria": "打开来源 {{index}}：{{title}}"
+    },
     "history": {
       "title": "历史",
+      "toggle": "切换历史记录",
+      "expand": "展开历史",
+      "collapse": "收起历史",
+      "resize": "调整历史面板大小",
+      "newConversation": "新对话",
+      "open": "打开对话历史",
+      "search": "搜索对话…",
+      "empty": "暂无对话",
+      "noResults": "未找到对话",
+      "startFirst": "开始您的第一次对话",
+      "deleted": "对话已删除",
+      "deleteFailed": "删除对话失败",
+      "deleteTitle": "删除此对话？",
+      "deleteMultipleTitle": "删除 {{count}} 个对话？",
+      "deleteDescription": "此操作无法撤销，将永久删除该对话及全部消息。",
+      "group": {
+        "today": "今天",
+        "yesterday": "昨天",
+        "last7": "过去 7 天",
+        "older": "更早"
+      },
       "recent": "最近查询",
       "favorites": "收藏",
       "noHistory": "无查询历史",
       "clear": "清除历史"
     },
-    "failed": "查询失败"
+    "slash": {
+      "newChat": "新对话"
+    },
+    "model": {
+      "default": "默认模型",
+      "change": "切换模型",
+      "search": "搜索模型…",
+      "serverDefault": "服务器默认",
+      "loadError": "无法加载模型，将使用服务器默认模型。",
+      "noResults": "没有匹配“{{query}}”的模型",
+      "stream": "流式输出",
+      "streamHint": "逐字显示生成内容",
+      "noStreamHint": "此模型不支持流式输出 — 答案将一次性返回",
+      "noStreaming": "不支持实时流式",
+      "noStreamBadge": "无流式",
+      "vision": "视觉",
+      "thinking": "推理"
+    },
+    "editMessage": "编辑消息",
+    "failed": "查询失败",
+    "stage": {
+      "retrieving": "正在搜索知识…",
+      "reading": "正在阅读来源…",
+      "generating": "正在撰写回答…",
+      "complete": "回答已就绪",
+      "stopped": "已停止",
+      "error": "失败",
+      "sourceCount": "{{count}} 个来源",
+      "thinking": "正在思考…"
+    },
+    "feedback": {
+      "up": "有帮助",
+      "down": "没帮助",
+      "failed": "无法保存反馈"
+    },
+    "stats": {
+      "entities": "实体",
+      "relationships": "关系"
+    },
+    "stop": "停止",
+    "queued": "已排队",
+    "clearQueue": "清除排队消息",
+    "jumpToLatest": "跳到最新",
+    "continue": "继续",
+    "stoppedBanner": "已停止 — 保留部分回答",
+    "errorTitle": "无法完成该查询",
+    "emptyNoDocs": "尚无文档 — 请上传文档，以便在知识图谱中生成有依据的回答。",
+    "corpusSuggestion": "我们对 {{name}} 了解多少？",
+    "yourMessage": "您的消息",
+    "thinkingLive": "正在思考…",
+    "thoughtFor": "思考了 {{seconds}} 秒",
+    "reasoning": "推理",
+    "toggleReasoning": "展开或收起推理详情",
+    "thinking": "推理过程",
+    "thinkingSteps": "步",
+    "generating": "正在生成回答…",
+    "assistantMessage": "助手回复",
+    "placeholderHint": "输入问题…  输入 @ 可指定文档",
+    "mention": {
+      "title": "限定到文档",
+      "list": "匹配的文档",
+      "none": "没有匹配“{{query}}”的文档",
+      "empty": "暂无已完成的文档",
+      "navigate": "切换",
+      "select": "选择",
+      "dismiss": "关闭"
+    },
+    "scope": {
+      "chips": "已限定的文档",
+      "unknownDoc": "文档",
+      "removeDoc": "从范围中移除 {{title}}"
+    }
   },
   "pipeline": {
     "title": "管道状态",

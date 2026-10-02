@@ -30,6 +30,7 @@ import {
     uploadDocument,
     uploadFile,
 } from "./documents";
+import { cancelDocument } from "./document-cancel";
 import {
     deleteEntity,
     deleteRelationship,
@@ -114,6 +115,7 @@ export const edgequakeApi = {
   deleteDocument,
   deleteAllDocuments,
   reprocessDocument,
+  cancelDocument,
   scanDocuments,
   reprocessFailedDocuments,
   retryFailedChunks,

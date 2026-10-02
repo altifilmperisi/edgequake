@@ -105,26 +105,45 @@ fn format_merge_counter(label: &str, processed: usize, total: usize) -> String {
     format!("{processed}/{total} {label} ({pct}%)")
 }
 
-/// Patch document KV with merge progress message + fractional stage_progress.
+/// Patch document KV with merge progress via the typed run-progress ledger.
 pub(crate) async fn patch_document_graph_merge_progress(
     kv: std::sync::Arc<dyn edgequake_storage::traits::KVStorage>,
     document_id: &str,
     progress: &edgequake_pipeline::MergeProgress,
 ) {
-    let msg = graph_merge_progress_message(
-        progress.phase.label(),
-        progress.entities_processed,
-        progress.entities_total,
-        progress.relationships_processed,
-        progress.relationships_total,
-    );
-    let fraction = graph_merge_progress_fraction(
-        progress.entities_processed,
-        progress.entities_total,
-        progress.relationships_processed,
-        progress.relationships_total,
-    );
-    patch_document_indexing_progress_with_fraction(kv, document_id, &msg, Some(fraction)).await;
+    use crate::services::run_progress::{
+        apply_event, apply_run_progress_to_metadata, run_progress_from_metadata, RunProgressEvent,
+        RunTaskId,
+    };
+    use chrono::Utc;
+
+    let _ = crate::services::patch_document_metadata(&kv, document_id, |updated| {
+        let mut ledger = run_progress_from_metadata(updated).unwrap_or_default();
+        apply_event(
+            &mut ledger,
+            RunProgressEvent::Task {
+                id: RunTaskId::Entities,
+                done: progress.entities_processed as u64,
+                total: progress.entities_total as u64,
+                in_flight: None,
+            },
+            Utc::now(),
+        );
+        apply_event(
+            &mut ledger,
+            RunProgressEvent::Task {
+                id: RunTaskId::Relationships,
+                done: progress.relationships_processed as u64,
+                total: progress.relationships_total as u64,
+                in_flight: None,
+            },
+            Utc::now(),
+        );
+        apply_run_progress_to_metadata(updated, &ledger);
+        // Keep legacy status slug for list filters.
+        updated.insert("status".to_string(), json!("indexing"));
+    })
+    .await;
 }
 
 async fn patch_document_indexing_progress_with_fraction(

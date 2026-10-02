@@ -200,7 +200,12 @@ impl PostgresKVStorage {
         if key.starts_with("injection::") {
             return KvKeyClass::Family(KV_FAMILY_INJECTION);
         }
-        if key.ends_with("-pipeline-checkpoint") || key.ends_with("-extraction-snapshot") {
+        if key.ends_with("-pipeline-checkpoint")
+            || key.ends_with("-extraction-snapshot")
+            // SPEC-156: mid-extract partial chunk checkpoint (same family as
+            // pipeline-checkpoint / extraction-snapshot).
+            || key.ends_with("-chunk-extract-partial")
+        {
             return KvKeyClass::Family(KV_FAMILY_CHECKPOINT);
         }
         if key.ends_with("-lineage")

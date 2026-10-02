@@ -22,6 +22,7 @@
 import type { ConversationMode } from "@/types";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { useShallow } from "zustand/react/shallow";
 
 // ============================================================================
 // Types
@@ -128,7 +129,7 @@ const defaultFilters: ConversationFilters = {
   archived: false,
   pinned: null,
   folderId: null,
-  unfiled: true, // WHY: By default show unfiled conversations (not in any folder)
+  unfiled: false, // SPEC-155 Q22: search/list all conversations by default
   search: "",
   dateFrom: null,
   dateTo: null,
@@ -162,6 +163,7 @@ export const useQueryUIStore = create<QueryUIStore>()(
 
       // Active conversation
       setActiveConversation: (id) => {
+        if (get().activeConversationId === id) return;
         set({ activeConversationId: id });
       },
 
@@ -293,29 +295,36 @@ export const useHistoryPanelOpen = () =>
   useQueryUIStore((state) => state.historyPanelOpen);
 
 export const useStreamingState = () =>
-  useQueryUIStore((state) => ({
-    state: state.streamingState,
-    pendingMessage: state.pendingMessage,
-    isStreaming:
-      state.streamingState !== "idle" && state.streamingState !== "complete",
-  }));
+  useQueryUIStore(
+    useShallow((state) => ({
+      state: state.streamingState,
+      pendingMessage: state.pendingMessage,
+      isStreaming:
+        state.streamingState !== "idle" && state.streamingState !== "complete",
+    })),
+  );
 
+/** Narrow filter/sort selectors — useShallow required (object identity). */
 export const useConversationFilters = () =>
-  useQueryUIStore((state) => ({
-    filters: state.filters,
-    sort: state.sort,
-    setFilters: state.setFilters,
-    resetFilters: state.resetFilters,
-    setSort: state.setSort,
-  }));
+  useQueryUIStore(
+    useShallow((state) => ({
+      filters: state.filters,
+      sort: state.sort,
+      setFilters: state.setFilters,
+      resetFilters: state.resetFilters,
+      setSort: state.setSort,
+    })),
+  );
 
 export const useConversationSelection = () =>
-  useQueryUIStore((state) => ({
-    selectedIds: state.selectedIds,
-    isSelectionMode: state.isSelectionMode,
-    toggleSelection: state.toggleSelection,
-    selectAll: state.selectAll,
-    clearSelection: state.clearSelection,
-    setSelectionMode: state.setSelectionMode,
-    selectedCount: state.selectedIds.size,
-  }));
+  useQueryUIStore(
+    useShallow((state) => ({
+      selectedIds: state.selectedIds,
+      isSelectionMode: state.isSelectionMode,
+      toggleSelection: state.toggleSelection,
+      selectAll: state.selectAll,
+      clearSelection: state.clearSelection,
+      setSelectionMode: state.setSelectionMode,
+      selectedCount: state.selectedIds.size,
+    })),
+  );

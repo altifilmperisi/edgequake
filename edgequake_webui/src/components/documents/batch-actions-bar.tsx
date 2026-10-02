@@ -1,7 +1,7 @@
 'use client';
 
 import { Button } from '@/components/ui/button';
-import { RefreshCw, Trash2, X } from 'lucide-react';
+import { Loader2, RefreshCw, StopCircle, Trash2, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 /**
@@ -16,6 +16,11 @@ interface BatchActionsBarProps {
   onDelete: () => void;
   /** Callback when Clear selection button is clicked */
   onClear: () => void;
+  /** In-flight documents in the selection (Cancel hidden when 0). */
+  cancellableCount?: number;
+  /** Cancel every in-flight selected document. */
+  onCancel?: () => void;
+  isCancelling?: boolean;
 }
 
 /**
@@ -30,6 +35,9 @@ export function BatchActionsBar({
   onReprocess,
   onDelete,
   onClear,
+  cancellableCount = 0,
+  onCancel,
+  isCancelling = false,
 }: BatchActionsBarProps) {
   const { t } = useTranslation();
 
@@ -54,6 +62,24 @@ export function BatchActionsBar({
         </span>
       </div>
       <div className="flex items-center gap-2">
+        {onCancel && cancellableCount > 0 ? (
+          <Button
+            variant="outline"
+            size="sm"
+            className="text-orange-700 dark:text-orange-300"
+            onClick={onCancel}
+            disabled={isCancelling}
+            data-testid="spec155-bulk-cancel"
+          >
+            {isCancelling ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <StopCircle className="h-4 w-4 mr-2" />
+            )}
+            {t('documents.bulk.cancel', 'Cancel')}
+            {cancellableCount > 1 ? ` (${cancellableCount})` : ''}
+          </Button>
+        ) : null}
         <Button variant="outline" size="sm" onClick={onReprocess}>
           <RefreshCw className="h-4 w-4 mr-2" />
           {t('documents.bulk.reprocess', 'Reprocess')}

@@ -469,6 +469,11 @@ fn api_v1_routes(state: AppState) -> Router<AppState> {
         )
         // Recover Stuck Processing Documents - MUST come before /documents/{document_id}
         .route("/documents/recover-stuck", post(handlers::recover_stuck))
+        // Cancel by document id — works for orphan rows with no track_id
+        .route(
+            "/documents/{document_id}/cancel",
+            post(handlers::cancel_document),
+        )
         // Document deletion impact analysis - MUST come before /documents/{document_id}
         .route(
             "/documents/{document_id}/deletion-impact",
@@ -605,6 +610,10 @@ fn api_v1_routes(state: AppState) -> Router<AppState> {
         .route(
             "/conversations/{id}/messages",
             post(handlers::create_message),
+        )
+        .route(
+            "/conversations/{conversation_id}/messages/{message_id}/feedback",
+            patch(handlers::set_message_feedback),
         )
         .route(
             "/conversations/{id}/share",

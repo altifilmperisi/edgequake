@@ -25,7 +25,8 @@ pub use models::{Conversation, Folder, Message};
 pub use requests::{
     ConversationFilter, ConversationSortField, CreateConversationRequest, CreateFolderRequest,
     CreateMessageRequest, ImportError, ImportResult, PaginatedConversations, PaginatedMessages,
-    PaginationMeta, UpdateConversationRequest, UpdateFolderRequest, UpdateMessageRequest,
+    PaginationMeta, SetMessageFeedbackRequest, UpdateConversationRequest, UpdateFolderRequest,
+    UpdateMessageRequest,
 };
 
 #[cfg(test)]

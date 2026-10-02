@@ -19,6 +19,7 @@ import {
   listFolders,
   updateFolder,
 } from "@/lib/api/folders";
+import { useTenantQueryReady } from "@/hooks/use-tenant-query-ready";
 import { folderKeys } from "@/lib/api/query-keys";
 import type {
   ConversationFolder,
@@ -33,9 +34,11 @@ import { toast } from "sonner";
 // ============================================================================
 
 export function useFolders() {
+  const ready = useTenantQueryReady();
   return useQuery({
     queryKey: folderKeys.list(),
     queryFn: listFolders,
+    enabled: ready,
     staleTime: 60_000, // 1 minute
   });
 }

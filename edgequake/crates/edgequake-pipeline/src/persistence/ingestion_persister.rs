@@ -688,13 +688,15 @@ async fn persist_processing_result_impl(
         }
     }
 
-    let mut merger = KnowledgeGraphMerger::new(
-        config.merger_config.clone(),
-        graph_storage.clone(),
-        vector_storage.clone(),
-    )
-    .with_tenant_context(ctx.tenant_id.clone(), ctx.workspace_id.clone())
-    .with_relational_sink(config.relational_sink.clone());
+    // Fan-out follows the LLM that actually serves the merge, not the process default.
+    let merger_config = match config.llm_provider.as_ref() {
+        Some(llm) => config.merger_config.clone().for_provider(llm.name()),
+        None => config.merger_config.clone(),
+    };
+    let mut merger =
+        KnowledgeGraphMerger::new(merger_config, graph_storage.clone(), vector_storage.clone())
+            .with_tenant_context(ctx.tenant_id.clone(), ctx.workspace_id.clone())
+            .with_relational_sink(config.relational_sink.clone());
 
     // Wire lineage sink if provided (SPEC-032 W-08)
     if let Some(ref ls) = config.lineage_sink {

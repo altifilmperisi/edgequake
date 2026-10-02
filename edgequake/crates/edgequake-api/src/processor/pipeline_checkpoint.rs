@@ -105,7 +105,7 @@ impl PipelineCheckpoint {
     /// Compute a full SHA-256 content hash for integrity checking (X-28).
     ///
     /// Hashes the entire document so suffix-only edits invalidate checkpoints.
-    fn compute_content_hash(text: &str) -> String {
+    pub(crate) fn compute_content_hash(text: &str) -> String {
         use sha2::{Digest, Sha256};
         let mut hasher = Sha256::new();
         hasher.update(text.as_bytes());
@@ -800,7 +800,45 @@ pub async fn load_partial_chunk_checkpoint(
     Some(parsed.completed)
 }
 
+/// Persist an in-memory partial checkpoint (serialize, size-gate, upsert).
+///
+/// Used by the single-writer coalescing path (SPEC-156) and by the legacy
+/// one-shot `save_partial_chunk_extraction` helper.
+pub async fn flush_partial_chunk_state(
+    kv: &Arc<dyn KVStorage>,
+    document_id: &str,
+    state: &PartialChunkCheckpoint,
+) {
+    let key = partial_chunk_key(document_id);
+    match serde_json::to_value(state) {
+        Ok(value) => {
+            let approx = serde_json::to_vec(&value).map(|b| b.len()).unwrap_or(0);
+            if approx > CHECKPOINT_MAX_SERIALIZED_BYTES {
+                warn!(
+                    document_id,
+                    size = approx,
+                    "Partial chunk checkpoint too large — skipping write"
+                );
+                return;
+            }
+            if let Err(e) = kv.upsert(&[(key, value)]).await {
+                warn!(
+                    document_id,
+                    error = %e,
+                    "Failed to upsert partial chunk checkpoint"
+                );
+            }
+        }
+        Err(e) => {
+            warn!(document_id, error = %e, "Failed to serialize partial chunk checkpoint");
+        }
+    }
+}
+
 /// Upsert one completed chunk into the partial checkpoint (best-effort).
+///
+/// Prefer [`crate::processor::partial_chunk_checkpoint_writer::PartialChunkCheckpointWriter`]
+/// on the hot extract path so concurrent completions do not race (SPEC-156).
 pub async fn save_partial_chunk_extraction(
     kv: &Arc<dyn KVStorage>,
     document_id: &str,
@@ -810,8 +848,8 @@ pub async fn save_partial_chunk_extraction(
     chunk_id: &str,
     result: edgequake_pipeline::ExtractionResult,
 ) {
-    let key = partial_chunk_key(document_id);
     let hash = PipelineCheckpoint::compute_content_hash(content);
+    let key = partial_chunk_key(document_id);
     let mut state = match kv.get_by_id(&key).await.ok().flatten() {
         Some(raw) => serde_json::from_value::<PartialChunkCheckpoint>(raw).unwrap_or_default(),
         None => PartialChunkCheckpoint::default(),
@@ -830,23 +868,7 @@ pub async fn save_partial_chunk_extraction(
     }
     state.extraction_provider = extraction_provider.to_string();
     state.completed.insert(chunk_id.to_string(), result);
-    match serde_json::to_value(&state) {
-        Ok(value) => {
-            let approx = serde_json::to_vec(&value).map(|b| b.len()).unwrap_or(0);
-            if approx > CHECKPOINT_MAX_SERIALIZED_BYTES {
-                warn!(
-                    document_id,
-                    size = approx,
-                    "Partial chunk checkpoint too large — skipping write"
-                );
-                return;
-            }
-            let _ = kv.upsert(&[(key, value)]).await;
-        }
-        Err(e) => {
-            warn!(document_id, error = %e, "Failed to serialize partial chunk checkpoint");
-        }
-    }
+    flush_partial_chunk_state(kv, document_id, &state).await;
 }
 
 /// Clear mid-extract partial checkpoint (after full success or force-fresh).

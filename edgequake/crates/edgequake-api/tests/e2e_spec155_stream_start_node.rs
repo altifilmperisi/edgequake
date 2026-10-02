@@ -40,12 +40,7 @@ async fn setup_workspace(state: &AppState) -> (Uuid, Uuid) {
     (tenant.tenant_id, ws.workspace_id)
 }
 
-async fn seed(
-    state: &AppState,
-    id: &str,
-    tenant: Uuid,
-    workspace: Uuid,
-) {
+async fn seed(state: &AppState, id: &str, tenant: Uuid, workspace: Uuid) {
     let mut props = HashMap::new();
     props.insert("entity_type".into(), json!("PERSON"));
     props.insert("tenant_id".into(), json!(tenant.to_string()));

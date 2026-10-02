@@ -348,15 +348,17 @@ impl DocumentTaskProcessor {
                 .await;
         }
 
-        // SPEC-001/Objective-A: Create chunk progress callback for real-time updates
-        // WHY: Users need to see granular progress like "Chunk 12/35 (34%) - ETA: 53s"
-        // OODA-PERF-01: Enhanced to update document metadata for UI polling fallback
-        // WHY: If WebSocket fails, users still see extraction progress via metadata polling
+        // SPEC-001/Objective-A + SPEC-155: chunk progress via typed run_progress ledger.
+        // WHY: concurrent extraction makes last-started chunk_index look like 100% done.
+        // The ledger records completed_chunks (+ in-flight), never the start index.
         let task_id = task.track_id.clone();
         let doc_id_for_callback = document_id.clone();
-        let doc_id_for_metadata = document_id.clone();
         let pipeline_state_for_callback = self.pipeline_state.clone();
-        let kv_storage_for_callback = Arc::clone(&self.kv_storage);
+        let run_progress = crate::services::RunProgressWriter::spawn(
+            document_id.clone(),
+            Arc::clone(&self.kv_storage),
+        );
+        let in_flight = Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let chunk_progress_callback: ChunkProgressCallback =
             Arc::new(move |update: ChunkProgressUpdate| {
                 // Emit real-time WebSocket event for chunk progress
@@ -373,86 +375,30 @@ impl DocumentTaskProcessor {
                     update.cumulative_cost_usd,
                 );
 
-                // Heartbeat: always patch metadata so long LLM calls do not freeze at 0%.
-                let should_update_metadata = true;
-                if should_update_metadata {
-                    let doc_id_clone = doc_id_for_metadata.clone();
-                    let kv_clone = Arc::clone(&kv_storage_for_callback);
-                    let chunk_idx = update.chunk_index;
-                    let total = update.total_chunks;
-                    let completed = update.completed_chunks;
-                    let eta = update.eta_seconds;
-                    let attempt = update.attempt;
-                    let phase = format!("{:?}", update.phase);
-                    let gate_wait_ms = if update.gate_wait_ms > 0 {
-                        update.gate_wait_ms
-                    } else {
-                        crate::local_inference_gate::last_local_gate_wait_ms()
-                    };
-
-                    // Fire-and-forget metadata update to avoid blocking extraction
-                    tokio::spawn(async move {
-                        let progress_pct = if total > 0 {
-                            ((completed as f64 / total as f64) * 100.0).round() as u32
-                        } else {
-                            0
-                        };
-                        let eta_part = if eta > 0 {
-                            format!(" — ETA ~{}s", eta)
-                        } else {
-                            String::new()
-                        };
-                        let gate_part = if gate_wait_ms > 50 {
-                            format!(" — gate wait {}ms", gate_wait_ms)
-                        } else {
-                            String::new()
-                        };
-                        let msg = if phase.contains("Started") || phase.contains("Retrying") {
-                            format!(
-                                "Extracting entities: chunk {}/{} in flight (attempt {}, {}%){}{}",
-                                chunk_idx + 1,
-                                total,
-                                attempt,
-                                progress_pct,
-                                eta_part,
-                                gate_part
-                            )
-                        } else {
-                            format!(
-                                "Extracting entities: chunk {}/{} ({}%){}{}",
-                                chunk_idx + 1,
-                                total,
-                                progress_pct,
-                                eta_part,
-                                gate_part
-                            )
-                        };
-                        let _ = crate::services::patch_document_metadata(
-                            &kv_clone,
-                            &doc_id_clone,
-                            |updated| {
-                                updated.insert("current_stage".to_string(), json!("extracting"));
-                                updated.insert("stage_message".to_string(), json!(msg));
-                                updated.insert(
-                                    "stage_progress".to_string(),
-                                    json!(progress_pct as f64 / 100.0),
-                                );
-                                updated.insert("extract_eta_seconds".to_string(), json!(eta));
-                                if gate_wait_ms > 0 {
-                                    updated.insert(
-                                        "local_gate_wait_ms".to_string(),
-                                        json!(gate_wait_ms),
-                                    );
-                                }
-                                updated.insert(
-                                    "updated_at".to_string(),
-                                    json!(chrono::Utc::now().to_rfc3339()),
-                                );
-                            },
+                use edgequake_pipeline::ChunkProgressPhase;
+                let flying = match update.phase {
+                    ChunkProgressPhase::Started => {
+                        in_flight.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1
+                    }
+                    ChunkProgressPhase::Retrying => {
+                        in_flight.load(std::sync::atomic::Ordering::SeqCst)
+                    }
+                    ChunkProgressPhase::Completed => in_flight
+                        .fetch_update(
+                            std::sync::atomic::Ordering::SeqCst,
+                            std::sync::atomic::Ordering::SeqCst,
+                            |n| Some(n.saturating_sub(1)),
                         )
-                        .await;
-                    });
-                }
+                        .unwrap_or(0)
+                        .saturating_sub(1),
+                };
+
+                run_progress.task(
+                    crate::services::RunTaskId::Chunks,
+                    update.completed_chunks as u64,
+                    update.total_chunks as u64,
+                    Some(flying as u64),
+                );
             });
 
         // SPEC-003: Process through pipeline with RESILIENT chunk-level extraction

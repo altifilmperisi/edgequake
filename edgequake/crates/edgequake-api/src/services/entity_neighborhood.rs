@@ -66,8 +66,7 @@ pub async fn build_entity_neighborhood(
     }
 
     let visited: Vec<String> = visited_nodes.iter().cloned().collect();
-    let degree_map =
-        crate::handlers::graph::degrees_breakdown_batch(graph_storage, &visited).await;
+    let degree_map = crate::handlers::graph::degrees_breakdown_batch(graph_storage, &visited).await;
 
     let mut nodes = Vec::with_capacity(visited.len());
     for node_id in &visited {
@@ -77,9 +76,7 @@ pub async fn build_entity_neighborhood(
             let degree = degree_map
                 .get(node_id)
                 .copied()
-                .unwrap_or_else(|| {
-                    crate::handlers::graph_types::DegreeBreakdown::from_total(0)
-                });
+                .unwrap_or_else(|| crate::handlers::graph_types::DegreeBreakdown::from_total(0));
             nodes.push(NeighborhoodNode {
                 id: node.id.clone(),
                 label: crate::handlers::graph::graph_node_label(&node),

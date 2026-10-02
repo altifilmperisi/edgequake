@@ -1929,9 +1929,14 @@ impl DocumentTaskProcessor {
         );
         let converting_substep: Option<crate::services::ConvertingSubstepReporter> = {
             let cb = progress_callback.clone();
-            Some(Arc::new(move |message, progress| {
-                cb.report_converting_status(message, progress);
-            }))
+            Some(Arc::new(
+                move |update: crate::services::ConvertingSubstepUpdate| {
+                    if let Some((done, total)) = update.figures {
+                        cb.report_figure_progress(done, total);
+                    }
+                    cb.report_converting_status(update.message, update.progress);
+                },
+            ))
         };
         let markdown = {
             if crate::services::multimodal_images_requested(

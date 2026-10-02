@@ -12,11 +12,11 @@
 "use client";
 
 import { useEffect, useReducer, useRef, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
 import { IngestionRunCard } from "@/components/documents/ingestion-run-card";
 import { PdfUploadProgress } from "@/components/documents/pdf-upload-progress";
+import { StalledRunCard } from "@/components/documents/stalled-run-card";
 import { Button } from "@/components/ui/button";
-import { cancelTask } from "@/lib/api/edgequake";
+import { useCancelDocument } from "@/hooks/use-cancel-document";
 import {
   cancelledRetentionDeadlines,
   createCancelledObservationClock,
@@ -32,6 +32,7 @@ import {
 } from "@/lib/pipeline/cancelled-active-run-dismiss";
 import {
   isOrphanFailedAttention,
+  isStalledAttention,
   partitionActiveRuns,
 } from "@/lib/pipeline/active-runs-partition";
 import {
@@ -43,6 +44,7 @@ import {
 export {
   hasPanelVisibleActiveRuns,
   isOrphanFailedAttention,
+  isStalledAttention,
   isLiveWorkingOrQueued,
   partitionActiveRuns,
 } from "@/lib/pipeline/active-runs-partition";
@@ -51,6 +53,40 @@ interface ActiveRunsPanelProps {
   runs: IngestionRunView[];
   /** Delete/remove a failed attention shell (orphan staging re-upload class). */
   onDismissFailed?: (documentId: string) => void;
+  /** Restart a stalled run (opens the Reprocess choice upstream). */
+  onReprocess?: (documentId: string) => void;
+}
+
+/** Copy for the Needs-attention section, matched to what is actually in it. */
+export function attentionHint(attention: IngestionRunView[]): string {
+  const stalled = attention.filter(isStalledAttention).length;
+  if (stalled === 0) {
+    return "Prior interrupted upload(s) — dismiss and re-upload. Not part of the current active run.";
+  }
+  if (stalled === attention.length) {
+    return "These runs stopped reporting progress — the worker has probably gone away. Cancel to release them, or Reprocess to try again.";
+  }
+  return "Some runs stopped reporting progress, others are interrupted uploads. Cancel stalled runs or dismiss and re-upload.";
+}
+
+/** A run the user can still stop: live or queued, not already winding down. */
+export function isCancellableRun(run: IngestionRunView): boolean {
+  return (
+    run.stageStatus !== "failed" &&
+    run.stageStatus !== "stopping" &&
+    run.stageStatus !== "cancelled" &&
+    run.stage !== "stopping" &&
+    run.stage !== "cancelled" &&
+    run.stage !== "completed"
+  );
+}
+
+interface RunCardHandlers {
+  onDismissFailed?: (documentId: string) => void;
+  onDismissCancelled?: (documentId: string) => void;
+  onCancelRun: (run: IngestionRunView) => void;
+  onReprocess?: (documentId: string) => void;
+  cancellingIds: ReadonlySet<string>;
 }
 
 /** Honest section title — never "Queued run" for cancelled-only. */
@@ -82,19 +118,30 @@ export function workingSectionTitle(working: IngestionRunView[]): string {
   return working.length > 1 ? "Queued runs" : "Queued run";
 }
 
-function renderRunCard(
-  run: IngestionRunView,
-  onDismissFailed: ((documentId: string) => void) | undefined,
-  onDismissCancelled: ((documentId: string) => void) | undefined,
-  onCancelTrack: ((trackId: string) => void) | undefined,
-) {
+function renderRunCard(run: IngestionRunView, h: RunCardHandlers) {
+  const cancel = isCancellableRun(run) ? () => h.onCancelRun(run) : undefined;
+
+  if (isStalledAttention(run)) {
+    return (
+      <StalledRunCard
+        key={run.documentId}
+        run={run}
+        onCancel={cancel}
+        onReprocess={
+          h.onReprocess ? () => h.onReprocess?.(run.documentId) : undefined
+        }
+        isCancelling={h.cancellingIds.has(run.documentId)}
+      />
+    );
+  }
+
   const dismissCancelled =
-    isCancelledRun(run) && onDismissCancelled
-      ? () => onDismissCancelled(run.documentId)
+    isCancelledRun(run) && h.onDismissCancelled
+      ? () => h.onDismissCancelled?.(run.documentId)
       : undefined;
   const dismissFailed =
-    isOrphanFailedAttention(run) && onDismissFailed
-      ? () => onDismissFailed(run.documentId)
+    isOrphanFailedAttention(run) && h.onDismissFailed
+      ? () => h.onDismissFailed?.(run.documentId)
       : undefined;
 
   return (
@@ -103,17 +150,7 @@ function renderRunCard(
       run={run}
       compact
       data-testid="spec048-active-run-card"
-      onCancel={
-        run.trackId &&
-        run.stageStatus !== "failed" &&
-        run.stageStatus !== "stopping" &&
-        run.stageStatus !== "cancelled" &&
-        run.stage !== "stopping" &&
-        run.stage !== "cancelled" &&
-        onCancelTrack
-          ? () => onCancelTrack(run.trackId!)
-          : undefined
-      }
+      onCancel={cancel}
       onDismiss={dismissCancelled ?? dismissFailed}
       nestedDetail={
         // LAW-IS2 / F-IS-06: second progress product only when list lacks page counts.
@@ -133,8 +170,12 @@ function renderRunCard(
 export function ActiveRunsPanel({
   runs,
   onDismissFailed,
+  onReprocess,
 }: ActiveRunsPanelProps) {
-  const queryClient = useQueryClient();
+  const cancelDocument = useCancelDocument();
+  const [cancellingIds, setCancellingIds] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
   const clockRef = useRef(createCancelledObservationClock());
   const [dismissedCancelledIds, setDismissedCancelledIds] = useState(() =>
     loadDismissedCancelledIds(),
@@ -142,22 +183,17 @@ export function ActiveRunsPanel({
   // Force re-render when cancelled TTL expires.
   const [, bumpRetention] = useReducer((n: number) => n + 1, 0);
 
-  const onCancelTrack = (trackId: string) => {
-    void import("@/lib/documents/cancel-intent").then(
-      ({ pinCancelIntent, patchDocumentsCancelOptimistic }) => {
-        pinCancelIntent(trackId);
-        patchDocumentsCancelOptimistic(queryClient, trackId);
-      },
+  const onCancelRun = (run: IngestionRunView) => {
+    const id = run.documentId;
+    if (cancellingIds.has(id)) return;
+    setCancellingIds((prev) => new Set(prev).add(id));
+    void cancelDocument({ documentId: id, trackId: run.trackId }).finally(() =>
+      setCancellingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      }),
     );
-    void cancelTask(trackId)
-      .catch(() => {
-        /* terminal cancelled may still be on KV */
-      })
-      .finally(() => {
-        void queryClient.invalidateQueries({ queryKey: ["documents"] });
-        void queryClient.invalidateQueries({ queryKey: ["tasks"] });
-        void queryClient.invalidateQueries({ queryKey: ["pipeline-status"] });
-      });
   };
 
   // Cache freeze stage while Stopping / Cancelled so refresh stays honest.
@@ -230,14 +266,14 @@ export function ActiveRunsPanel({
 
   const dismissAll = () => {
     if (!onDismissFailed) return;
-    for (const run of attention) {
+    for (const run of attention.filter(isOrphanFailedAttention)) {
       onDismissFailed(run.documentId);
     }
   };
 
   return (
     <div
-      className="space-y-2 rounded-md border border-sky-200/80 bg-sky-50/40 p-2 dark:border-sky-900 dark:bg-sky-950/20"
+      className="space-y-2 rounded-lg border border-sky-200/80 bg-sky-50/40 p-2.5 dark:border-sky-900 dark:bg-sky-950/20"
       data-testid="spec048-active-runs-panel"
       data-density="compact"
     >
@@ -250,17 +286,25 @@ export function ActiveRunsPanel({
             <div className="text-sm font-medium tracking-tight">
               {workingSectionTitleForRuns(working)}
             </div>
-            <div className="text-xs tabular-nums text-muted-foreground">
-              {working.length}
-            </div>
+            {/* A lone "1" next to "Active run" is noise; show the count only
+                when it adds information. */}
+            {working.length > 1 ? (
+              <div
+                className="rounded-full bg-sky-100 px-1.5 text-xs font-medium tabular-nums text-sky-800 dark:bg-sky-950 dark:text-sky-200"
+                aria-label={`${working.length} runs`}
+              >
+                {working.length}
+              </div>
+            ) : null}
           </div>
           {working.map((run) =>
-            renderRunCard(
-              run,
+            renderRunCard(run, {
               onDismissFailed,
               onDismissCancelled,
-              onCancelTrack,
-            ),
+              onCancelRun,
+              onReprocess,
+              cancellingIds,
+            }),
           )}
         </section>
       )}
@@ -275,16 +319,18 @@ export function ActiveRunsPanel({
               <div className="text-sm font-medium tracking-tight">
                 Needs attention
               </div>
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                Prior interrupted upload(s) — dismiss and re-upload. Not part of
-                the current active run.
+              <p
+                className="mt-0.5 text-xs text-muted-foreground"
+                data-testid="spec155-attention-hint"
+              >
+                {attentionHint(attention)}
               </p>
             </div>
             <div className="flex shrink-0 items-center gap-2">
               <span className="text-xs tabular-nums text-muted-foreground">
                 {attention.length}
               </span>
-              {onDismissFailed && (
+              {onDismissFailed && attention.some(isOrphanFailedAttention) && (
                 <Button
                   type="button"
                   variant="outline"
@@ -299,7 +345,12 @@ export function ActiveRunsPanel({
             </div>
           </div>
           {attention.map((run) =>
-            renderRunCard(run, onDismissFailed, undefined, onCancelTrack),
+            renderRunCard(run, {
+              onDismissFailed,
+              onCancelRun,
+              onReprocess,
+              cancellingIds,
+            }),
           )}
         </section>
       )}

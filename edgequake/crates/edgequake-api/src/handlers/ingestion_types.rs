@@ -50,6 +50,9 @@ pub struct IngestionProgressResponse {
     pub message: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub counts: Option<IngestionProgressCounts>,
+    /// SPEC-155: typed monotonic per-phase progress ledger (SSOT for Active Runs).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub run_progress: Option<crate::services::RunProgress>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub progress_01: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]

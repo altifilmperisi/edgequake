@@ -8,7 +8,7 @@ import { sanitizeQueryModelSelection } from "@/lib/query-model-selection";
 import { useActiveConversationId, useQueryUIStore } from "@/stores/use-query-ui-store";
 import { useSettingsStore } from "@/stores/use-settings-store";
 import { useTenantStore } from "@/stores/use-tenant-store";
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
@@ -26,15 +26,17 @@ export function useQueryConversationLifecycle({
   const prevTenantRef = useRef<string | null>(null);
   const prevWorkspaceRef = useRef<string | null>(null);
 
-  const { querySettings, setQuerySettings } = useSettingsStore();
-  const { selectedTenantId, selectedWorkspaceId } = useTenantStore();
+  const querySettings = useSettingsStore((s) => s.querySettings);
+  const setQuerySettings = useSettingsStore((s) => s.setQuerySettings);
+  const selectedTenantId = useTenantStore((s) => s.selectedTenantId);
+  const selectedWorkspaceId = useTenantStore((s) => s.selectedWorkspaceId);
   const { data: llmCatalog } = useProviderLlmModels();
   const { data: providerHealth } = useProvidersHealth({
     enabled: true,
     refetchInterval: 60 * 1000,
   });
 
-  const store = useQueryUIStore();
+  const setActiveConversation = useQueryUIStore((s) => s.setActiveConversation);
   const activeConversationId = useActiveConversationId();
 
   const {
@@ -52,14 +54,20 @@ export function useQueryConversationLifecycle({
     if (!isConversationError || !activeConversationId) return;
     if (!isConversationNotFoundError(conversationError)) return;
 
-    store.setActiveConversation(null);
+    setActiveConversation(null);
     toast(t("query.conversationExpired", "Previous conversation not available"), {
       description: t(
         "query.startingFreshSession",
         "Starting a fresh session.",
       ),
     });
-  }, [isConversationError, conversationError, activeConversationId, store, t]);
+  }, [
+    isConversationError,
+    conversationError,
+    activeConversationId,
+    setActiveConversation,
+    t,
+  ]);
 
   useEffect(() => {
     const sanitizedSelection = sanitizeQueryModelSelection(
@@ -105,9 +113,9 @@ export function useQueryConversationLifecycle({
 
     const firstPage = conversationsData?.pages?.[0];
     if (!activeConversationId && firstPage?.items && firstPage.items.length > 0) {
-      store.setActiveConversation(firstPage.items[0].id);
+      setActiveConversation(firstPage.items[0].id);
     }
-  }, [activeConversationId, conversationsData, store]);
+  }, [activeConversationId, conversationsData, setActiveConversation]);
 
   useEffect(() => {
     if (prevTenantRef.current === null && prevWorkspaceRef.current === null) {
@@ -125,7 +133,7 @@ export function useQueryConversationLifecycle({
     prevWorkspaceRef.current = selectedWorkspaceId;
 
     if (!activeConversationId) return;
-    store.setActiveConversation(null);
+    setActiveConversation(null);
     onTenantContextChange();
     toast(t("query.conversationCleared", "New conversation started"), {
       description: t(
@@ -138,9 +146,17 @@ export function useQueryConversationLifecycle({
     onTenantContextChange,
     selectedTenantId,
     selectedWorkspaceId,
-    store,
+    setActiveConversation,
     t,
   ]);
+
+  // Stable actions facade for stream session (avoid whole-store subscription)
+  const store = useMemo(
+    () => ({
+      setActiveConversation: useQueryUIStore.getState().setActiveConversation,
+    }),
+    [],
+  );
 
   return {
     activeConversation,
@@ -148,6 +164,6 @@ export function useQueryConversationLifecycle({
     isLoadingConversation,
     querySettings,
     setQuerySettings,
-    store,
+    store: store as ReturnType<typeof useQueryUIStore.getState>,
   };
 }

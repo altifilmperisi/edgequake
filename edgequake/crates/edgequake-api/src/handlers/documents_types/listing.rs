@@ -233,6 +233,10 @@ pub struct DocumentSummary {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub progress_counts: Option<crate::handlers::ingestion_types::IngestionProgressCounts>,
 
+    /// SPEC-155: typed monotonic per-phase progress ledger.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub run_progress: Option<crate::services::RunProgress>,
+
     /// SPEC-091 IS2 / LAW-IS4: 1-based FCFS queue position for pending admission.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub queue_position: Option<u64>,

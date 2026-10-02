@@ -151,6 +151,23 @@ pub struct RecoverStuckResponse {
     pub document_titles: Vec<String>,
 }
 
+/// Response from cancelling a document by id.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct CancelDocumentResponse {
+    /// Document that was cancelled.
+    pub document_id: String,
+
+    /// Resulting status (always `cancelled`).
+    pub status: String,
+
+    /// Track ID the document was linked to, when any.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub track_id: Option<String>,
+
+    /// True when a live/queued task row was cancelled (false for orphan rows).
+    pub task_cancelled: bool,
+}
+
 // ============================================================================
 // Retry Chunks DTOs
 // ============================================================================

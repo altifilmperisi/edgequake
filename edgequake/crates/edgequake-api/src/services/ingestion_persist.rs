@@ -370,6 +370,52 @@ pub async fn persist_with_providers_progress_and_embedder(
     Ok(out)
 }
 
+/// Parse the P0 authority coordinates (scope + document) shared by every
+/// authority read: generation allocation, admission and worker pre-flight.
+///
+/// Fails closed on a missing/unparseable tenant, workspace or document id so a
+/// malformed scope can never read (or collide with) another document's row.
+pub(crate) fn resolve_authority_target(
+    tenant_id: Option<&str>,
+    workspace_id: &str,
+    document_id: &str,
+) -> Result<
+    (
+        edgequake_storage::contracts::AccessScope,
+        edgequake_storage::contracts::DocumentId,
+    ),
+    edgequake_pipeline::error::PipelineError,
+> {
+    use edgequake_pipeline::error::PipelineError;
+    use edgequake_storage::StorageError;
+    let invalid = |what: &str, error: String| {
+        PipelineError::StorageError(StorageError::InvalidData(format!(
+            "invalid {what} for durable ingest: {error}"
+        )))
+    };
+    let tenant_raw = tenant_id.ok_or_else(|| {
+        PipelineError::StorageError(StorageError::InvalidData(
+            "durable ingest requires tenant_id".into(),
+        ))
+    })?;
+    let tenant_uuid =
+        uuid::Uuid::parse_str(tenant_raw).map_err(|e| invalid("tenant_id", e.to_string()))?;
+    let workspace_uuid =
+        uuid::Uuid::parse_str(workspace_id).map_err(|e| invalid("workspace_id", e.to_string()))?;
+    let document_uuid =
+        edgequake_pipeline::persistence::resolve_relational_document_id(document_id)
+            .map(|id| id.into_uuid())
+            .map_err(|e| invalid("document_id", e.to_string()))?;
+    let scope = edgequake_storage::contracts::AccessScope::new(
+        edgequake_storage::contracts::TenantId::new(tenant_uuid),
+        edgequake_storage::contracts::WorkspaceId::new(workspace_uuid),
+    );
+    Ok((
+        scope,
+        edgequake_storage::contracts::DocumentId::new(document_uuid),
+    ))
+}
+
 /// Allocate the next ingest generation from P0 relational authority state.
 ///
 /// Returns `current_document_revision + 1`, or `1` when authority is unavailable
@@ -393,46 +439,9 @@ pub(crate) async fn allocate_ingest_generation(
             ),
         )
     })?;
-    let tenant_raw = tenant_id.ok_or_else(|| {
-        edgequake_pipeline::error::PipelineError::StorageError(
-            edgequake_storage::StorageError::InvalidData(
-                "durable ingest requires tenant_id".into(),
-            ),
-        )
-    })?;
-    let tenant_uuid = uuid::Uuid::parse_str(tenant_raw).map_err(|error| {
-        edgequake_pipeline::error::PipelineError::StorageError(
-            edgequake_storage::StorageError::InvalidData(format!(
-                "invalid tenant_id for durable ingest: {error}"
-            )),
-        )
-    })?;
-    let workspace_uuid = uuid::Uuid::parse_str(workspace_id).map_err(|error| {
-        edgequake_pipeline::error::PipelineError::StorageError(
-            edgequake_storage::StorageError::InvalidData(format!(
-                "invalid workspace_id for durable ingest: {error}"
-            )),
-        )
-    })?;
-    let document_uuid =
-        edgequake_pipeline::persistence::resolve_relational_document_id(document_id)
-            .map(|id| id.into_uuid())
-            .map_err(|error| {
-                edgequake_pipeline::error::PipelineError::StorageError(
-                    edgequake_storage::StorageError::InvalidData(format!(
-                        "invalid document_id for durable ingest: {error}"
-                    )),
-                )
-            })?;
-    let scope = edgequake_storage::contracts::AccessScope::new(
-        edgequake_storage::contracts::TenantId::new(tenant_uuid),
-        edgequake_storage::contracts::WorkspaceId::new(workspace_uuid),
-    );
+    let (scope, document) = resolve_authority_target(tenant_id, workspace_id, document_id)?;
     let views = reader
-        .get_many(
-            &scope,
-            &[edgequake_storage::contracts::DocumentId::new(document_uuid)],
-        )
+        .get_many(&scope, &[document])
         .await
         .map_err(edgequake_storage::StorageError::from)
         .map_err(edgequake_pipeline::error::PipelineError::StorageError)?;

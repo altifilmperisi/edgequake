@@ -10,6 +10,14 @@ export function convertServerMessage(msg: ServerMessage): QueryMessage {
     context = mapServerMessageContextToQueryContext(msg.context);
   }
 
+  const rating = msg.feedback_rating;
+  const feedbackRating =
+    rating === "up" || rating === "down"
+      ? rating
+      : rating === null
+        ? null
+        : undefined;
+
   return {
     id: msg.id,
     role: msg.role as "user" | "assistant",
@@ -24,5 +32,9 @@ export function convertServerMessage(msg: ServerMessage): QueryMessage {
     timestamp: new Date(msg.created_at).getTime(),
     llmProvider: msg.llm_provider ?? undefined,
     llmModel: msg.llm_model ?? undefined,
+    // SPEC-155 B3: interrupted streams restore as stopped partials
+    stopped: msg.finish_reason === "interrupted",
+    // SPEC-155 B2: restore thumbs on reload
+    feedbackRating,
   };
 }

@@ -14,6 +14,8 @@
 'use client';
 
 import { Badge } from '@/components/ui/badge';
+import { documentStalledForMs } from '@/lib/documents/document-run-state';
+import { formatSilence } from '@/lib/pipeline/run-liveness';
 import { formatOverallProgress } from '@/lib/utils/progress-formatter';
 import {
   resolveDocumentDisplayStatus,
@@ -21,6 +23,7 @@ import {
 } from '@/lib/utils/document-status';
 import { useIngestionStore } from '@/stores/use-ingestion-store';
 import type { Document } from '@/types';
+import { AlertTriangle } from 'lucide-react';
 import { useMemo } from 'react';
 import { StatusBadge } from './status-badge';
 
@@ -62,6 +65,25 @@ export function ServingFenceBadge({
     >
       not queryable
     </span>
+  );
+}
+
+/** SPEC-155: silent "processing" is Stalled — a spinner would be a lie. */
+function StalledStatusBadge({ silentMs }: { silentMs: number }) {
+  const detail = `No progress for ${formatSilence(silentMs)}`;
+  return (
+    <div className="inline-flex flex-wrap items-center gap-1" data-testid="status-cell" data-stalled="true">
+      <Badge
+        variant="outline"
+        className="max-w-full min-w-0 cursor-default gap-1 truncate border-amber-400 text-amber-700 dark:text-amber-400"
+        title={detail}
+        aria-label={`Stalled. ${detail}`}
+        data-testid="status-badge"
+      >
+        <AlertTriangle className="h-3 w-3 shrink-0" aria-hidden="true" />
+        Stalled
+      </Badge>
+    </div>
   );
 }
 
@@ -110,6 +132,7 @@ export function EnhancedStatusBadge({
     return undefined;
   }, [track, document.stage_progress]);
 
+  const stalledMs = documentStalledForMs(document);
   const queryReady = document.query_ready;
   const hasFence = typeof queryReady === 'boolean';
 
@@ -158,6 +181,10 @@ export function EnhancedStatusBadge({
         <span className="sr-only">{label}</span>
       </Badge>
     );
+  }
+
+  if (stalledMs !== null) {
+    return <StalledStatusBadge silentMs={stalledMs} />;
   }
 
   return (

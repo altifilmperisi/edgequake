@@ -13,7 +13,13 @@
  * @enforces BR1002 - Stats update when workspace changes
  */
 
-import { QuickActions, RecentActivity, StatsCard, SystemStatus } from '@/components/dashboard';
+import {
+  DashboardSubtitle,
+  QuickActions,
+  RecentActivity,
+  StatsCard,
+  SystemStatus,
+} from '@/components/dashboard';
 import { PageHeader } from '@/components/shared/page-header';
 import { PageShell } from '@/components/shared/page-shell';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -180,32 +186,21 @@ export default function DashboardPage() {
           title={selectedWorkspace?.name ?? t('dashboard.title', 'Dashboard')}
           description={
             <span data-testid="spec100-dashboard-subtitle">
-              {coldStats
-                ? t('common.loading', 'Loading...')
-                : documentValue > 0
-                  ? t(
-                      'dashboard.contextSubtitle',
-                      {
-                        count: documentValue,
-                        defaultValue_one:
-                          '{{count}} document · {{entities}} entities · {{relationships}} relationships',
-                        defaultValue_other:
-                          '{{count}} documents · {{entities}} entities · {{relationships}} relationships',
-                        entities: entityValue,
-                        relationships: relationshipValue,
-                      },
-                    )
-                  : t(
-                      'dashboard.emptySubtitle',
-                      'Upload your first document to get started',
-                    )}
+              {coldStats ? (
+                t('common.loading', 'Loading...')
+              ) : (
+                <DashboardSubtitle
+                  documentCount={documentValue}
+                  counts={documentsData?.status_counts}
+                />
+              )}
             </span>
           }
         />
 
         {/* Statistics Section - Shows workspace-specific counts */}
         {/* @implements FEAT1001 - Dashboard statistics visualization */}
-        <section aria-label={t('dashboard.sections.stats', 'Statistics')} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <section aria-label={t('dashboard.sections.stats', 'Statistics')} className="grid grid-cols-2 gap-2.5 sm:gap-3 lg:grid-cols-4">
           <StatsCard
             title={t('dashboard.stats.documents', 'Documents')}
             value={documentValue}
@@ -213,6 +208,7 @@ export default function DashboardPage() {
             zeroHint={t('dashboard.stats.documentsZero', 'Upload documents to get started')}
             icon={FileText}
             variant="documents"
+            href="/documents"
             isLoading={coldStats || !selectedWorkspaceId}
             isStale={statsStale}
           />
@@ -223,6 +219,7 @@ export default function DashboardPage() {
             zeroHint={t('dashboard.stats.entitiesZero', 'Process documents to extract entities')}
             icon={Users}
             variant="entities"
+            href="/graph"
             isLoading={coldStats || !selectedWorkspaceId}
             isStale={statsStale}
           />
@@ -233,6 +230,7 @@ export default function DashboardPage() {
             zeroHint={t('dashboard.stats.relationshipsZero', 'Relationships appear after processing')}
             icon={GitBranch}
             variant="relationships"
+            href="/graph"
             isLoading={coldStats || !selectedWorkspaceId}
             isStale={statsStale}
           />
@@ -243,20 +241,22 @@ export default function DashboardPage() {
             zeroHint={t('dashboard.stats.chunksZero', 'Chunks are created during ingestion')}
             icon={Tags}
             variant="types"
+            href="/documents"
             isLoading={coldStats || !selectedWorkspaceId}
             isStale={statsStale}
           />
         </section>
 
         {/* Quick Actions */}
-        <section aria-label="Quick Actions">
-          <QuickActions />
+        <section aria-label={t('dashboard.quickActions.title', 'Quick Actions')}>
+          <QuickActions emphasizeUpload={!coldStats && documentValue === 0} />
         </section>
 
         {/* Recent Activity — system status aligned with section title */}
         <section aria-label="Activity and Status">
           <RecentActivity
             documents={recentDocuments}
+            total={documentsData?.total}
             isLoading={coldDocs}
             headerAction={<SystemStatus />}
           />

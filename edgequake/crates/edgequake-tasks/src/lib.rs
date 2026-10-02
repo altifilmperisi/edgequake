@@ -118,10 +118,10 @@ pub use fairness_hold::{
 };
 pub use ingestion_reliability::{
     classify_from_failure_markers, classify_ingestion_failure, failure_step,
-    is_cancel_failure_message, is_permanent_ingestion_failure, is_provider_misconfig_message,
-    is_typed_timeout_message, IngestionFailureClass,
+    is_cancel_failure_message, is_document_deleted_message, is_permanent_ingestion_failure,
+    is_provider_misconfig_message, is_typed_timeout_message, IngestionFailureClass,
 };
-pub use lease::{lease_expires_at, task_lease_ttl_from_env};
+pub use lease::{heartbeat_interval_for_lease_ttl, lease_expires_at, task_lease_ttl_from_env};
 pub use pipeline_state::{
     PdfPageProgressPayload, PipelineEvent, PipelineMessage, PipelineState, PipelineStatusSnapshot,
 };

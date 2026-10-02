@@ -166,6 +166,21 @@ export async function updateMessage(
 }
 
 /**
+ * Set thumbs feedback on an assistant message (SPEC-155 B2).
+ */
+export async function setMessageFeedback(
+  conversationId: string,
+  messageId: string,
+  rating: "up" | "down" | null,
+  reason?: string,
+): Promise<ServerMessage> {
+  return api.patch<ServerMessage>(
+    `/conversations/${conversationId}/messages/${messageId}/feedback`,
+    { rating, reason },
+  );
+}
+
+/**
  * Delete a message from a conversation.
  * Used for regeneration - removes old assistant response before generating new one.
  */

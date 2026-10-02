@@ -38,7 +38,12 @@ pub async fn workspace_graph_totals(
 
 /// Truncation contract: returned set is a proper subset of workspace total,
 /// or BFS itself reported truncation.
-pub fn graph_is_truncated(returned: usize, total: usize, _max_nodes: usize, bfs_truncated: bool) -> bool {
+pub fn graph_is_truncated(
+    returned: usize,
+    total: usize,
+    _max_nodes: usize,
+    bfs_truncated: bool,
+) -> bool {
     bfs_truncated || returned < total
 }
 
@@ -87,9 +92,7 @@ pub async fn degrees_breakdown_batch(
     if let Ok(rows) = graph.get_nodes_with_degrees_batch(node_ids).await {
         return rows
             .into_iter()
-            .map(|(node, in_deg, out_deg)| {
-                (node.id, DegreeBreakdown::from_in_out(in_deg, out_deg))
-            })
+            .map(|(node, in_deg, out_deg)| (node.id, DegreeBreakdown::from_in_out(in_deg, out_deg)))
             .collect();
     }
 

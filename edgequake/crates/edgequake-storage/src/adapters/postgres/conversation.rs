@@ -70,6 +70,9 @@ mod sqlx_rows {
                 is_error: row.try_get("is_error")?,
                 llm_provider: row.try_get("llm_provider").unwrap_or(None),
                 llm_model: row.try_get("llm_model").unwrap_or(None),
+                feedback_rating: row.try_get("feedback_rating").unwrap_or(None),
+                feedback_reason: row.try_get("feedback_reason").unwrap_or(None),
+                finish_reason: row.try_get("finish_reason").unwrap_or(None),
                 created_at: row.try_get("created_at")?,
                 updated_at: row.try_get("updated_at")?,
             })
@@ -564,6 +567,7 @@ impl PostgresConversationStorage {
         is_error: Option<bool>,
         llm_provider: Option<&str>,
         llm_model: Option<&str>,
+        finish_reason: Option<&str>,
     ) -> Result<MessageRow> {
         let mut updates = Vec::new();
         let mut param_count = 1;
@@ -603,6 +607,10 @@ impl PostgresConversationStorage {
         if llm_model.is_some() {
             param_count += 1;
             updates.push(format!("llm_model = ${}", param_count));
+        }
+        if finish_reason.is_some() {
+            param_count += 1;
+            updates.push(format!("finish_reason = ${}", param_count));
         }
 
         if updates.is_empty() {
@@ -645,6 +653,9 @@ impl PostgresConversationStorage {
         if let Some(m) = llm_model {
             query_builder = query_builder.bind(m);
         }
+        if let Some(fr) = finish_reason {
+            query_builder = query_builder.bind(fr);
+        }
 
         let row = query_builder
             .fetch_one(&*self.pool)
@@ -652,6 +663,37 @@ impl PostgresConversationStorage {
             .map_err(|e| StorageError::Database(format!("Failed to update message: {}", e)))?;
 
         Ok(row)
+    }
+
+    /// Update thumbs feedback on a message (conversation-scoped).
+    pub async fn update_message_feedback(
+        &self,
+        conversation_id: Uuid,
+        message_id: Uuid,
+        feedback_rating: Option<&str>,
+        feedback_reason: Option<&str>,
+    ) -> Result<MessageRow> {
+        let row = sqlx::query_as::<_, MessageRow>(
+            r#"
+            UPDATE messages
+            SET feedback_rating = $3, feedback_reason = $4
+            WHERE message_id = $1 AND conversation_id = $2
+            RETURNING *
+            "#,
+        )
+        .bind(message_id)
+        .bind(conversation_id)
+        .bind(feedback_rating)
+        .bind(feedback_reason)
+        .fetch_optional(&*self.pool)
+        .await
+        .map_err(|e| StorageError::Database(format!("Failed to update message feedback: {e}")))?;
+
+        row.ok_or_else(|| {
+            StorageError::NotFound(format!(
+                "Message {message_id} not found in conversation {conversation_id}"
+            ))
+        })
     }
 
     /// Get a message by ID.
@@ -1161,6 +1203,7 @@ impl ConversationStorage for PostgresConversationStorage {
         is_error: Option<bool>,
         llm_provider: Option<&str>,
         llm_model: Option<&str>,
+        finish_reason: Option<&str>,
     ) -> Result<MessageRow> {
         PostgresConversationStorage::update_message(
             self,
@@ -1174,6 +1217,24 @@ impl ConversationStorage for PostgresConversationStorage {
             is_error,
             llm_provider,
             llm_model,
+            finish_reason,
+        )
+        .await
+    }
+
+    async fn update_message_feedback(
+        &self,
+        conversation_id: Uuid,
+        message_id: Uuid,
+        feedback_rating: Option<&str>,
+        feedback_reason: Option<&str>,
+    ) -> Result<MessageRow> {
+        PostgresConversationStorage::update_message_feedback(
+            self,
+            conversation_id,
+            message_id,
+            feedback_rating,
+            feedback_reason,
         )
         .await
     }

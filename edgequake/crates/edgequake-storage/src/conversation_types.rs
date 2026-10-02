@@ -42,6 +42,15 @@ pub struct MessageRow {
     /// LLM model used for this response (lineage). @implements SPEC-032
     #[serde(default)]
     pub llm_model: Option<String>,
+    /// User thumbs feedback (`up` | `down`). @implements SPEC-155 B2
+    #[serde(default)]
+    pub feedback_rating: Option<String>,
+    /// Optional feedback reason text. @implements SPEC-155 B2
+    #[serde(default)]
+    pub feedback_reason: Option<String>,
+    /// Generation finish reason (`stop`, `interrupted`, …). @implements SPEC-155 B3
+    #[serde(default)]
+    pub finish_reason: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }

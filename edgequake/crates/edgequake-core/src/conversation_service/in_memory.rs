@@ -10,8 +10,8 @@ use crate::error::Result;
 use crate::types::{
     Conversation, ConversationFilter, ConversationMode, ConversationSortField,
     CreateConversationRequest, CreateMessageRequest, Folder, ImportError, ImportResult, Message,
-    MessageRole, PaginatedConversations, PaginatedMessages, UpdateConversationRequest,
-    UpdateMessageRequest,
+    MessageRole, PaginatedConversations, PaginatedMessages, SetMessageFeedbackRequest,
+    UpdateConversationRequest, UpdateMessageRequest,
 };
 
 use super::ConversationService;
@@ -255,6 +255,9 @@ impl ConversationService for InMemoryConversationService {
             is_error: false,
             llm_provider: None,
             llm_model: None,
+            feedback_rating: None,
+            feedback_reason: None,
+            finish_reason: None,
             created_at: now,
             updated_at: now,
         };
@@ -312,8 +315,30 @@ impl ConversationService for InMemoryConversationService {
         if let Some(model) = request.llm_model {
             msg.llm_model = Some(model);
         }
+        if let Some(finish_reason) = request.finish_reason {
+            msg.finish_reason = Some(finish_reason);
+        }
         msg.updated_at = chrono::Utc::now();
 
+        Ok(msg.clone())
+    }
+
+    async fn set_message_feedback(
+        &self,
+        conversation_id: Uuid,
+        message_id: Uuid,
+        request: SetMessageFeedbackRequest,
+    ) -> Result<Message> {
+        let mut msgs = self.messages.write().unwrap();
+        let msg = msgs
+            .get_mut(&message_id)
+            .ok_or_else(|| crate::error::Error::not_found("Message not found"))?;
+        if msg.conversation_id != conversation_id {
+            return Err(crate::error::Error::not_found("Message not found"));
+        }
+        msg.feedback_rating = request.rating;
+        msg.feedback_reason = request.reason;
+        msg.updated_at = chrono::Utc::now();
         Ok(msg.clone())
     }
 

@@ -89,6 +89,15 @@ pub struct MessageResponse {
     /// LLM model used (lineage). @implements SPEC-032
     #[serde(skip_serializing_if = "Option::is_none")]
     pub llm_model: Option<String>,
+    /// User thumbs feedback. @implements SPEC-155 B2
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub feedback_rating: Option<String>,
+    /// Optional feedback reason. @implements SPEC-155 B2
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub feedback_reason: Option<String>,
+    /// Generation finish reason. @implements SPEC-155 B3
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub finish_reason: Option<String>,
     /// Creation timestamp.
     pub created_at: String,
     /// Last update timestamp.
@@ -113,6 +122,9 @@ impl From<edgequake_core::Message> for MessageResponse {
             is_error: m.is_error,
             llm_provider: m.llm_provider,
             llm_model: m.llm_model,
+            feedback_rating: m.feedback_rating,
+            feedback_reason: m.feedback_reason,
+            finish_reason: m.finish_reason,
             created_at: m.created_at.to_rfc3339(),
             updated_at: m.updated_at.to_rfc3339(),
         }

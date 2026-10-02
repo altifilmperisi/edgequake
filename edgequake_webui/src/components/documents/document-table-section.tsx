@@ -30,7 +30,11 @@ import {
     TableHeader,
     TableRow,
 } from '@/components/ui/table';
-import { DOCUMENT_TABLE_COL_PERCENTS } from '@/lib/documents/document-table-columns';
+import { cn } from '@/lib/utils';
+import {
+  DOCUMENT_TABLE_COL_PERCENTS,
+  DOCUMENT_TABLE_NARROW_COL_CLASSES as NARROW,
+} from '@/lib/documents/document-table-columns';
 import type { SortDirection, SortField } from '@/lib/documents/document-sort';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import type { Document } from '@/types';
@@ -48,20 +52,25 @@ const ESTIMATED_ROW_HEIGHT = 52;
  * Shared colgroup — percentage widths so Title never collapses under
  * table-fixed when the inventory pane is narrow (preview panel open).
  */
+/** Below ~42rem of inventory width the secondary "Last Updated" column is dropped
+ *  (container query) so the remaining headers stay readable instead of "Stat…". */
+const NARROW_HIDDEN = '@max-2xl:hidden';
+
 function TableColGroup({ showCostColumn }: { showCostColumn: boolean }) {
   const cols = showCostColumn
     ? DOCUMENT_TABLE_COL_PERCENTS.withCost
     : DOCUMENT_TABLE_COL_PERCENTS.default;
+  const narrow = (cls: string) => ('cost' in cols ? undefined : cls);
   return (
     <colgroup>
-      <col style={{ width: cols.checkbox }} />
-      <col style={{ width: cols.title }} />
-      <col style={{ width: cols.status }} />
-      <col style={{ width: cols.entities }} />
+      <col className={narrow(NARROW.checkbox)} style={{ width: cols.checkbox }} />
+      <col className={narrow(NARROW.title)} style={{ width: cols.title }} />
+      <col className={narrow(NARROW.status)} style={{ width: cols.status }} />
+      <col className={narrow(NARROW.entities)} style={{ width: cols.entities }} />
       {'cost' in cols ? <col style={{ width: cols.cost }} /> : null}
-      <col style={{ width: cols.created }} />
-      <col style={{ width: cols.updated }} />
-      <col style={{ width: cols.actions }} />
+      <col className={narrow(NARROW.created)} style={{ width: cols.created }} />
+      <col className={NARROW_HIDDEN} style={{ width: cols.updated }} />
+      <col className={narrow(NARROW.actions)} style={{ width: cols.actions }} />
     </colgroup>
   );
 }
@@ -99,7 +108,7 @@ export interface DocumentTableSectionProps {
   onReprocess: (id: string) => void;
   /** SPEC-151: open partial page reprocess dialog from list row menu */
   onReprocessPages?: (doc: Document) => void;
-  onCancel: (trackId: string) => void;
+  onCancel: (doc: Document) => void;
   onDelete: (id: string) => void;
   isRetrying: boolean;
   isCancelling: boolean;
@@ -185,7 +194,7 @@ export const DocumentTableSection = memo(function DocumentTableSection({
   // dropzone scroll away, and a large empty white band appears below rows.
   return (
     <div
-      className="flex min-h-0 min-w-0 flex-1 flex-col overflow-clip"
+      className="@container flex min-h-0 min-w-0 flex-1 flex-col overflow-clip"
       data-testid="documents-inventory-section"
     >
       {/* ── ZONE 1: shrink-0 header (never inside the scroll container) ── */}
@@ -280,7 +289,7 @@ export const DocumentTableSection = memo(function DocumentTableSection({
                     activeField={sortField}
                     direction={sortDirection}
                     onSort={onSort}
-                    className="overflow-hidden"
+                    className={cn('overflow-hidden', NARROW_HIDDEN)}
                   />
                   <TableHead scope="col" className="rounded-tr-lg overflow-hidden">
                     <span className="sr-only">{t('documents.table.actions', 'Actions')}</span>

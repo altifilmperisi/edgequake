@@ -146,8 +146,7 @@ pub async fn stream_graph(
                                 workspace_id.as_deref(),
                             )
                             .await?;
-                        let node_ids: Vec<String> =
-                            kg.nodes.iter().map(|n| n.id.clone()).collect();
+                        let node_ids: Vec<String> = kg.nodes.iter().map(|n| n.id.clone()).collect();
                         let degree_map =
                             degrees_breakdown_batch(&graph_for_materialize, &node_ids).await;
                         let nodes: Vec<GraphNodeResponse> = kg

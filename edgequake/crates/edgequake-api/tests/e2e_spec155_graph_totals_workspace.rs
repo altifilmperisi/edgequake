@@ -36,7 +36,8 @@ async fn extract_json(response: axum::response::Response) -> Value {
 }
 
 async fn setup_workspace(state: &AppState, suffix: &str) -> (Uuid, Uuid) {
-    let tenant = Tenant::new(format!("T-{suffix}"), format!("t-{suffix}")).with_plan(TenantPlan::Pro);
+    let tenant =
+        Tenant::new(format!("T-{suffix}"), format!("t-{suffix}")).with_plan(TenantPlan::Pro);
     let tenant = state.workspace_service.create_tenant(tenant).await.unwrap();
     let ws = state
         .workspace_service

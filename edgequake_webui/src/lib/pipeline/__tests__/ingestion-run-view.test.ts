@@ -28,6 +28,20 @@ function doc(partial: Partial<Document> & { id: string }): Document {
 }
 
 describe("ingestion-run-view", () => {
+  it("a delete_failed doc is not an ingest run even with a stale track_id/stage", () => {
+    const view = buildIngestionRunView(
+      doc({
+        id: "d-delete-failed",
+        file_name: "half-deleted.pdf",
+        status: "delete_failed",
+        track_id: "t-old",
+        current_stage: "materialize",
+        stage_message: "Delete did not finish",
+      }),
+    );
+    expect(view).toBeNull();
+  });
+
   it("terminal status cancelled beats stale display_status extracting", () => {
     const view = buildIngestionRunView(
       doc({

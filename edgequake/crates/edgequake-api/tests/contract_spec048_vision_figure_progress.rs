@@ -34,10 +34,10 @@ async fn contract_vision_figure_analyze_reports_substep_milestones() {
 
     let messages: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
     let msgs = Arc::clone(&messages);
-    let reporter: ConvertingSubstepReporter = Arc::new(move |message, progress| {
+    let reporter: ConvertingSubstepReporter = Arc::new(move |update| {
         msgs.lock()
             .unwrap()
-            .push(format!("{message}|{progress:.4}"));
+            .push(format!("{}|{:.4}", update.message, update.progress));
     });
 
     let out = analyze_multimodal_images_with_substep(

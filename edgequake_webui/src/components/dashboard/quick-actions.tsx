@@ -12,9 +12,8 @@
  */
 'use client';
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
-import { FileText, MessageSquare, Network } from 'lucide-react';
+import { ArrowRight, FileText, MessageSquare, Network } from 'lucide-react';
 import Link from 'next/link';
 import { useTranslation } from 'react-i18next';
 
@@ -42,46 +41,64 @@ const actions = [
   },
 ];
 
-export function QuickActions() {
+interface QuickActionsProps {
+  /** Empty workspace: Upload is the one obvious next step. */
+  emphasizeUpload?: boolean;
+}
+
+/**
+ * Three compact, left-aligned shortcut tiles. No wrapper card or heading: the
+ * actions are self-explanatory and a nested card made them read as placeholders.
+ */
+export function QuickActions({ emphasizeUpload = false }: QuickActionsProps) {
   const { t } = useTranslation();
 
   return (
-    <Card className="border-0 py-4 shadow-sm gap-4">
-      <CardHeader className="pb-2">
-        <CardTitle className="text-base">{t('dashboard.quickActions.title', 'Quick Actions')}</CardTitle>
-        <CardDescription className="text-xs">
-          {t('dashboard.quickActions.subtitle', 'Get started with common tasks')}
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="pt-0">
-        <div className="grid gap-3 sm:grid-cols-3">
-          {actions.map((action) => {
-            const Icon = action.icon;
-            return (
-              <Link
-                key={action.id}
-                href={action.href}
+    <div className="grid gap-2 sm:grid-cols-3" data-testid="dashboard-quick-actions">
+      {actions.map((action) => {
+        const Icon = action.icon;
+        const primary = emphasizeUpload && action.id === 'upload';
+        return (
+          <Link
+            key={action.id}
+            href={action.href}
+            data-testid={`dashboard-action-${action.id}`}
+            data-emphasis={primary ? 'primary' : undefined}
+            className={cn(
+              'group flex items-center gap-3 rounded-lg border px-3 py-2.5 shadow-xs',
+              'transition-colors duration-150',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+              primary
+                ? 'border-primary bg-primary text-primary-foreground hover:bg-primary/90'
+                : 'bg-card hover:bg-muted/50',
+            )}
+          >
+            <div
+              className={cn(
+                'flex h-9 w-9 shrink-0 items-center justify-center rounded-md',
+                primary ? 'bg-primary-foreground/15' : 'bg-muted',
+              )}
+            >
+              <Icon className="h-4 w-4" aria-hidden="true" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium">{t(action.labelKey)}</p>
+              <p
                 className={cn(
-                  'flex flex-col items-center justify-center gap-1.5 rounded-lg border px-3 py-3',
-                  'bg-card hover:bg-muted/40 hover:border-border',
-                  'transition-all duration-150 hover:shadow-sm',
-                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
+                  'hidden truncate text-xs sm:block',
+                  primary ? 'text-primary-foreground/80' : 'text-muted-foreground',
                 )}
               >
-                <div className="rounded-lg bg-muted p-2">
-                  <Icon className="h-4 w-4 text-foreground" />
-                </div>
-                <div className="text-center">
-                  <p className="text-sm font-medium">{t(action.labelKey)}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
-                    {t(action.descriptionKey)}
-                  </p>
-                </div>
-              </Link>
-            );
-          })}
-        </div>
-      </CardContent>
-    </Card>
+                {t(action.descriptionKey)}
+              </p>
+            </div>
+            <ArrowRight
+              className="h-4 w-4 shrink-0 opacity-0 transition-opacity group-hover:opacity-60 group-focus-visible:opacity-60 motion-reduce:transition-none"
+              aria-hidden="true"
+            />
+          </Link>
+        );
+      })}
+    </div>
   );
 }

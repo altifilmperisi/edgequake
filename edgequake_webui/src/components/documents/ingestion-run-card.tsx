@@ -8,16 +8,21 @@
 "use client";
 
 import { ServerStageStepper } from "@/components/documents/server-stage-stepper";
-import { Progress } from "@/components/ui/progress";
+import { RunCaption } from "@/components/documents/run-caption";
+import { RunMeterRow } from "@/components/documents/run-meter-row";
+import { Button } from "@/components/ui/button";
 import {
   formatQueueChrome,
   formatRunHeadline,
+  mapWireStageToPhase,
   shouldNestPdfPageMeter,
   shouldShowOverallMeter,
   stageDisplayName,
   type IngestionRunView,
 } from "@/lib/pipeline/ingestion-run-view";
+import { resolveCaptionProgress } from "@/lib/pipeline/phase-segments";
 import { buildStageTimeline } from "@/lib/pipeline/stage-timeline";
+import { X } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 export { shouldNestPdfPageMeter, shouldShowOverallMeter };
@@ -101,10 +106,19 @@ export function IngestionRunCard({
       ? Math.round(timeline.stageProgress01 * 100)
       : undefined;
   const hasStageCounts = Boolean(run.counts && run.counts.total > 0);
+  // LAW-IS2: stage N/M is the one primary meter; overall is only the fallback.
+  const determinateStagePct = hasStageCounts ? stagePct : undefined;
+  const caption = resolveCaptionProgress({
+    stagePct: determinateStagePct,
+    overallPct,
+    ledger: run.runProgress,
+    activePhase: mapWireStageToPhase(run.stage),
+  });
+  // Live runs: the phase strip IS the bar and the headline sits in the caption.
+  const captionMode = !isAdmission && !cancelTerminal;
   // LAW-IS2: nest only when list SSOT lacks page/figure counts (no second bar).
   const showPdfDetail =
     Boolean(nestedDetail) && shouldNestPdfPageMeter(run);
-  const showOverall = shouldShowOverallMeter(run, isAdmission);
   const canCancel =
     Boolean(onCancel) &&
     !isAdmission &&
@@ -153,23 +167,30 @@ export function IngestionRunCard({
           {run.filename}
         </span>
         <div className="flex shrink-0 items-center gap-2">
-          <span className={headlineClass} data-testid="spec048-run-headline">
-            {headlineText}
-          </span>
+          {!captionMode ? (
+            <span className={headlineClass} data-testid="spec048-run-headline">
+              {headlineText}
+            </span>
+          ) : null}
           {canCancel ? (
-            <button
+            <Button
               type="button"
-              className="text-xs text-muted-foreground hover:text-foreground underline-offset-2 hover:underline"
+              variant="outline"
+              size="sm"
+              className="h-7 gap-1 border-border/60 px-2 text-xs text-muted-foreground hover:text-foreground"
               onClick={onCancel}
               data-testid="spec086-run-cancel"
             >
+              <X className="h-3 w-3" aria-hidden="true" />
               Cancel
-            </button>
+            </Button>
           ) : null}
           {canDismiss ? (
-            <button
+            <Button
               type="button"
-              className="text-xs text-muted-foreground hover:text-foreground underline-offset-2 hover:underline"
+              variant="ghost"
+              size="sm"
+              className="h-7 px-2 text-xs text-muted-foreground"
               onClick={onDismiss}
               title={
                 canDismissCancelled
@@ -179,19 +200,18 @@ export function IngestionRunCard({
               data-testid="spec086-run-dismiss"
             >
               Dismiss
-            </button>
+            </Button>
           ) : null}
         </div>
       </div>
 
       {/* IS3: 4-phase strip by default (wire chips on Pipeline dialog). */}
-      <ServerStageStepper run={run} variant="phases" />
-
-      {showPdfDetail ? (
-        <div data-testid="spec086-pdf-converting-detail" className="pt-0.5">
-          {nestedDetail}
-        </div>
-      ) : null}
+      <ServerStageStepper
+        run={run}
+        variant="phases"
+        headlineText={cancelTerminal ? undefined : headlineText}
+        phaseProgress={captionMode ? { stagePct: determinateStagePct } : undefined}
+      />
 
       {isAdmission ? (
         <div
@@ -209,80 +229,41 @@ export function IngestionRunCard({
         </div>
       ) : cancelTerminal ? (
         <div className="space-y-1.5" data-testid="spec086-cancel-progress-frozen">
-          <div className="space-y-0.5" data-testid="spec048-overall-progress">
-            <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
-              <span>Overall (frozen)</span>
-              <span
-                className="tabular-nums"
-                data-testid="spec048-run-overall-pct"
-              >
-                {overallPct}%
-              </span>
-            </div>
-            <Progress
-              aria-label="Overall progress (frozen)"
-              value={overallPct}
-              className="h-1 [&_[data-slot=progress-indicator]]:bg-orange-400/70"
-            />
-          </div>
+          <RunMeterRow
+            testId="spec048-overall-progress"
+            pctTestId="spec048-run-overall-pct"
+            label="Overall (frozen)"
+            pct={overallPct}
+            ariaLabel="Overall progress (frozen)"
+            barClassName="h-1.5"
+            indicatorClassName="[&_[data-slot=progress-indicator]]:bg-orange-400/70"
+          />
         </div>
       ) : (
-        <div className="space-y-1.5">
-          {hasStageCounts && typeof stagePct === "number" ? (
-            <div className="space-y-0.5" data-testid="spec048-stage-progress">
-              <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
-                <span>
-                  This stage
-                  {timeline.stageCountsLabel
-                    ? ` · ${timeline.stageCountsLabel}`
-                    : ""}
-                </span>
-                <span className="tabular-nums">{stagePct}%</span>
-              </div>
-              <Progress
-              aria-label="Current stage progress"
-                value={stagePct}
-                className="h-1.5 [&_[data-slot=progress-indicator]]:bg-sky-500"
-              />
-            </div>
-          ) : (
-            <div
-              className="h-1.5 w-full overflow-hidden rounded bg-muted"
-              data-testid="spec048-run-progress-indeterminate"
-            >
-              <div className="h-full w-1/3 animate-pulse rounded bg-sky-400/70" />
-            </div>
-          )}
-
-          {/* LAW-IS2: overall only when stage has no determinate N/M (one primary meter). */}
-          {showOverall ? (
-            <div className="space-y-0.5" data-testid="spec048-overall-progress">
-              <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
-                <span>Overall (est.)</span>
-                <span
-                  className="tabular-nums"
-                  data-testid="spec048-run-overall-pct"
-                >
-                  {overallPct}%
-                </span>
-              </div>
-              <Progress
-              aria-label="Overall progress"
-                value={overallPct}
-                className="h-1 [&_[data-slot=progress-indicator]]:bg-sky-400/80"
-              />
-            </div>
-          ) : (
-            <div
-              className="sr-only"
-              data-testid="spec048-overall-progress"
-              data-collapsed="true"
-            >
-              Overall (est.) {overallPct}%
-            </div>
-          )}
-        </div>
+        <RunCaption
+          headlineText={headlineText}
+          pct={caption.pct}
+          estimated={caption.estimated}
+          overallPct={overallPct}
+          srLabel={`This stage${
+            timeline.stageCountsLabel ? ` · ${timeline.stageCountsLabel}` : ""
+          }`}
+          details={
+            compact && run.message
+              ? {
+                  open: detailsOpen,
+                  onToggle: () => setDetailsOpen((open) => !open),
+                }
+              : undefined
+          }
+        />
       )}
+
+      {showPdfDetail ? (
+        <div data-testid="spec086-pdf-converting-detail" className="pt-0.5">
+          {nestedDetail}
+        </div>
+      ) : null}
 
       {run.message && (!compact || detailsOpen) ? (
         <p
@@ -291,17 +272,6 @@ export function IngestionRunCard({
         >
           {run.message}
         </p>
-      ) : null}
-
-      {compact && run.message && !detailsOpen ? (
-        <button
-          type="button"
-          className="text-xs text-muted-foreground underline-offset-2 hover:underline"
-          onClick={() => setDetailsOpen(true)}
-          data-testid="spec099-run-expand-details"
-        >
-          Details
-        </button>
       ) : null}
 
       {run.mode && run.mode !== "full" ? (

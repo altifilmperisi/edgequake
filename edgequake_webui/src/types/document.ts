@@ -111,6 +111,11 @@ export interface Document {
     total: number;
   };
 
+  /**
+   * SPEC-155: typed monotonic per-phase progress ledger (SSOT for Active Runs).
+   */
+  run_progress?: import("@/lib/pipeline/run-progress").RunProgress | null;
+
   /** SPEC-091 IS2 / LAW-IS4: 1-based FCFS queue position (pending admission). */
   queue_position?: number | null;
   /** Estimated seconds until claim (clamped; see eta_basis). */

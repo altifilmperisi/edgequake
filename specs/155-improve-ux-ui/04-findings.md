@@ -72,12 +72,33 @@ Paths relative to `edgequake_webui/src/` unless noted `api:` for `edgequake-api`
 
 | ID | Sev | Summary | Citation | Law | EC | Wave |
 |----|-----|---------|----------|-----|----|------|
-| F-155-Q01 | P0 | Textarea disabled while streaming | `query-interface.tsx:255` | 7 | 61 | W7 |
-| F-155-Q02 | P0 | Enter-to-send no `isComposing` (zh/ja/ko) | `:249-254` | 8,9 | 62 | W7 |
-| F-155-Q03 | P1 | `role="log" aria-live` on whole stream; duplicate banner | `:132-137,61-64` | 8 | 63 | W7 |
-| F-155-Q04 | P1 | Gradient empty state / user bubble vs minimal bar | empty-state, chat-message | 13 | 64 | W7 |
+| F-155-Q01 | P0 | Textarea disabled while streaming | `query-interface.tsx` composer | 7 | 61 | W7Q |
+| F-155-Q02 | P0 | Enter-to-send no `isComposing` (zh/ja/ko) | composer keys (partially fixed) | 8,9 | 62 | W7Q |
+| F-155-Q03 | P1 | `role="log" aria-live` on whole stream; duplicate banner | `query-interface.tsx` message list | 8 | 63 | W7Q |
+| F-155-Q04 | P1 | Gradient empty state / user bubble vs minimal bar | empty-state, chat-message | 13 | 64 | W7Q |
 | F-155-Q05 | P0 | `subgraph` unused for graph highlight | types present; no graph consumer | 11 | 65 | W6 |
-| F-155-Q06 | P1 | source-citations 22× sub-12px; English aria-labels | `source-citations.tsx` | 9,13 | 42 | W7 |
+| F-155-Q06 | P1 | source-citations English-only; a11y gaps | `source-citations.tsx` | 9,13 | 42 | W7Q |
+| F-155-Q07 | P0 | Composer locked while streaming (Q01 still open); mode/New/scope also disabled | `query-interface.tsx` | 7 | 61 | W7Q |
+| F-155-Q08 | P0 | Stop is English literal; abort discards partial answer | `use-query-streaming.ts` AbortError | 7 | 90 | W7Q |
+| F-155-Q09 | P0 | Toast Retry is no-op; raw error in bubble; failed turn not persisted | `use-query-streaming.ts` | 7 | 91 | W7Q |
+| F-155-Q10 | P0 | Retrieval phase invisible; client ignores `thinking`; sources only after stream ends | `chat.ts`; `chat-message.tsx` | 7 | 92 | W7Q |
+| F-155-Q11 | P1 | Smooth scroll per token; no Jump-to-latest; stickiness re-forced | `use-query-scroll.ts` | 12 | 93 | W7Q |
+| F-155-Q12 | P1 | Regenerate deletes both messages (history loss on fail); no versions/edit/feedback | `use-query-streaming.ts` | 7 | 94 | W7Q |
+| F-155-Q13 | P1 | Inline citation pills: native title only; dead InlineCitation; legacy pill no-op | `MarkdownInlineTokens.tsx` | 11 | 95 | W7Q |
+| F-155-Q14 | P1 | Sources collapsed + 7.5rem dead space; entity/rel mouse-only; nested interactive | `chat-message.tsx`; `source-citations.tsx` | 8 | 96 | W7Q |
+| F-155-Q15 | P1 | source-citations 1079 lines; no i18n; 7-arg onDocumentClick ×5 | `source-citations.tsx` | SRP,9 | 97 | W7Q |
+| F-155-Q16 | P1 | Live vs persisted chunk mapper drops start/end/index/reference_id | `source-mapper.ts` | 7 | 98 | W7Q |
+| F-155-Q17 | P1 | Six wrapping mode pills in header; scope separate; model buried; hint duplicated | mode-selector; scope-bar | 13 | 99 | W7Q |
+| F-155-Q18 | P2 | No per-conversation draft; no @ / shortcuts; no drop-zone feedback | composer | 6 | 100 | W7Q |
+| F-155-Q19 | P1 | Gradients/glow; boxed assistant; 3 avatar styles; absolute timestamps | chat-message; empty-state | 13 | 64 | W7Q |
+| F-155-Q20 | P1 | Static empty suggestions; graphStats never passed; English stats labels | `query-empty-state.tsx` | 6,9 | 101 | W7Q |
+| F-155-Q21 | P1 | History docked md+@280 squeezes chat 768–1024; titles visually truncated | history panel; W0 baselines | 13 | 102 | W7Q |
+| F-155-Q22 | P1 | Dead selection/filter/sort; search unfiled-only; no date groups/undo; v1 dead | history-v2; store `unfiled:true` | 6 | 103 | W7Q |
+| F-155-Q23 | P1 | MobileHistoryPanel double-mount + 2nd query; no keyboard; 28/31 i18n keys missing | mobile-history-panel | 8,9,12 | 104 | W7Q |
+| F-155-Q24 | P1 | Whole list aria-live announces every token (extends Q03) | `query-interface.tsx` | 8 | 63 | W7Q |
+| F-155-Q25 | P1 | Whole-store `useQueryUIStore()`; per-token setState; parseCOT ×2 | history; streaming | 12 | 105 | W7Q |
+| F-155-Q26 | P1 | DRY/SOLID: streaming 511L dual payload; chat-message 701L; history 990L; date×3 | query tree | SRP | 106 | W7Q |
+| F-155-Q27 | P1 | Hard-coded English (Stop, hints, toasts, migration, aria) | query + hooks | 9 | 72 | W7Q |
 
 ## i18n (I)
 
@@ -125,9 +146,24 @@ Paths relative to `edgequake_webui/src/` unless noted `api:` for `edgequake-api`
   W4  G01–G11,G15–G16,G18, T03
   W5  G12–G14,G17
   W6  Q05, B09 (UI half)
-  W7  S04,S07, P01–P09,P11, Q01–Q04,Q06, A02
+  W7  S04,S07, P01–P09,P11, A02
+  W7Q Q01–Q04,Q06–Q27 (query screen overhaul)
   W8  I03–I05
   W9  S06 + perf budgets
 ```
+
+### Query W0 baseline notes (2026-10-01)
+
+- Captured empty `/query` at 390/768/1280/1440 × light/dark → `e2e/screenshots/query-w0/`.
+- History panel measured width = 256px (persisted `conversation-history-panel-width=280`); hidden at 390.
+- Title truncation to 2–3 chars (user screenshot with live conversations) not reproduced on empty list; row chrome (~106px) + docked 256–280px panel at md (768–1024 with app sidebar) is the likely squeeze. Fix: dock at `xl+`, drawer below, improve title column.
+
+### Query composer polish (2026-10-01)
+
+- Clunky stroked input border → borderless floating shell (`rounded-3xl` + ambient
+  shadow + `overflow-hidden`), no inset hairline, no parent `border-t`; shell owns
+  focus wash. Baselines: `edgequake_webui/e2e/spec155/screenshots/query-empty-1280.png`
+  + `composer-only.png`. Mock query suite 15/15 green (stop-partial fleaky/hanging
+  excluded).
 
 Cross-ref: [09-edge-cases](09-edge-cases.md) · [12-cross-ref](12-cross-ref.md).

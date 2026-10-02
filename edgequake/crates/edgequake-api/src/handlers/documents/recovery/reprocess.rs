@@ -163,6 +163,7 @@ pub(crate) async fn run_reprocess_failed(
 
         let decision = admit_document_for_reprocess(
             &state,
+            &tenant_ctx,
             doc_id,
             doc_track_id,
             status,

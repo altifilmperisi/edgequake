@@ -12,6 +12,7 @@ import {
 } from '@/lib/documents/status-domain';
 import type { Document } from '@/types';
 import type { IngestionAlertMode } from './ingestion-alert-presenter';
+import { stalledForMs } from './run-liveness';
 
 export const WAITING_STATUSES: DocumentStatus[] = ['pending', 'queued', 'cleaning'];
 
@@ -30,6 +31,11 @@ export interface PipelineDocumentSummary {
   queuedCount: number;
   activeDocs: Document[];
   waitingDocs: Document[];
+  /**
+   * SPEC-155: "processing" on paper but the server has been silent past
+   * STALL_AFTER_MS. Never counted as Working; surfaced as Needs attention.
+   */
+  stalledDocs: Document[];
 }
 
 export function summarizePipelineDocuments(
@@ -38,6 +44,7 @@ export function summarizePipelineDocuments(
 ): PipelineDocumentSummary {
   const activeDocs: Document[] = [];
   const waitingDocs: Document[] = [];
+  const stalledDocs: Document[] = [];
   let queuedCount = 0;
 
   for (const doc of documents ?? []) {
@@ -48,6 +55,10 @@ export function summarizePipelineDocuments(
       continue;
     }
     if (isActiveProcessingStatus(status)) {
+      if (stalledForMs(doc.updated_at) !== null) {
+        stalledDocs.push(doc);
+        continue;
+      }
       activeDocs.push(doc);
     } else if (isWaitingStatus(status)) {
       waitingDocs.push(doc);
@@ -63,6 +74,7 @@ export function summarizePipelineDocuments(
     queuedCount,
     activeDocs,
     waitingDocs,
+    stalledDocs,
   };
 }
 
@@ -209,8 +221,9 @@ export function detectStuckDocuments(
   hasCoverage: boolean,
   now = Date.now(),
 ): Document[] {
+  const stalled = summary.stalledDocs;
   if (summary.waitingCount === 0) {
-    return [];
+    return stalled;
   }
   const orphanOpts: OrphanAdmissionOpts = { hasQueueCoverage: hasCoverage };
   // Server-signaled orphans stay stuck even while other jobs run.
@@ -221,9 +234,9 @@ export function detectStuckDocuments(
       isOrphanAdmissionShell(doc, now, orphanOpts),
   );
   if (hasCoverage) {
-    return forceStuck;
+    return [...forceStuck, ...stalled];
   }
-  return summary.waitingDocs.filter((doc) => {
+  const waitingStuck = summary.waitingDocs.filter((doc) => {
     if (
       isRecoveryStuckSignal(doc) ||
       isOrphanAdmissionShell(doc, now, orphanOpts)
@@ -241,6 +254,7 @@ export function detectStuckDocuments(
     }
     return true;
   });
+  return [...waitingStuck, ...stalled];
 }
 
 /** Unified banner + dialog pipeline UI state (document truth + task queue). */

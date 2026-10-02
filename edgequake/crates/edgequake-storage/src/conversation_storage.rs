@@ -88,6 +88,15 @@ pub trait ConversationStorage: Send + Sync {
         is_error: Option<bool>,
         llm_provider: Option<&str>,
         llm_model: Option<&str>,
+        finish_reason: Option<&str>,
+    ) -> Result<MessageRow>;
+
+    async fn update_message_feedback(
+        &self,
+        conversation_id: Uuid,
+        message_id: Uuid,
+        feedback_rating: Option<&str>,
+        feedback_reason: Option<&str>,
     ) -> Result<MessageRow>;
 
     async fn delete_message(&self, message_id: Uuid) -> Result<()>;

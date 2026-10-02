@@ -4,7 +4,145 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- **SPEC-149 multi-batch projecting stall** — Acking several `document_batch`
+  deliveries that share `(object_id, object_revision, binding_id)` in one
+  statement raised Postgres `21000` (`ON CONFLICT DO UPDATE cannot affect row a
+  second time`) on `projection_visibility`. Deliveries stayed leased, UI stuck
+  at “Applying Projections - 100%”. Fix: `DISTINCT ON` the visibility arbiter
+  before upsert; release-for-retry on ack failure; plan edges by
+  `(source, target, rel_type)`; LWW-dedupe multi-batch embedding payloads.
+  Regression: `multi_batch_same_revision_ack_does_not_cardinality_violate`.
+
+### Changed
+- **SPEC-156 ingestion first-principles quick wins** — study pack in
+  `specs/156-ingestion-first-principles/`. Partial-chunk checkpoints use a
+  single-writer coalescing mpsc (no per-chunk `tokio::spawn` RMW races).
+  Gleaning fails open on LLM error and early-stops on empty iterations
+  (`always_glean` removed). Chunk/entity/relationship embeddings run under
+  one shared `embed_max_async` semaphore via `try_join!`. Worker heartbeat is
+  `lease_ttl/3` (warn on refresh failure). Extract concurrency is
+  `buffer_unordered` only; `extraction_time_ms` is wall-clock. PDF docs:
+  `dpi` is cosmetic for OCR size; `max_rendered_pixels` is the real knob;
+  Makefile peak-vision comment corrected for the cloud concurrency clamp.
+  Gap-close: writer spawn after hybrid fail-closed (SRP); `e2e_perf_embed_join`,
+  extraction_time_ms assertion in fanout e2e, and wiring contracts for worker
+  heartbeat / API writer / pipeline try_join + no redundant Semaphore.
+  Debug ingest stack: mm chunk headers use prefix checks (no LazyLock Regex);
+  Tokio worker stack default 16 MiB; `-chunk-extract-partial` classified as
+  checkpoint KV family.
+
+### Performance
+- **Ingestion no longer runs serially for cloud workspaces** — concurrency limits
+  are a property of the upstream actually called, but the dev profile derived them
+  from the *process default* provider. With `.env` defaulting to Ollama while the
+  workspace used Mistral, every document ran with extraction/embed/merge fan-out
+  pinned to 1 (≈ 12–19 s per chunk, measured). Now: `cap_for_local_provider` is
+  the single policy helper; embedding fan-out follows the embedding provider
+  (`embed_max_async_for(provider.name())`), merge fan-out follows the LLM serving
+  the merge (`MergerConfig::for_provider`), and extraction already follows the
+  workspace provider. `make` no longer pins extraction/embed/merge/worker knobs
+  from the default provider (the runtime clamps local providers to serial
+  regardless); only local-vision memory guards and local-server tuning remain
+  keyed by provider. `.env.example` no longer tells Ollama users to pin
+  `EDGEQUAKE_MAX_CONCURRENT_EXTRACTIONS=1`. Local providers stay serial unless
+  `EDGEQUAKE_ALLOW_LOCAL_HIGH_CONCURRENCY=1`. Latency-injected tests prove >3×
+  wall-clock speedup for extraction (`e2e_perf_extraction_fanout`), LLM merge
+  (`e2e_perf_parallel_llm_merge_scales_with_fanout`) and embeddings, and that local
+  stays serial. Removed `merge_max_async_from_env` (use
+  `merge_max_async_requested_from_env` + `MergerConfig::for_provider`).
+
+### Fixed
+- **Prepare / Extract progress no longer lies** — progress was encoded as free
+  text (`stage_message`) plus one float, then regex-parsed on both ends. Figure
+  analysis overwrote the pages counter (Prepare dropped to ~0%), concurrent
+  chunk starts painted `92/92` while only ~60% were done, and a refresh threw
+  away client-only smoothing. Now a server-authoritative `run_progress` ledger
+  records typed counters per phase (`pages`/`figures`, `chunks`,
+  `embeddings`/`entities`/`relationships`); `done` only grows; entering Extract
+  freezes Prepare. Legacy `stage_progress` / `progress_counts` stay as derived
+  projections. Active Runs caption shows named sub-counters
+  (`Prepare · pages 92/92 · figures 3/12`); reload paints identical bars.
+- **Deleted documents can no longer be re-ingested (and burn LLM spend)** — a
+  delete whose physical cleanup failed left a *tombstoned* document that still
+  looked reprocessable (status projection ≠ lifecycle authority). A later
+  reprocess ran the full ~50 min extraction and only failed at the persist gate
+  with "cannot ingest into a tombstoned document". Now: reprocess admission
+  consults the authority (`skip_reason: tombstoned`, row healed to
+  `delete_failed`), the worker refuses a tombstoned document **before** any LLM
+  call, the failure is the typed non-retried class `document_deleted`, and the UI
+  shows a "Deleted document" category with guidance and no Retry button instead of
+  "Database … try again shortly". Error-category icons are one shared helper.
+- **Documents: a half-deleted row is no longer an "Active run"** — `delete_failed`
+  kept its old `track_id`/stage and was painted as a live Materialize run with a
+  Cancel button. It is now excluded from Active runs; the row menu offers
+  **Finish delete** and hides Reprocess/Reset/Cancel for it. Hermetic spec
+  `e2e/spec155/document-delete-failed.spec.ts`.
+
+### Changed
+- **Dashboard: honest, compact, actionable** — *Recent activity* no longer keeps a
+  private status map that fell back to "Completed" for anything unknown (a
+  half-deleted document read as Completed): rows now use the shared document
+  status domain + `StatusBadge`, show a real progress bar only when the server sent
+  a fraction, "Stalled — no progress for …" for silent runs, and a short actionable
+  failure line. The list shows 6 rows with a "View all N documents" link instead of
+  a fixed 300px scroller; the skeleton matches real row height (no card jump).
+  The subtitle no longer repeats the four stat cards — it says what needs a glance
+  ("1 processing · 1 queued · 1 failed", or "All documents are processed"; unknown
+  counts never read as settled). Stat cards are links (Documents/Chunks →
+  `/documents`, Entities/Relationships → `/graph`) and sit 2-up on mobile. Quick
+  actions are three slim left-aligned tiles (no nested card); Upload is the primary
+  button only on an empty workspace. Pure model `lib/dashboard/activity-model.ts`;
+  hermetic spec `e2e/spec155/dashboard-polish.spec.ts`.
+- **Documents: one progress bar per run** — the Active run card no longer paints a
+  phase stepper *and* a separate full-width meter. The Admit/Prepare/Extract/
+  Materialize strip is now the bar (done = green, active = filled to the stage %,
+  pending = empty; indeterminate without N/M instead of a fake number). Headline,
+  percentage (`~` when it is only the overall estimate) and a Details toggle share
+  one caption line; Cancel is a real outlined button. Table rows keep only the
+  status badge. Pure model in `lib/pipeline/phase-segments.ts`; hermetic spec
+  `e2e/spec155/document-run-progress.spec.ts`.
+
 ### Added
+- **Documents: honest stalled runs + Cancel everywhere** — a document whose
+  active stage has been silent for ≥15 min is now shown as **Stalled** (amber
+  `StalledRunCard`, table badge, preview notice, "needs attention" banner) instead
+  of a perpetual "Processing" spinner, and is never counted as "Working". New
+  `POST /api/v1/documents/{document_id}/cancel` cancels by document id (works for
+  orphaned runs with no `track_id`; idempotent; 409 on finished docs; 404 unknown).
+  Cancel is available on the run card, row menu, preview panel, bulk bar
+  (`spec155-bulk-cancel`) and document detail page via one shared
+  `cancelDocumentRun` flow. Preview panel follows live row data; selection label
+  pluralised; dropzone dimming and `/pipeline` Idle badge contrast fixed (AA).
+  Tests: cargo `e2e_spec155_document_cancel`, vitest `run-liveness` /
+  `stalled-run` / `document-run-state`, Playwright `spec155/document-stalled-cancel`.
+- **SPEC-155 Query screen overhaul (W7Q)** — Always-enabled composer with ModeMenu
+  (Smart default), queue-while-streaming, Stop keeps partial answers, StageTimeline
+  from SSE `stage`/`thinking`, early source chips, Jump-to-latest, single
+  `role="status"` live region, inline ErrorState+Retry, unboxed answers, citation
+  module split + i18n, history docked at xl only (drawer below), corpus empty-state
+  suggestions, message feedback (thumbs) API, abort `finish_reason=interrupted`.
+  Libs: `build-chat-request`, `stream-session-reducer`, `conversation-recovery`,
+  `format-conversation-date`, `use-stick-to-bottom`, `use-query-stream-session`.
+  E2E: `e2e/spec155/query-composer.spec.ts` (9 mocked gates) + cargo
+  `e2e_spec155_chat_stage_events` / `message_feedback` / `chat_abort_partial`.
+- **Query composer: model picker, streaming capability, `@` mentions** — the model
+  chip is now a searchable, provider-grouped popover (vision / reasoning badges,
+  “Server default”, “Stream answer” switch). Streaming is capability-aware:
+  `GET /models/llm` `supports_streaming=false` (or the switch off) transparently
+  uses the blocking `/chat/completions` path. Typing `@` (start or after whitespace)
+  opens an intellisense listbox of completed documents (ARIA combobox: ↑↓ / Enter /
+  Tab / Esc, match highlight, already-scoped docs hidden); picks become removable
+  scope chips sent as `document_filter.document_ids`. Pure libs `model-menu`,
+  `mention`; hooks `use-query-scope`, `use-mention-menu`. New en/fr/zh keys.
+  E2E: `e2e/spec155/query-model-mention.spec.ts` (11 mocked gates).
+- **Citation chips link to their source** — clicking `[n]` (inline or in the Sources
+  row) opens the document viewer at the cited page with the passage highlighted
+  (⌘/Ctrl/middle-click → new tab; touch devices tap to preview). Hover/focus shows
+  a preview card with document title, page, cleaned snippet, confidence label and
+  an explicit “Open source” footer link (no more raw document id / “Close” button).
+  Match % is now clamped to 100 (was showing “297% match”). Pure helpers in
+  `lib/citations/citation-href.ts`; hover-intent delays so the card doesn't flicker.
 - **SPEC-155 UX/UI (W5–W9 slices)** — Graph Studio community colouring + legend
   from `/graph/communities`, accessible Graph-as-table (`?view=table`), ego depth
   slider, colour-blind entity-type shapes; answer-on-graph store + “Show on graph”
@@ -21,7 +159,62 @@ All notable changes to this project will be documented in this file.
   switches / progress bars, dropzone semantics; axe route matrix extended to
   pipeline / costs / workspace / knowledge.
 
+### Changed
+- **Unified floating-surface language** — new `components/ui/surface.ts` shared by
+  dropdown, select, popover, hover-card, context menu, slash/mention menus
+  (rounded-xl, hairline edge + layered shadow, 150 ms motion); rounded-lg
+  buttons/inputs/selects/tabs/tooltips, rounded-2xl dialogs, softer press and
+  hover transitions instead of `transition-all`.
+- **Document detail: PDF loads on demand + calmer chrome** — `GET
+  /documents/pdf/{id}/download` now honours HTTP `Range` (`206` / `416`,
+  `Accept-Ranges`, `Content-Encoding: identity`, CORS-exposed `Content-Range`);
+  storage gained `get_pdf_blob_info` / `get_pdf_bytes_range` (Postgres
+  `substring(bytea …)` so a range request never reads the whole blob). The
+  viewer no longer downloads the file into memory before first paint: pdf.js
+  gets URL + auth headers with `disableStream` + `disableAutoFetch` (shared
+  `PDF_LOAD_OPTIONS`), the render window kicks in above 6 pages (was 20), and
+  the page-list query waits for the PDF. Measured on a 30-page mock: first paint
+  ≈27 % of the bytes, deep link to page 25 ≈42 % (was 100 %); servers without
+  `Range` still render. UI: the sync/view-mode bar merged into a Markdown pane
+  header on the same 48 px row as the PDF toolbar (floating switcher in PDF-only
+  mode), one tinted `DetailLifecycleBadge` replaces four Badge blocks, labelled
+  graph button. Tests: `byte_range` + response unit tests (cargo),
+  `e2e/spec155/document-detail-pdf.spec.ts` (range, window, 200 fallback, toolbar).
+- **Documents screen polish** — active-run card no longer paints the same status
+  three times (the step-detail box is kept `sr-only` when the headline already
+  says it); stage/overall/frozen meters share one `RunMeterRow` (label · bar ·
+  tabular %); phase strip gets chevron separators + `aria-current`; the run count
+  shows only for >1 runs; toolbar controls share one 36 px height with a labelled
+  sort group; the dropzone parser select always shows its label; table columns are
+  rebalanced and, below 42 rem of inventory width, "Last Updated" collapses via a
+  container query so headers no longer read "Stat…" / "E…".
+
 ### Fixed
+- **Reliability (first principles)**: tenant-scoped queries (`useFolders`,
+  `useConversations`) now wait for tenant-store hydration + a selected tenant
+  (`useTenantQueryReady`) instead of firing tenant-less and getting a guaranteed
+  400 "Missing X-Tenant-ID". `PipelineTaskQueueCard` tolerates a payload without
+  `statistics` instead of crashing the page.
+- **`make dev` disk pre-flight**: new `check-build-disk` (run by `check-deps`) fails fast
+  with safe clean-up commands when the cargo target volume has < `MIN_BUILD_FREE_GB`
+  (default 3) free, instead of dying at the linker with `errno=28 No space left`.
+- **Hermetic mocked E2E**: the SPEC-155 mock project now installs a catch-all
+  (`mock-hermetic.ts`) answering unmocked `/api/v1/**` with a recorded 404, serves
+  the pipeline WebSocket locally (no connect/disconnect storm) and seeds storage on a
+  blank document so the app never boots tenant-less. New `hermetic.spec.ts` gate.
+- **Secret hygiene**: `Makefile` no longer expands `$(OPENAI_API_KEY)` into command
+  strings (it leaked into `make` echo, `ps` and bash "Terminated" job messages and
+  into `/tmp/edgequake-start.sh`); recipes read the exported `$$OPENAI_API_KEY` at
+  run time. Rotate any key that was shown in a terminal log.
+- **“+N more” source chip** only worked once (boolean flag) and didn't reveal the
+  panel; it now re-opens and scrolls to it every click. Passage previews no longer
+  crash when a persisted source has no `content`.
+- **Lint**: React-compiler errors in the query stream session (self-referencing
+  retry), `SourceChips` (conditional hook) and `AuthenticatedMarkdownImage`.
+- **Query composer edge looked clunky** — replaced the stroked card border +
+  inset divider with a borderless floating shell (`rounded-3xl`, ambient shadow,
+  `overflow-hidden`), removed the parent `border-t` strip, and let the shell own
+  focus chrome so the textarea stays naked (SPEC-155 W7Q polish).
 - **Graph view ignored the selected layout** — streamed/late nodes stayed on the
   provisional ring (concentric arcs) because the layout ran only once on the first
   batch. A debounced `LayoutScheduler` now re-runs the selected layout when nodes

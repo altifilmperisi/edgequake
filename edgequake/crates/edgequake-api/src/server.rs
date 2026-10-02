@@ -54,9 +54,10 @@ const CORS_FAIL_CLOSED_METHODS: [Method; 7] = [
 ];
 
 /// Explicit request headers for fail-closed CORS (SPEC-083 S-10).
-fn cors_fail_closed_headers() -> [HeaderName; 7] {
+fn cors_fail_closed_headers() -> [HeaderName; 8] {
     [
         header::AUTHORIZATION,
+        header::RANGE,
         header::CONTENT_TYPE,
         header::ACCEPT,
         HeaderName::from_static("x-api-key"),
@@ -66,8 +67,18 @@ fn cors_fail_closed_headers() -> [HeaderName; 7] {
     ]
 }
 
+/// Response headers a cross-origin PDF viewer must read to use byte-range loading.
+fn cors_exposed_headers() -> [HeaderName; 3] {
+    [
+        header::CONTENT_RANGE,
+        header::ACCEPT_RANGES,
+        header::CONTENT_LENGTH,
+    ]
+}
+
 /// Apply methods/headers: explicit lists when fail-closed; `Any` only in open/dev mode.
 fn apply_cors_methods_headers(layer: CorsLayer, fail_closed: bool) -> CorsLayer {
+    let layer = layer.expose_headers(cors_exposed_headers());
     if fail_closed {
         // AllowOrigin::Any is unreachable on this path (caller sets list / empty list).
         layer
@@ -142,6 +153,7 @@ pub fn build_cors_layer(security: &ApiSecurityConfig) -> CorsLayer {
             .allow_origin(Any)
             .allow_methods(Any)
             .allow_headers(Any)
+            .expose_headers(cors_exposed_headers())
     }
 }
 

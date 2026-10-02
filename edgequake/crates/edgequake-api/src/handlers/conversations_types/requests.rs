@@ -58,6 +58,15 @@ pub struct CreateMessageApiRequest {
     pub stream: bool,
 }
 
+/// Set message feedback request DTO (SPEC-155 B2).
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct SetMessageFeedbackApiRequest {
+    /// Thumbs rating: `up`, `down`, or null to clear.
+    pub rating: Option<String>,
+    /// Optional free-text reason.
+    pub reason: Option<String>,
+}
+
 /// Update message request DTO.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateMessageApiRequest {

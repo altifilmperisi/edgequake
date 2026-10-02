@@ -1,9 +1,11 @@
 //! SPEC-155 W3 B09 — chat `done` includes subgraph; entities carry `graph_node_id`
 //! and `source_document_ids` arrays.
 
-use edgequake_api::handlers::context_types::{ContentGranularity, SubgraphBundle};
 use edgequake_api::handlers::chat_types::ChatStreamEvent;
-use edgequake_api::services::context_bundle_mapper::{map_query_context_to_subgraph, MappingOptions};
+use edgequake_api::handlers::context_types::{ContentGranularity, SubgraphBundle};
+use edgequake_api::services::context_bundle_mapper::{
+    map_query_context_to_subgraph, MappingOptions,
+};
 use edgequake_query::{QueryContext, RetrievedEntity};
 use serde_json::Value;
 use uuid::Uuid;
@@ -72,5 +74,8 @@ async fn e2e_spec155_chat_done_subgraph_ids() {
         subgraph: Some(SubgraphBundle::default()),
     };
     let empty_json = serde_json::to_value(&empty).unwrap();
-    assert!(empty_json["subgraph"]["entities"].as_array().unwrap().is_empty());
+    assert!(empty_json["subgraph"]["entities"]
+        .as_array()
+        .unwrap()
+        .is_empty());
 }

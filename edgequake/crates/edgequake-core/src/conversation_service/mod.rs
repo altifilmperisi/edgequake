@@ -40,7 +40,7 @@ use crate::error::Result;
 use crate::types::{
     Conversation, ConversationFilter, ConversationSortField, CreateConversationRequest,
     CreateMessageRequest, Folder, ImportResult, Message, PaginatedConversations, PaginatedMessages,
-    UpdateConversationRequest, UpdateMessageRequest,
+    SetMessageFeedbackRequest, UpdateConversationRequest, UpdateMessageRequest,
 };
 
 /// Service trait for conversation management.
@@ -112,6 +112,14 @@ pub trait ConversationService: Send + Sync {
         &self,
         message_id: Uuid,
         request: UpdateMessageRequest,
+    ) -> Result<Message>;
+
+    /// Set thumbs feedback on a message (scoped to conversation).
+    async fn set_message_feedback(
+        &self,
+        conversation_id: Uuid,
+        message_id: Uuid,
+        request: SetMessageFeedbackRequest,
     ) -> Result<Message>;
 
     /// Delete a message.

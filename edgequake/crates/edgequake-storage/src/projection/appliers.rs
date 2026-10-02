@@ -298,7 +298,7 @@ impl AgeGraphProjectionApplier {
     fn plan_upsert_edge(
         event: &ProjectionEvent,
         payload: &Value,
-        edge_upserts: &mut HashMap<(String, String), HashMap<String, Value>>,
+        edge_upserts: &mut HashMap<(String, String, String), HashMap<String, Value>>,
     ) -> AccessResult<()> {
         let workspace = event.scope.workspace().into_uuid();
         let source_logical = required_string(payload, "source")?;
@@ -315,7 +315,13 @@ impl AgeGraphProjectionApplier {
             serde_json::json!(workspace.to_string()),
         );
         canonicalize_source_lineage(&mut props);
-        let key = (source, target);
+        // SPEC-098 / D-30: arbiter is (source, target, rel_type). Multi-batch
+        // projection must not collapse distinct relation types onto one key —
+        // that both loses edges and can feed duplicate ON CONFLICT targets once
+        // native upsert expands by rel_type.
+        let rel = crate::graph_batch_dedupe::normalize_rel_type(&props);
+        props.insert("relation_type".into(), serde_json::json!(rel.clone()));
+        let key = (source, target, rel);
         if let Some(existing) = edge_upserts.get(&key) {
             let mut incoming = props;
             union_source_properties(existing, &mut incoming);
@@ -662,7 +668,7 @@ impl AgeGraphProjectionApplier {
     async fn flush_graph_mutations(
         &self,
         mut node_upserts: HashMap<String, HashMap<String, Value>>,
-        mut edge_upserts: HashMap<(String, String), HashMap<String, Value>>,
+        mut edge_upserts: HashMap<(String, String, String), HashMap<String, Value>>,
         node_deletes: Vec<(String, String, String)>,
         edge_deletes: Vec<(String, String, String, String)>,
         node_retains: Vec<(String, HashMap<String, Value>)>,
@@ -691,7 +697,7 @@ impl AgeGraphProjectionApplier {
         if !edge_upserts.is_empty() {
             let endpoint_ids: Vec<String> = edge_upserts
                 .keys()
-                .flat_map(|(s, t)| [s.clone(), t.clone()])
+                .flat_map(|(s, t, _)| [s.clone(), t.clone()])
                 .collect();
             let existing_edges = self
                 .graph
@@ -699,14 +705,15 @@ impl AgeGraphProjectionApplier {
                 .await
                 .map_err(AccessError::from)?;
             for edge in existing_edges {
-                let key = (edge.source.clone(), edge.target.clone());
+                let rel = crate::graph_batch_dedupe::normalize_rel_type(&edge.properties);
+                let key = (edge.source.clone(), edge.target.clone(), rel);
                 if let Some(props) = edge_upserts.get_mut(&key) {
                     union_source_properties(&edge.properties, props);
                 }
             }
             let batch: Vec<(String, String, HashMap<String, Value>)> = edge_upserts
                 .into_iter()
-                .map(|((s, t), props)| (s, t, props))
+                .map(|((s, t, _), props)| (s, t, props))
                 .collect();
             self.graph
                 .upsert_edges_batch(&batch)
@@ -783,7 +790,8 @@ impl GraphProjectionApplier for AgeGraphProjectionApplier {
         }
 
         let mut node_upserts: HashMap<String, HashMap<String, Value>> = HashMap::new();
-        let mut edge_upserts: HashMap<(String, String), HashMap<String, Value>> = HashMap::new();
+        let mut edge_upserts: HashMap<(String, String, String), HashMap<String, Value>> =
+            HashMap::new();
         let mut pending_node_deletes = Vec::new();
         let mut pending_edge_deletes = Vec::new();
         let mut cleanup_marks: Vec<(Uuid, Uuid)> = Vec::new();
@@ -1105,44 +1113,58 @@ impl PgvectorProjectionApplier {
         workspace: Uuid,
         payloads: Vec<EmbeddingPayload>,
     ) -> AccessResult<()> {
-        let mut chunk_rows = Vec::new();
-        let mut fleet_rows: HashMap<&'static str, Vec<FleetEmbeddingRow>> = HashMap::new();
+        let mut chunk_by_id: HashMap<Uuid, EmbeddingRow> = HashMap::new();
+        let mut fleet_by_family: HashMap<&'static str, HashMap<String, FleetEmbeddingRow>> =
+            HashMap::new();
         for payload in payloads {
             payload.validate()?;
             let workspace_id = WorkspaceId::new(workspace);
             match payload.family.as_str() {
-                "chunk" => chunk_rows.push(EmbeddingRow {
-                    chunk_id: ChunkId(payload.subject_id),
-                    workspace_id,
-                    dimensions: payload.dimensions,
-                    embedding: payload.embedding,
-                }),
+                "chunk" => {
+                    // Multi-batch apply merges payloads; chunk upsert uses
+                    // ON CONFLICT DO UPDATE and rejects duplicate ids in one statement.
+                    chunk_by_id.insert(
+                        payload.subject_id,
+                        EmbeddingRow {
+                            chunk_id: ChunkId(payload.subject_id),
+                            workspace_id,
+                            dimensions: payload.dimensions,
+                            embedding: payload.embedding,
+                        },
+                    );
+                }
                 "entity" | "relationship" | "report" => {
-                    let key = match payload.family.as_str() {
+                    let family = match payload.family.as_str() {
+                        "entity" => "entity",
+                        "relationship" => "relationship",
+                        _ => "report",
+                    };
+                    let key = match family {
                         "entity" => FleetEmbeddingKey::Entity(payload.subject_id),
                         "relationship" => FleetEmbeddingKey::Relationship(payload.subject_id),
-                        "report" => FleetEmbeddingKey::Report(
+                        _ => FleetEmbeddingKey::Report(
                             payload
                                 .legacy_vector_id
                                 .clone()
                                 .unwrap_or_else(|| payload.subject_id.to_string()),
                         ),
-                        _ => unreachable!(),
                     };
-                    fleet_rows
-                        .entry(match payload.family.as_str() {
-                            "entity" => "entity",
-                            "relationship" => "relationship",
-                            _ => "report",
-                        })
-                        .or_default()
-                        .push(FleetEmbeddingRow {
+                    let dedupe_key = match &key {
+                        FleetEmbeddingKey::Entity(id) | FleetEmbeddingKey::Relationship(id) => {
+                            id.to_string()
+                        }
+                        FleetEmbeddingKey::Report(id) => id.clone(),
+                    };
+                    fleet_by_family.entry(family).or_default().insert(
+                        dedupe_key,
+                        FleetEmbeddingRow {
                             workspace_id,
                             dimensions: payload.dimensions,
                             embedding: payload.embedding,
                             key,
                             legacy_vector_id: payload.legacy_vector_id,
-                        });
+                        },
+                    );
                 }
                 family => {
                     return Err(AccessError::CorruptData(format!(
@@ -1152,23 +1174,25 @@ impl PgvectorProjectionApplier {
             }
         }
         let mut wrote = false;
-        if !chunk_rows.is_empty() {
+        if !chunk_by_id.is_empty() {
+            let chunk_rows: Vec<EmbeddingRow> = chunk_by_id.into_values().collect();
             self.chunk_index
                 .upsert_batch(ModelId(Uuid::nil()), &chunk_rows)
                 .await
                 .map_err(AccessError::from)?;
             wrote = true;
         }
-        if !fleet_rows.is_empty() {
+        if !fleet_by_family.is_empty() {
             let fleet = self.fleet.as_ref().ok_or_else(|| {
                 AccessError::UnsupportedCapability("fleet embedding index is not wired".into())
             })?;
-            for (family, rows) in fleet_rows {
+            for (family, rows_map) in fleet_by_family {
                 let family = match family {
                     "entity" => EmbeddingFamily::Entity,
                     "relationship" => EmbeddingFamily::Relationship,
                     _ => EmbeddingFamily::Report,
                 };
+                let rows: Vec<FleetEmbeddingRow> = rows_map.into_values().collect();
                 fleet
                     .upsert_batch(family, ModelId(Uuid::nil()), &rows)
                     .await

@@ -137,10 +137,7 @@ async fn spec117_gleaning_continue_after_truncate() {
     );
     let glean = GleaningExtractor::new(mock.clone() as Arc<dyn edgequake_llm::LLMProvider>, base)
         .with_extraction_caps(caps)
-        .with_config(GleaningConfig {
-            max_gleaning: 1,
-            always_glean: false,
-        });
+        .with_config(GleaningConfig { max_gleaning: 1 });
 
     let chunk = TextChunk::new(
         "c1",

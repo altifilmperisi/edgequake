@@ -6,6 +6,11 @@
 'use client';
 
 import { cn } from '@/lib/utils';
+import {
+  documentPathFromHref,
+  isDocumentDeeplink,
+  parsePageFromHref,
+} from '@/lib/utils/document-url';
 import type { Token, Tokens } from 'marked';
 import { useRouter } from 'next/navigation';
 import { memo, type MouseEvent } from 'react';
@@ -13,28 +18,8 @@ import { AuthenticatedMarkdownImage } from './AuthenticatedMarkdownImage';
 import { MathTokenRenderer } from './MathTokenRenderer';
 import { tryHtmlCodespan } from './utils/codespan-html';
 import { sanitizeHtml } from './utils/sanitize-html';
-
-/** SPEC-142: same-origin document deeplinks use client navigation (not target=_blank). */
-function isDocumentDeeplink(href: string | undefined): boolean {
-  if (!href) return false;
-  try {
-    if (href.startsWith('/documents/')) return true;
-    const url = new URL(href, typeof window !== 'undefined' ? window.location.origin : 'http://localhost');
-    return url.pathname.startsWith('/documents/');
-  } catch {
-    return href.startsWith('/documents/');
-  }
-}
-
-function documentPathFromHref(href: string): string {
-  try {
-    if (href.startsWith('/')) return href;
-    const url = new URL(href, typeof window !== 'undefined' ? window.location.origin : 'http://localhost');
-    return `${url.pathname}${url.search}`;
-  } catch {
-    return href;
-  }
-}
+import { InlineCitation } from '../citations/citation-popover';
+import type { CitationResolver } from './citation-resolver';
 
 /**
  * Merge split HTML tag tokens back into whole elements.
@@ -108,6 +93,7 @@ interface MarkdownInlineTokensProps {
   tokens: Token[];
   done?: boolean;
   onSourceClick?: (sourceId: string) => void;
+  resolveCitation?: CitationResolver;
 }
 
 export const MarkdownInlineTokens = memo(function MarkdownInlineTokens({
@@ -115,6 +101,7 @@ export const MarkdownInlineTokens = memo(function MarkdownInlineTokens({
   tokens,
   done = true,
   onSourceClick,
+  resolveCitation,
 }: MarkdownInlineTokensProps) {
   const router = useRouter();
   // Merge split HTML tag tokens (e.g. <sup>, <sub>) before rendering
@@ -142,6 +129,7 @@ export const MarkdownInlineTokens = memo(function MarkdownInlineTokens({
                     tokens={textToken.tokens}
                     done={done}
                     onSourceClick={onSourceClick}
+                    resolveCitation={resolveCitation}
                   />
                 ) : (
                   textToken.text
@@ -159,6 +147,7 @@ export const MarkdownInlineTokens = memo(function MarkdownInlineTokens({
                   tokens={strongToken.tokens || []}
                   done={done}
                   onSourceClick={onSourceClick}
+                    resolveCitation={resolveCitation}
                 />
               </strong>
             );
@@ -173,6 +162,7 @@ export const MarkdownInlineTokens = memo(function MarkdownInlineTokens({
                   tokens={emToken.tokens || []}
                   done={done}
                   onSourceClick={onSourceClick}
+                    resolveCitation={resolveCitation}
                 />
               </em>
             );
@@ -187,6 +177,7 @@ export const MarkdownInlineTokens = memo(function MarkdownInlineTokens({
                   tokens={delToken.tokens || []}
                   done={done}
                   onSourceClick={onSourceClick}
+                    resolveCitation={resolveCitation}
                 />
               </del>
             );
@@ -220,8 +211,8 @@ export const MarkdownInlineTokens = memo(function MarkdownInlineTokens({
             const href = linkToken.href;
             if (isDocumentDeeplink(href)) {
               const path = documentPathFromHref(href);
-              const pageMatch = /[?&]page=(\d+)/.exec(path);
-              const pageLabel = pageMatch ? `page ${pageMatch[1]}` : null;
+              const page = parsePageFromHref(path);
+              const pageLabel = page != null ? `page ${page}` : null;
               const docTitle = linkToken.title?.trim() || null;
               const ariaLabel = docTitle
                 ? pageLabel
@@ -249,6 +240,7 @@ export const MarkdownInlineTokens = memo(function MarkdownInlineTokens({
                     tokens={linkToken.tokens || []}
                     done={done}
                     onSourceClick={onSourceClick}
+                    resolveCitation={resolveCitation}
                   />
                 </a>
               );
@@ -267,6 +259,7 @@ export const MarkdownInlineTokens = memo(function MarkdownInlineTokens({
                   tokens={linkToken.tokens || []}
                   done={done}
                   onSourceClick={onSourceClick}
+                    resolveCitation={resolveCitation}
                 />
               </a>
             );
@@ -303,9 +296,21 @@ export const MarkdownInlineTokens = memo(function MarkdownInlineTokens({
           // Custom citation extension
           case 'citation': {
             const citationToken = token as unknown as { sourceId: string };
+            const resolved = resolveCitation?.(citationToken.sourceId);
+            if (resolved) {
+              return (
+                <InlineCitation
+                  key={tokenId}
+                  index={resolved.index}
+                  chunk={resolved.chunk}
+                />
+              );
+            }
             return (
               <button
                 key={tokenId}
+                type="button"
+                data-testid="query-citation-pill"
                 onClick={() => onSourceClick?.(citationToken.sourceId)}
                 className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs font-medium text-primary bg-primary/10 rounded-md hover:bg-primary/20 transition-colors"
               >

@@ -1,5 +1,7 @@
 //! PostgreSQL projection delivery ledger with lease fencing.
 
+use std::collections::HashMap;
+
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use edgequake_storage_contracts::{
@@ -292,20 +294,24 @@ async fn acknowledge_batch(
             ));
         }
     }
-    let event_ids: Vec<Uuid> = requests.iter().map(|r| r.event_id).collect();
-    let binding_ids: Vec<Uuid> = requests.iter().map(|r| r.binding_id).collect();
-    let mut epochs = Vec::with_capacity(requests.len());
+    // Last-write-wins on (event_id, binding_id) so UNNEST never proposes
+    // duplicate delivery rows in one UPDATE (defensive; worker should already
+    // emit unique pairs).
+    let mut by_key: HashMap<(Uuid, Uuid), &AckDelivery> = HashMap::new();
     for request in requests {
+        by_key.insert((request.event_id, request.binding_id), request);
+    }
+    let deduped: Vec<&AckDelivery> = by_key.into_values().collect();
+
+    let event_ids: Vec<Uuid> = deduped.iter().map(|r| r.event_id).collect();
+    let binding_ids: Vec<Uuid> = deduped.iter().map(|r| r.binding_id).collect();
+    let mut epochs = Vec::with_capacity(deduped.len());
+    for request in &deduped {
         epochs.push(checked_epoch(request.epoch)?);
     }
-    let receipts: Vec<Vec<u8>> = requests
-        .iter()
-        .map(|r| r.completion_proof.clone())
-        .collect();
-    let provider_receipts: Vec<String> = requests
-        .iter()
-        .map(|r| r.provider_receipt.clone())
-        .collect();
+    let receipts: Vec<Vec<u8>> = deduped.iter().map(|r| r.completion_proof.clone()).collect();
+    let provider_receipts: Vec<String> =
+        deduped.iter().map(|r| r.provider_receipt.clone()).collect();
 
     let mut tx = pool.begin().await.map_err(database_error)?;
     let rows = sqlx::query_as::<_, (Uuid, Uuid)>(ACK_BATCH_AND_VISIBILITY_SQL)
@@ -661,6 +667,11 @@ visible AS (
 SELECT object_id FROM visible
 "#;
 
+// WHY DISTINCT ON: multi-batch document_batch events share
+// (object_kind, object_id, object_revision) per binding. Acking both in one
+// statement without dedupe raises Postgres 21000
+// "ON CONFLICT DO UPDATE command cannot affect row a second time" and leaves
+// deliveries leased forever (SPEC-149 projecting stall).
 const ACK_BATCH_AND_VISIBILITY_SQL: &str = r#"
 WITH input AS (
     SELECT * FROM UNNEST(
@@ -682,11 +693,17 @@ visible AS (
         tenant_id, workspace_id, object_kind, object_id, object_revision,
         binding_id, completion_receipt, verified_generation
     )
-    SELECT e.tenant_id, e.workspace_id, e.object_kind, e.object_id,
+    SELECT DISTINCT ON (
+        e.tenant_id, e.workspace_id, e.object_kind, e.object_id,
+        e.object_revision, a.binding_id
+    )
+           e.tenant_id, e.workspace_id, e.object_kind, e.object_id,
            e.object_revision, a.binding_id, a.completion_receipt, b.generation
     FROM acknowledged a
     JOIN public.projection_events e ON e.event_id = a.event_id
     JOIN public.data_bindings b ON b.binding_id = a.binding_id
+    ORDER BY e.tenant_id, e.workspace_id, e.object_kind, e.object_id,
+             e.object_revision, a.binding_id, a.event_id DESC
     ON CONFLICT (
         tenant_id, workspace_id, object_kind, object_id, object_revision, binding_id
     ) DO UPDATE SET
@@ -755,5 +772,16 @@ mod tests {
         assert!(RENEW_BATCH_SQL.contains("UNNEST"));
         assert!(ACK_BATCH_AND_VISIBILITY_SQL.contains("d.epoch = i.epoch"));
         assert!(ACK_BATCH_AND_VISIBILITY_SQL.contains("UNNEST"));
+    }
+
+    #[test]
+    fn ack_batch_visibility_dedupes_shared_object_revision() {
+        // Multi ingest_batch events share object_revision; DISTINCT ON keeps
+        // one visibility row per arbiter key so ON CONFLICT is deterministic.
+        assert!(
+            ACK_BATCH_AND_VISIBILITY_SQL.contains("SELECT DISTINCT ON"),
+            "ack batch must DISTINCT ON visibility arbiter before ON CONFLICT"
+        );
+        assert!(ACK_BATCH_AND_VISIBILITY_SQL.contains("a.event_id DESC"));
     }
 }

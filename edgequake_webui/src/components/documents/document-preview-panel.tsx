@@ -28,35 +28,33 @@ import {
     TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { getDocument } from '@/lib/api/edgequake';
-import { categorizeError, getCategoryColor, type ErrorCategory } from '@/lib/error-categories';
+import { categorizeError, getCategoryColor } from '@/lib/error-categories';
+import { getCategoryIconComponent } from './error-category-icon';
+import { canCancelDocument, documentStalledForMs } from '@/lib/documents/document-run-state';
+import { formatSilence } from '@/lib/pipeline/run-liveness';
 import { getEffectiveErrorMessage } from '@/lib/utils/document-status';
 import type { Document } from '@/types';
 import { useQuery } from '@tanstack/react-query';
 import { formatDistanceToNow } from 'date-fns';
 import {
-    AlertCircle,
-    Brain,
-    Calendar,
-    CheckCircle,
-    ChevronDown,
-    ChevronUp,
-    Clock,
-    Copy,
-    Cpu,
-    Database,
-    ExternalLink,
-    Eye,
-    FileText,
-    FileWarning,
-    HardDrive,
-    Loader2,
-    Network,
-    RefreshCw,
-    StopCircle,
-    Trash2,
-    Wifi,
-    XCircle,
-    Zap
+  AlertTriangle,
+  Calendar,
+  CheckCircle,
+  ChevronDown,
+  ChevronUp,
+  Clock,
+  Copy,
+  ExternalLink,
+  Eye,
+  FileText,
+  HardDrive,
+  Loader2,
+  Network,
+  RefreshCw,
+  StopCircle,
+  Trash2,
+  XCircle,
+  Zap,
 } from 'lucide-react';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -74,22 +72,6 @@ const statusConfig = {
 
 type DocumentStatus = keyof typeof statusConfig;
 
-/**
- * OODA-21: Get icon component for error category
- */
-function getCategoryIconComponent(category: ErrorCategory) {
-  switch (category) {
-    case 'llm':
-    case 'llm_timeout':
-      return Brain;
-    case 'embedding': return Cpu;
-    case 'storage': return Database;
-    case 'pipeline': return FileWarning;
-    case 'network': return Wifi;
-    default: return AlertCircle;
-  }
-}
-
 interface DocumentPreviewPanelProps {
   /** The document to preview */
   document: Document | null;
@@ -105,6 +87,10 @@ interface DocumentPreviewPanelProps {
   isDeleting?: boolean;
   /** Whether reprocess action is loading */
   isReprocessing?: boolean;
+  /** Called when the user cancels in-flight work (works without a track_id) */
+  onCancel?: (document: Document) => void;
+  /** Whether a cancel request is in flight */
+  isCancelling?: boolean;
 }
 
 function formatFileSize(bytes: number | undefined): string {
@@ -145,6 +131,8 @@ export function DocumentPreviewPanel({
   onViewInGraph,
   isDeleting = false,
   isReprocessing = false,
+  onCancel,
+  isCancelling = false,
 }: DocumentPreviewPanelProps) {
   const { t } = useTranslation();
   const [showFullContent, setShowFullContent] = useState(false);
@@ -210,9 +198,15 @@ export function DocumentPreviewPanel({
   }
 
   const status = (document.status || 'completed') as DocumentStatus;
-  const statusInfo = statusConfig[status] || statusConfig.completed;
+  // SPEC-155: "processing" with a silent server is Stalled, not a live spinner.
+  const stalledMs = documentStalledForMs(document);
+  const isStalled = stalledMs !== null;
+  const statusInfo = isStalled
+    ? { icon: AlertTriangle, color: 'text-amber-600', bg: 'bg-amber-500/10', label: 'Stalled' }
+    : statusConfig[status] || statusConfig.completed;
   const StatusIcon = statusInfo.icon;
-  const isProcessing = status === 'processing';
+  const isProcessing = status === 'processing' && !isStalled;
+  const canCancel = Boolean(onCancel) && canCancelDocument(document);
   const isFailed = status === 'failed' || status === 'partial_failure';
   const isCancelled = status === 'cancelled';
 
@@ -252,6 +246,18 @@ export function DocumentPreviewPanel({
           )}
         </div>
       </div>
+
+      {isStalled ? (
+        <div
+          role="alert"
+          className="rounded-md border border-amber-300/70 bg-amber-50/60 px-3 py-2 text-xs text-amber-900 dark:border-amber-800/70 dark:bg-amber-950/30 dark:text-amber-100"
+          data-testid="spec155-preview-stalled-notice"
+        >
+          No progress for {formatSilence(stalledMs ?? 0)}. The worker has
+          probably stopped. Cancel to release this document, or Reprocess to
+          try again.
+        </div>
+      ) : null}
 
       {/* Details section — RP-04: lowercase label */}
       <div className="space-y-2">
@@ -652,6 +658,25 @@ export function DocumentPreviewPanel({
         </h4>
         
         <div className="grid grid-cols-2 gap-2">
+          {canCancel && onCancel && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="col-span-2 h-9 border-orange-300 text-orange-700 hover:bg-orange-50 hover:text-orange-800 dark:border-orange-800 dark:text-orange-300 dark:hover:bg-orange-950/40"
+              onClick={() => onCancel(document)}
+              disabled={isCancelling}
+              data-testid="spec155-preview-cancel"
+            >
+              {isCancelling ? (
+                <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+              ) : (
+                <StopCircle className="h-3.5 w-3.5 mr-1.5" />
+              )}
+              {isStalled
+                ? t('documents.actions.cancelStalled', 'Cancel stalled run')
+                : t('documents.actions.cancelRun', 'Cancel processing')}
+            </Button>
+          )}
           {onViewFull && (
             <Button
               variant="outline"

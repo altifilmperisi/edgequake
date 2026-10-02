@@ -450,7 +450,44 @@ impl ProjectionWorker {
             return Ok(());
         }
 
-        let applied = self.ledger.acknowledge_batch(&ack_requests).await?;
+        let applied = match self.ledger.acknowledge_batch(&ack_requests).await {
+            Ok(applied) => applied,
+            Err(error) if is_poison(&error) => return Err(error),
+            Err(error) => {
+                // WHY: Ack/visibility failures must not leave deliveries leased
+                // until expiry (seen as projecting stalls with climbing attempts).
+                report.transient_failures += ack_requests.len() as u64;
+                for request in &ack_requests {
+                    let backoff_ms = self.config.lease_duration_ms.min(60_000);
+                    if let Err(release_error) = self
+                        .ledger
+                        .release_for_retry(
+                            &RenewDelivery {
+                                event_id: request.event_id,
+                                binding_id: request.binding_id,
+                                owner_token: self.owner_token,
+                                epoch: request.epoch,
+                                lease_duration_ms: self.config.lease_duration_ms,
+                            },
+                            backoff_ms,
+                        )
+                        .await
+                    {
+                        tracing::warn!(
+                            event_id = %request.event_id,
+                            error = %release_error,
+                            "projection retry release after ack failure failed"
+                        );
+                    }
+                }
+                tracing::warn!(
+                    error = %error,
+                    count = ack_requests.len(),
+                    "projection acknowledge_batch failed; deliveries returned to retry"
+                );
+                return Ok(());
+            }
+        };
         self.counters.ack_statements.fetch_add(1, Ordering::Relaxed);
         let applied_set: HashSet<(Uuid, Uuid)> = applied.into_iter().collect();
         let mut fence_docs: HashSet<Uuid> = HashSet::new();

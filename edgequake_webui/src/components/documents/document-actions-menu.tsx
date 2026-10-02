@@ -9,6 +9,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { DocumentDownloadMenu } from './document-download-menu';
 import { resolveDetailLifecycle } from '@/lib/documents/detail-lifecycle';
+import { canCancelDocument, isDeleteFailedDocument } from '@/lib/documents/document-run-state';
 import { needsReuploadNotReprocess } from '@/lib/pipeline/pipeline-document-state';
 import type { Document } from '@/types';
 import { Copy, Eye, MoreVertical, RefreshCw, StopCircle, Trash2 } from 'lucide-react';
@@ -28,7 +29,7 @@ interface DocumentActionsMenuProps {
   /** Callback to view PDF document */
   onViewPdf: (doc: Document) => void;
   /** Callback to cancel document processing */
-  onCancel: (trackId: string) => void;
+  onCancel: (doc: Document) => void;
   /** Callback to reprocess document */
   onReprocess: (id: string) => void;
   /** SPEC-151: open partial page reprocess dialog (PDFs only). */
@@ -40,14 +41,6 @@ interface DocumentActionsMenuProps {
   /** Whether a delete operation is in progress for this document */
   isDeleting?: boolean;
 }
-
-/** Processing status values that allow cancellation */
-const CANCELLABLE_STATUSES = ['pending', 'processing'];
-/** Processing stages that allow cancellation */
-const CANCELLABLE_STAGES = [
-  'converting', 'uploading', 'preprocessing', 'chunking',
-  'extracting', 'gleaning', 'merging', 'summarizing', 'embedding', 'storing'
-];
 
 /**
  * Dropdown menu with document actions.
@@ -78,18 +71,18 @@ export function DocumentActionsMenu({
     toast.success(t('documents.actions.idCopied', 'Document ID copied'));
   };
 
-  const canCancel = 
-    ((CANCELLABLE_STATUSES.includes(doc.status || '')) || 
-    (CANCELLABLE_STAGES.includes(doc.current_stage || ''))) &&
-    doc.track_id;
+  // SPEC-155: cancel is document-keyed — orphan rows have no track_id.
+  const canCancel = canCancelDocument(doc);
 
   const showViewPdf = doc.source_type === 'pdf' || doc.pdf_id;
   // WHY: Cancelled documents should also show the reset/reprocess option
-  const showReset = doc.status === 'failed' || doc.status === 'partial_failure' || doc.status === 'cancelled';
+  const deleteFailed = isDeleteFailedDocument(doc);
+  const showReset = !deleteFailed && (doc.status === 'failed' || doc.status === 'partial_failure' || doc.status === 'cancelled');
   const lifecycle = resolveDetailLifecycle(doc);
   const showReprocessPages =
     Boolean(onReprocessPages) &&
     isPdfDocument(doc) &&
+    !deleteFailed &&
     lifecycle.canReprocessPages &&
     !needsReuploadNotReprocess(doc);
 
@@ -130,7 +123,7 @@ export function DocumentActionsMenu({
           {/* Cancel option for processing documents */}
           {canCancel && (
             <DropdownMenuItem 
-              onClick={() => onCancel(doc.track_id!)}
+              onClick={() => onCancel(doc)}
               className="text-orange-600"
               disabled={isCancelling}
             >
@@ -154,7 +147,7 @@ export function DocumentActionsMenu({
           ) : null}
 
           {/* Reprocess — hide for orphan staging shells (dismiss + re-upload). */}
-          {!needsReuploadNotReprocess(doc) && (
+          {!deleteFailed && !needsReuploadNotReprocess(doc) && (
             <DropdownMenuItem onClick={() => onReprocess(doc.id)}>
               <RefreshCw className="h-4 w-4 mr-2" />
               {t('documents.actions.reprocess')}
@@ -168,7 +161,9 @@ export function DocumentActionsMenu({
             disabled={isDeleting}
           >
             <Trash2 className="h-4 w-4 mr-2" />
-            {t('documents.actions.delete')}
+            {deleteFailed
+              ? t('documents.actions.finishDelete', 'Finish delete')
+              : t('documents.actions.delete')}
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

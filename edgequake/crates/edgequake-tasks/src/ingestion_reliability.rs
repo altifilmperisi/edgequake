@@ -25,6 +25,11 @@ pub enum IngestionFailureClass {
     LlmUnsupportedParam,
     /// User/system cancel — terminal, never retry.
     Cancelled,
+    /// The document was tombstoned (deleted) by the P0 lifecycle authority but
+    /// its physical cleanup never finished. Ingest into it can never succeed:
+    /// the tombstone is irreversible, so retry/reprocess only burn LLM spend.
+    /// Remedy is to finish the delete (or re-upload the file as a new document).
+    DocumentDeleted,
     Unknown,
 }
 
@@ -41,6 +46,7 @@ impl IngestionFailureClass {
             Self::ProviderMisconfigured => "provider_misconfigured",
             Self::LlmUnsupportedParam => "llm_unsupported_param",
             Self::Cancelled => "cancelled",
+            Self::DocumentDeleted => "document_deleted",
             Self::Unknown => "unknown",
         }
     }
@@ -60,6 +66,7 @@ impl IngestionFailureClass {
             "provider_misconfigured" => Some(Self::ProviderMisconfigured),
             "llm_unsupported_param" => Some(Self::LlmUnsupportedParam),
             "cancelled" => Some(Self::Cancelled),
+            "document_deleted" => Some(Self::DocumentDeleted),
             "unknown" => Some(Self::Unknown),
             _ => None,
         }
@@ -77,6 +84,7 @@ impl IngestionFailureClass {
             Self::ProviderMisconfigured => "configure_provider_credentials",
             Self::LlmUnsupportedParam => "omit_llm_temperature_or_switch_api_format",
             Self::Cancelled => "none",
+            Self::DocumentDeleted => "finish_delete_or_reupload",
             Self::Unknown => "retry",
         }
     }
@@ -92,6 +100,7 @@ impl IngestionFailureClass {
                 | Self::ProviderMisconfigured
                 | Self::LlmUnsupportedParam
                 | Self::Cancelled
+                | Self::DocumentDeleted
         )
     }
 }
@@ -129,6 +138,15 @@ pub fn is_provider_misconfig_message(error_msg: &str) -> bool {
             && lower.contains("not"))
         || lower.contains("embedding dimension mismatch")
         || lower.contains("mixed dimensions in one batch")
+}
+
+/// True when the error says ingest hit a tombstoned (deleted) document.
+///
+/// Matches the typed storage conflict raised by the persist authority gate
+/// (`cannot ingest into a tombstoned document`) and the worker pre-flight guard.
+pub fn is_document_deleted_message(error_msg: &str) -> bool {
+    let lower = error_msg.to_ascii_lowercase();
+    lower.contains("tombstoned document") || lower.contains("document was deleted")
 }
 
 /// True when an error string represents user/system cancel (SPEC-057).
@@ -204,6 +222,9 @@ pub fn classify_ingestion_failure(error_msg: &str) -> IngestionFailureClass {
     let lower = error_msg.to_ascii_lowercase();
     if is_cancel_failure_message(error_msg) {
         return IngestionFailureClass::Cancelled;
+    }
+    if is_document_deleted_message(error_msg) {
+        return IngestionFailureClass::DocumentDeleted;
     }
     // Deterministic credential/config failure — must precede the transient
     // `ProviderUnavailable` branch (which also matches "failed to create").
@@ -294,6 +315,7 @@ pub fn failure_step(class: IngestionFailureClass) -> &'static str {
         IngestionFailureClass::ProviderMisconfigured => "provider_config",
         IngestionFailureClass::LlmUnsupportedParam => "extraction",
         IngestionFailureClass::Cancelled => "cancelled",
+        IngestionFailureClass::DocumentDeleted => "admission",
         IngestionFailureClass::Unknown => "processing",
     }
 }
@@ -309,6 +331,30 @@ mod tests {
         assert_eq!(class, IngestionFailureClass::GraphMerge);
         assert!(class.is_permanent());
         assert_eq!(class.recommended_action(), "reprocess_full");
+    }
+
+    #[test]
+    fn tombstoned_document_is_permanent_and_never_retried() {
+        let msg = "Knowledge graph persist failed: Storage error: Conflict: \
+                   cannot ingest into a tombstoned document";
+        let class = classify_ingestion_failure(msg);
+        assert_eq!(class, IngestionFailureClass::DocumentDeleted);
+        assert!(is_permanent_ingestion_failure(msg));
+        assert_eq!(class.recommended_action(), "finish_delete_or_reupload");
+        assert_eq!(class.as_str(), "document_deleted");
+    }
+
+    #[test]
+    fn document_deleted_marker_roundtrips() {
+        let msg = "Document was deleted [failure_class=document_deleted]";
+        assert_eq!(
+            classify_ingestion_failure(msg),
+            IngestionFailureClass::DocumentDeleted
+        );
+        assert_eq!(
+            IngestionFailureClass::from_token("document_deleted"),
+            Some(IngestionFailureClass::DocumentDeleted)
+        );
     }
 
     #[test]

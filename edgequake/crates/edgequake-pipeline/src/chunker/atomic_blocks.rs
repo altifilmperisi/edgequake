@@ -5,22 +5,22 @@
 //! - LightRAG mm blocks (`[Chart Name]` …)
 //! - Fenced code / table fences
 //! - Pipe markdown tables
-
-use std::sync::LazyLock;
-
-use regex::Regex;
+//!
+//! WHY no `regex::Regex` here: LazyLock `Regex::new` on the eq-ingest worker
+//! stack overflows in debug builds when nested under the large pipeline FSM
+//! (crash: `regex_automata::Builder::build_many_from_hir` inside `MM_HEAD_RE`).
+//! Prefix checks are exact for these fixed headers and keep init off the stack.
 
 use super::page_marker::PAGE_MARKER_PREFIX;
 
-static MM_HEAD_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"^\[(?:Image|Chart|Figure|Table|Equation) Name\]").expect("mm head regex")
-});
-
-static VLM_HEADING_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^# [^\n]+").expect("vlm heading regex"));
-
-static VLM_TYPE_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^\*\*Type:\*\*").expect("vlm type regex"));
+/// LightRAG multimodal chunk headers (`[Image Name]`, …).
+const MM_HEAD_PREFIXES: &[&str] = &[
+    "[Image Name]",
+    "[Chart Name]",
+    "[Figure Name]",
+    "[Table Name]",
+    "[Equation Name]",
+];
 
 /// Kind of indivisible content region.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -41,17 +41,19 @@ pub struct ContentRegion {
 
 /// True when `line` starts a LightRAG mm chunk header.
 pub fn is_mm_chunk_header(line: &str) -> bool {
-    MM_HEAD_RE.is_match(line.trim())
+    let t = line.trim();
+    MM_HEAD_PREFIXES.iter().any(|prefix| t.starts_with(prefix))
 }
 
 /// True when `line` is a VLM inline analyzed block title (`# name`).
 pub fn is_vlm_analyzed_heading(line: &str) -> bool {
-    VLM_HEADING_RE.is_match(line.trim())
+    let t = line.trim();
+    t.starts_with("# ") && t.len() > 2
 }
 
 /// True when `line` is the VLM type marker (`**Type:** Chart`).
 pub fn is_vlm_type_marker(line: &str) -> bool {
-    VLM_TYPE_RE.is_match(line.trim())
+    line.trim().starts_with("**Type:**")
 }
 
 /// True when line at `idx` begins a VLM inline block (`# title` then `**Type:**`).

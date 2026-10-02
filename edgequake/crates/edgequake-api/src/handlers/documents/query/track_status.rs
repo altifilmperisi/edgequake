@@ -161,6 +161,9 @@ pub async fn get_track_status(
                                 .and_then(|v| v.as_str())
                                 .and_then(crate::services::parse_counts_from_message)
                         }),
+                    run_progress: obj
+                        .get("run_progress")
+                        .and_then(crate::services::run_progress_from_value),
                     queue_position: None,
                     eta_seconds: None,
                     eta_basis: None,

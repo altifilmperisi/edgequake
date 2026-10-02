@@ -205,7 +205,7 @@ test.describe("073 query connections opaque labels", () => {
     await page.locator("main").first().waitFor({ state: "visible", timeout: 20_000 });
 
     await page
-      .getByRole("textbox", { name: "Ask a question..." })
+      .getByRole("combobox", { name: /ask a question/i })
       .fill("What themes does the conference cover?");
     await page.getByRole("button", { name: /send/i }).click();
 

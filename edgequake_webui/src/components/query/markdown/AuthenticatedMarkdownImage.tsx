@@ -42,10 +42,7 @@ export function AuthenticatedMarkdownImage({
   );
 
   useEffect(() => {
-    if (!isMmAssetUrl(src)) {
-      setResolvedSrc(src);
-      return;
-    }
+    if (!isMmAssetUrl(src)) return;
 
     let objectUrl: string | null = null;
     const ac = new AbortController();
@@ -79,8 +76,10 @@ export function AuthenticatedMarkdownImage({
   }, [src]);
 
   const layoutAsset = layoutAssetStem(src);
+  // Non-asset URLs render directly; asset URLs wait for the authenticated blob.
+  const shownSrc = isMmAssetUrl(src) ? resolvedSrc : src;
 
-  if (!resolvedSrc) {
+  if (!shownSrc) {
     return (
       <span
         data-layout-asset={layoutAsset}
@@ -94,7 +93,7 @@ export function AuthenticatedMarkdownImage({
   return (
     // eslint-disable-next-line @next/next/no-img-element
     <img
-      src={resolvedSrc}
+      src={shownSrc}
       alt={alt ?? ''}
       title={title}
       data-layout-asset={layoutAsset}

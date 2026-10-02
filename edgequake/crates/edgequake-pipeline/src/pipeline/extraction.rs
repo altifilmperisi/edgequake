@@ -38,10 +38,7 @@ impl Pipeline {
         extractor: &Arc<dyn EntityExtractor>,
         progress_callback: Option<ChunkProgressCallback>,
     ) -> Result<Vec<crate::extractor::ExtractionResult>> {
-        let semaphore = Arc::new(tokio::sync::Semaphore::new(
-            self.config.max_concurrent_extractions,
-        ));
-
+        // SPEC-156: buffer_unordered alone bounds concurrency (no redundant Semaphore).
         let total_chunks = chunks.len();
 
         // Atomic counters for cumulative tracking across concurrent extractions
@@ -67,7 +64,6 @@ impl Pipeline {
             chunks.iter().cloned().enumerate().collect();
         let results: Vec<Result<crate::extractor::ExtractionResult>> = stream::iter(owned)
             .map(|(chunk_index, chunk)| {
-                let semaphore = semaphore.clone();
                 let extractor = extractor.clone();
                 let progress_callback = progress_callback.clone();
                 let cumulative_time_ms = cumulative_time_ms.clone();
@@ -77,17 +73,13 @@ impl Pipeline {
                 let model_pricing = model_pricing.clone();
 
                 async move {
-                    // Acquire permit (released on drop)
-                    let _permit = semaphore
-                        .acquire()
-                        .await
-                        .map_err(|e| crate::error::PipelineError::ExtractionError(e.to_string()))?;
-
+                    let chunk_start = std::time::Instant::now();
                     // Extract entities from this chunk
-                    let result = extractor.extract(&chunk).await?;
+                    let mut result = extractor.extract(&chunk).await?;
 
-                    // Update cumulative counters
-                    let time_ms = result.extraction_time_ms;
+                    // SPEC-156: production extractors leave extraction_time_ms=0.
+                    let time_ms = chunk_start.elapsed().as_millis() as u64;
+                    result.extraction_time_ms = time_ms;
                     let in_tokens = result.input_tokens;
                     let out_tokens = result.output_tokens;
 
@@ -246,10 +238,7 @@ impl Pipeline {
         let reuse_index = std::sync::Arc::new(reuse_index);
         let on_chunk_extracted = on_chunk_extracted.clone();
 
-        let semaphore = Arc::new(tokio::sync::Semaphore::new(
-            self.config.max_concurrent_extractions,
-        ));
-
+        // SPEC-156: buffer_unordered alone bounds concurrency (no redundant Semaphore).
         let total_chunks = chunks.len();
         edgequake_observability::record_pipeline_chunk_extraction_io(
             total_chunks,
@@ -287,7 +276,6 @@ impl Pipeline {
             chunks.iter().cloned().enumerate().collect();
         let outcomes: Vec<ChunkExtractionOutcome> = stream::iter(owned)
             .map(|(chunk_index, chunk)| {
-                let semaphore = semaphore.clone();
                 let extractor = extractor.clone();
                 let progress_callback = progress_callback.clone();
                 let cumulative_time_ms = cumulative_time_ms.clone();
@@ -381,20 +369,7 @@ impl Pipeline {
                         }
                     }
 
-                    // Acquire permit (released on drop)
-                    let _permit = match semaphore.acquire().await {
-                        Ok(p) => p,
-                        Err(e) => {
-                            return ChunkExtractionOutcome::Failed(ChunkFailure {
-                                chunk_index,
-                                chunk_id: chunk.id.clone(),
-                                error: format!("Semaphore acquisition failed: {}", e),
-                                retry_attempts: 0,
-                                was_timeout: false,
-                                processing_time_ms: chunk_start.elapsed().as_millis() as u64,
-                            });
-                        }
-                    };
+                    // SPEC-156: concurrency bounded solely by buffer_unordered below.
 
                     // ─────────────────────────────────────────────────────────
                     // PER-CHUNK RETRY LOOP
@@ -486,9 +461,10 @@ impl Pipeline {
                         };
 
                         match timed {
-                            Ok(Ok(result)) => {
-                                // SUCCESS PATH
-                                let time_ms = result.extraction_time_ms;
+                            Ok(Ok(mut result)) => {
+                                // SUCCESS PATH — SPEC-156: wall-clock when extractor omits time.
+                                let time_ms = chunk_start.elapsed().as_millis() as u64;
+                                result.extraction_time_ms = time_ms;
                                 let in_tokens = result.input_tokens;
                                 let out_tokens = result.output_tokens;
 

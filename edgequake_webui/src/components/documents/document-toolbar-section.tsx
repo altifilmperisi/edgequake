@@ -12,6 +12,7 @@ import {
 import type { Document, PipelineStatus } from '@/types';
 import { useMemo } from 'react';
 import { BatchActionsBar } from './batch-actions-bar';
+import { documentStalledForMs } from '@/lib/documents/document-run-state';
 import { DocumentDropzone, type DocumentDropzoneProps } from './document-dropzone';
 import type { DocStatus, SortField } from './document-filters';
 import { DocumentFilters } from './document-filters';
@@ -71,6 +72,12 @@ export interface DocumentToolbarSectionProps {
   selectedCount: number;
   onBulkReprocess: () => void;
   onBulkDelete: () => void;
+  /** SPEC-155: cancel in-flight docs in the selection (omit to hide). */
+  bulkCancel?: {
+    count: number;
+    isCancelling: boolean;
+    onCancel: () => void;
+  };
   onClearSelection: () => void;
 }
 
@@ -108,6 +115,7 @@ export function DocumentToolbarSection({
   selectedCount,
   onBulkReprocess,
   onBulkDelete,
+  bulkCancel,
   onClearSelection,
 }: DocumentToolbarSectionProps) {
   const runViews = useMemo(
@@ -133,9 +141,17 @@ export function DocumentToolbarSection({
   const pipelineUi = pipelineUiProp ?? pipelineUiFallback;
   // Hide chrome once every document is terminal (ignore stale pipelineStatus).
   // Demote non-stuck banners when the feedback zone already shows the same runs.
+  // SPEC-155: stalled runs already own a card with Cancel/Reprocess in the
+  // feedback zone — repeating them in a red banner is noise. Other stuck docs
+  // (waiting, no worker) keep the banner CTA.
+  const stuckAllStalled =
+    pipelineUi.stuckDocs.length > 0 &&
+    pipelineUi.stuckDocs.every((d) => documentStalledForMs(d) !== null);
   const showBanner =
     pipelineUi.showPipelineIndicator &&
-    (pipelineUi.isStuck || !demotePipelineBanner);
+    (pipelineUi.isStuck
+      ? !(demotePipelineBanner && stuckAllStalled)
+      : !demotePipelineBanner);
   const quietDropzone =
     pipelineUi.isActivelyProcessing ||
     primaryRun?.stageStatus === 'active';
@@ -155,6 +171,9 @@ export function DocumentToolbarSection({
             onReprocess={onBulkReprocess}
             onDelete={onBulkDelete}
             onClear={onClearSelection}
+            cancellableCount={bulkCancel?.count}
+            onCancel={bulkCancel?.onCancel}
+            isCancelling={bulkCancel?.isCancelling}
           />
         </div>
       ) : (

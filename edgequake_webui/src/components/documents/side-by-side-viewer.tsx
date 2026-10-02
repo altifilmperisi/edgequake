@@ -10,24 +10,14 @@
  */
 'use client';
 
-import { Button } from '@/components/ui/button';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
 import { PageSyncModeControl } from '@/components/documents/page-sync-mode-control';
+import {
+  ViewModeToggle,
+  type ViewMode,
+} from '@/components/documents/view-mode-toggle';
 import type { PageSyncMode } from '@/lib/documents/page-sync-mode';
 import { cn } from '@/lib/utils';
-import {
-  Columns2,
-  PanelLeftClose,
-  PanelRightClose,
-} from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
-
-type ViewMode = 'side-by-side' | 'pdf-only' | 'markdown-only';
 
 interface SideBySideViewerProps {
   leftPanel: React.ReactNode;
@@ -52,6 +42,7 @@ export function SideBySideViewer({
   className,
   height,
   initialMode = 'side-by-side',
+  rightTitle,
   onModeChange,
   syncMode = 'pdf-to-md',
   onSyncModeChange,
@@ -114,73 +105,20 @@ export function SideBySideViewer({
   }, [handleMouseMove, handleMouseUp, isDragging]);
 
   const showSync = mode === 'side-by-side' && onSyncModeChange != null;
+  const showPdf = mode === 'pdf-only' || mode === 'side-by-side';
+  const showMarkdown = mode === 'markdown-only' || mode === 'side-by-side';
 
   return (
-    <div data-testid="side-by-side-viewer" className={cn('flex flex-col min-h-0', className)}>
-      <div className="flex items-center justify-end gap-1 px-2 py-1 border-b bg-muted/20">
-        <TooltipProvider>
-          {showSync ? (
-            <span className="mr-1 inline-flex">
-              <PageSyncModeControl
-                mode={syncMode}
-                onModeChange={onSyncModeChange!}
-                available={syncAvailable}
-                compact
-              />
-            </span>
-          ) : null}
-          <div className="flex items-center gap-0.5 bg-background rounded p-0.5">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant={mode === 'pdf-only' ? 'secondary' : 'ghost'}
-                  size="icon"
-                  className="h-6 w-6"
-                  onClick={() => handleModeChange('pdf-only')}
-                >
-                  <PanelRightClose className="h-3.5 w-3.5" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>PDF Only</TooltipContent>
-            </Tooltip>
-
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant={mode === 'side-by-side' ? 'secondary' : 'ghost'}
-                  size="icon"
-                  className="h-6 w-6"
-                  onClick={() => handleModeChange('side-by-side')}
-                >
-                  <Columns2 className="h-3.5 w-3.5" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Split View</TooltipContent>
-            </Tooltip>
-
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant={mode === 'markdown-only' ? 'secondary' : 'ghost'}
-                  size="icon"
-                  className="h-6 w-6"
-                  onClick={() => handleModeChange('markdown-only')}
-                >
-                  <PanelLeftClose className="h-3.5 w-3.5" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Markdown Only</TooltipContent>
-            </Tooltip>
-          </div>
-        </TooltipProvider>
-      </div>
-
+    <div
+      data-testid="side-by-side-viewer"
+      className={cn('relative flex flex-col min-h-0', className)}
+    >
       <div
         ref={containerRef}
         className="flex flex-1 min-h-0"
         style={height ? { height: `${height}px` } : undefined}
       >
-        {(mode === 'pdf-only' || mode === 'side-by-side') && (
+        {showPdf && (
           <div
             className={cn(
               'flex flex-col border-r overflow-hidden',
@@ -205,13 +143,34 @@ export function SideBySideViewer({
           </div>
         )}
 
-        {(mode === 'markdown-only' || mode === 'side-by-side') && (
+        {showMarkdown && (
           <div
             className={cn(
               'flex flex-col overflow-hidden',
               mode === 'markdown-only' ? 'w-full' : 'flex-1',
             )}
           >
+            {/* Pane header: same 48px row as the PDF toolbar, so the two panes
+                read as one toolbar instead of two stacked bars. */}
+            <div
+              className="flex h-12 shrink-0 items-center justify-between gap-2 border-b bg-muted/30 px-3"
+              data-testid="markdown-pane-header"
+            >
+              <span className="truncate text-xs font-medium text-muted-foreground">
+                {rightTitle ?? 'Markdown'}
+              </span>
+              <div className="flex shrink-0 items-center gap-2">
+                {showSync ? (
+                  <PageSyncModeControl
+                    mode={syncMode}
+                    onModeChange={onSyncModeChange!}
+                    available={syncAvailable}
+                    compact
+                  />
+                ) : null}
+                <ViewModeToggle mode={mode} onModeChange={handleModeChange} />
+              </div>
+            </div>
             <div
               className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden"
               data-testid="md-scroll-container"
@@ -221,6 +180,14 @@ export function SideBySideViewer({
           </div>
         )}
       </div>
+
+      {/* PDF-only hides the Markdown header, so the switcher floats instead of
+          leaving the user without a way back to split view. */}
+      {mode === 'pdf-only' && (
+        <div className="absolute bottom-3 right-3 z-20 rounded-lg border bg-background/95 p-0.5 shadow-md backdrop-blur">
+          <ViewModeToggle mode={mode} onModeChange={handleModeChange} />
+        </div>
+      )}
     </div>
   );
 }

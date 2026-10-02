@@ -78,9 +78,11 @@
 // Sub-modules organized by responsibility (SRP)
 mod batch_deletion;
 pub mod cancel_gates;
+mod deleted_document_guard;
 mod document_deletion;
 mod injection_processing;
 pub mod page_reprocess;
+pub mod partial_chunk_checkpoint_writer;
 mod pdf_processing;
 pub mod pipeline_checkpoint;
 mod status_updates;

@@ -6,6 +6,8 @@
  */
 
 import type { Document } from '@/types';
+import { documentStalledForMs } from '@/lib/documents/document-run-state';
+import { formatSilence } from './run-liveness';
 import {
   formatGraphMergeUserDetail,
   parseGraphMergeStageMessage,
@@ -25,6 +27,12 @@ export function translateIngestionDetail(
 ): string {
   const raw = doc.stage_message?.trim();
   const fileName = doc.title || doc.file_name || 'Document';
+
+  // SPEC-155: the last stage_message is stale history, not what is happening.
+  const stalledMs = context === 'stuck' ? documentStalledForMs(doc) : null;
+  if (stalledMs !== null) {
+    return `${fileName}: No progress for ${formatSilence(stalledMs)} — cancel it or reprocess to continue.`;
+  }
 
   if (raw && AUTO_RECOVERED_RE.test(raw)) {
     if (context === 'stuck') {

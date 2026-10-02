@@ -130,6 +130,11 @@ export function mapServerMessageContextToQueryContext(
       // SPEC-033: propagate page attribution from persisted conversation context
       page_start: source.page_start,
       page_end: source.page_end,
+      // SPEC-155 Q16: parity with live mapChunkSources
+      start_line: source.start_line,
+      end_line: source.end_line,
+      chunk_index: source.chunk_index,
+      reference_id: source.reference_id,
     })),
     entities:
       ctx.entities?.map((entity) => ({

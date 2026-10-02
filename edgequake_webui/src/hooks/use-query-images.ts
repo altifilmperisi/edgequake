@@ -64,7 +64,7 @@ export function useQueryImages() {
   );
 
   const handlePaste = useCallback(
-    (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    (event: React.ClipboardEvent) => {
       const items = Array.from(event.clipboardData.items).filter(
         (item) => item.kind === "file",
       );
@@ -77,7 +77,7 @@ export function useQueryImages() {
   );
 
   const handleDrop = useCallback(
-    (event: React.DragEvent<HTMLDivElement>) => {
+    (event: React.DragEvent) => {
       event.preventDefault();
       if (event.dataTransfer.files.length > 0) {
         void addImages(event.dataTransfer.files);
@@ -86,7 +86,7 @@ export function useQueryImages() {
     [addImages],
   );
 
-  const handleDragOver = useCallback((event: React.DragEvent<HTMLDivElement>) => {
+  const handleDragOver = useCallback((event: React.DragEvent) => {
     event.preventDefault();
   }, []);
 

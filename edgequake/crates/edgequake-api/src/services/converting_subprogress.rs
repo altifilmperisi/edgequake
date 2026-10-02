@@ -6,8 +6,41 @@
 
 use std::sync::Arc;
 
-/// Callback invoked when a converting sub-step advances (typically KV metadata patch).
-pub type ConvertingSubstepReporter = Arc<dyn Fn(String, f64) + Send + Sync>;
+/// Structured converting sub-step update (SPEC-155: typed counters, not message regex).
+#[derive(Debug, Clone)]
+pub struct ConvertingSubstepUpdate {
+    pub message: String,
+    /// Legacy absolute/band progress hint (0–1).
+    pub progress: f64,
+    /// When set: figure analyze counters `(done, total)`.
+    pub figures: Option<(usize, usize)>,
+}
+
+impl ConvertingSubstepUpdate {
+    pub fn message_only(message: impl Into<String>, progress: f64) -> Self {
+        Self {
+            message: message.into(),
+            progress,
+            figures: None,
+        }
+    }
+
+    pub fn with_figures(
+        message: impl Into<String>,
+        progress: f64,
+        done: usize,
+        total: usize,
+    ) -> Self {
+        Self {
+            message: message.into(),
+            progress,
+            figures: Some((done, total)),
+        }
+    }
+}
+
+/// Callback invoked when a converting sub-step advances (typically KV + run_progress).
+pub type ConvertingSubstepReporter = Arc<dyn Fn(ConvertingSubstepUpdate) + Send + Sync>;
 
 /// Options for Pass B figure progress copy + emission cadence.
 #[derive(Debug, Clone, Copy, Default)]
@@ -116,7 +149,10 @@ pub fn report_vision_figure_analyze_ex(
             } else {
                 vision_figure_analyze_message(completed, total)
             };
-            hook(message, vision_figure_analyze_progress_01(completed, total));
+            let progress = vision_figure_analyze_progress_01(completed, total);
+            hook(ConvertingSubstepUpdate::with_figures(
+                message, progress, completed, total,
+            ));
         }
     }
 }
@@ -163,10 +199,11 @@ mod tests {
     fn reporter_called_on_milestones() {
         let calls = Arc::new(AtomicUsize::new(0));
         let c = Arc::clone(&calls);
-        let reporter: ConvertingSubstepReporter = Arc::new(move |msg, p| {
+        let reporter: ConvertingSubstepReporter = Arc::new(move |update| {
             c.fetch_add(1, Ordering::Relaxed);
-            assert!(msg.contains("figure 3/9"));
-            assert!(p > 0.98);
+            assert!(update.message.contains("figure 3/9"));
+            assert!(update.progress > 0.98);
+            assert_eq!(update.figures, Some((3, 9)));
         });
         report_vision_figure_analyze(Some(&reporter), 3, 9);
         assert_eq!(calls.load(Ordering::Relaxed), 1);

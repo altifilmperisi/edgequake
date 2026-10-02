@@ -58,7 +58,7 @@ export function PipelineTaskQueueCard() {
   const formatWaitTime = (createdAt: string) =>
     formatWaitTimeMs(now - new Date(createdAt).getTime());
 
-  const totalWaiting = tasks?.statistics.pending ?? 0;
+  const totalWaiting = tasks?.statistics?.pending ?? 0;
   const totalProcessing = tasks?.statistics.processing ?? 0;
   const pendingPreview = pendingTasks.slice(0, 10);
   const hiddenPending = hiddenPreviewCount(totalWaiting, pendingPreview.length);

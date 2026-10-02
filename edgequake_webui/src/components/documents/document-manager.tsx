@@ -62,6 +62,7 @@ import { useDeletionSessions } from '@/hooks/use-deletion-progress';
 import { useDocumentDropzone } from '@/hooks/use-document-dropzone';
 import { useDocumentHandlers } from '@/hooks/use-document-handlers';
 import { useDocumentKeyboard } from '@/hooks/use-document-keyboard';
+import { useBulkCancel } from '@/hooks/use-bulk-cancel';
 import { useDocumentMutations } from '@/hooks/use-document-mutations';
 import { useDocumentPreferences } from '@/hooks/use-document-preferences';
 import { useDocumentsInventory } from '@/hooks/use-documents-inventory';
@@ -123,7 +124,8 @@ export function DocumentManager() {
   const selectedWorkspace = useSelectedWorkspace();
 
   // Selected document for preview panel
-  const [selectedDocument, setSelectedDocument] = useState<Document | null>(null);
+  // Click-time snapshot; `selectedDocument` below is the live row (SPEC-155).
+  const [selectedSnapshot, setSelectedDocument] = useState<Document | null>(null);
   const [previewPanelOpen, setPreviewPanelOpen] = useState(false);
 
   // Reprocess choice dialog state.
@@ -369,6 +371,16 @@ export function DocumentManager() {
     sortDirection,
   });
 
+  // The preview must follow the list: a snapshot froze "Processing" forever,
+  // even after Cancel / completion / failure had landed in the list.
+  const selectedDocument = useMemo(
+    () =>
+      selectedSnapshot
+        ? (documents.find((d) => d.id === selectedSnapshot.id) ?? selectedSnapshot)
+        : null,
+    [selectedSnapshot, documents],
+  );
+
   const searchParams = useSearchParams();
   // SPEC-155 W7: honour /documents?id= deep link
   useEffect(() => {
@@ -583,6 +595,9 @@ export function DocumentManager() {
     onReprocessDismissed: (documentId) =>
       removeReprocessEntryByDocumentId(documentId),
   });
+
+  // SPEC-155: Cancel in the selection bar (in-flight docs, with or without track_id).
+  const bulkCancel = useBulkCancel(documents, selectedIds, handleClearSelection);
 
   // SPEC-084 / GH-317: one durable batch-delete admit (not N× single deletes).
   // SPEC-098: paint-first sessions + optimistic deleting before HTTP returns.
@@ -826,6 +841,11 @@ export function DocumentManager() {
               setBulkReprocessOpen(true);
             }}
             onBulkDelete={handleBulkDelete}
+            bulkCancel={{
+              count: bulkCancel.cancellableCount,
+              isCancelling: bulkCancel.isCancelling,
+              onCancel: () => void bulkCancel.cancelSelected(),
+            }}
             onClearSelection={handleClearSelection}
           />
 
@@ -887,6 +907,11 @@ export function DocumentManager() {
               <ActiveRunsPanel
                 runs={activeRunsDisplayed}
                 onDismissFailed={handleDeleteDocument}
+                onReprocess={(id) =>
+                  setReprocessTarget(
+                    documents.find((d) => d.id === id) ?? ({ id } as Document),
+                  )
+                }
               />
             )}
 
@@ -1064,7 +1089,7 @@ export function DocumentManager() {
           setReprocessTarget(target ?? ({ id } as Document));
         }}
         onReprocessPages={(doc) => setPagesReprocessTarget(doc)}
-        onCancel={(trackId) => cancelMutation.mutate(trackId)}
+        onCancel={(doc) => cancelMutation.mutate(doc)}
         onDelete={handleDeleteDocument}
         isRetrying={reprocessMutation.isPending}
         isCancelling={cancelMutation.isPending}
@@ -1119,6 +1144,8 @@ export function DocumentManager() {
           const target = documents.find((d) => d.id === id) ?? null;
           setReprocessTarget(target ?? ({ id } as Document));
         }}
+        onCancel={(doc) => cancelMutation.mutate(doc)}
+        isCancelling={cancelMutation.isPending}
         onViewInGraph={handleViewInGraph}
         onViewFull={(doc) => router.push(`/documents/${doc.id}`)}
         isDeleting={deleteMutation.isPending}

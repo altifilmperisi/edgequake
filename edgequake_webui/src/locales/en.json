@@ -23,6 +23,7 @@
     "previous": "Previous",
     "copy": "Copy",
     "copied": "Copied!",
+    "undo": "Undo",
     "upload": "Upload",
     "download": "Download",
     "tryAgain": "Try again",
@@ -84,7 +85,9 @@
       "title": "Recent Activity",
       "subtitle": "Latest document uploads and processing",
       "noActivity": "No recent activity",
-      "uploadFirst": "Upload your first document"
+      "uploadFirst": "Upload your first document",
+      "viewAll_one": "View all {{count}} document",
+      "viewAll_other": "View all {{count}} documents"
     },
     "system": {
       "title": "System Status",
@@ -95,7 +98,15 @@
       "version": "Version",
       "storage": "Storage",
       "llmProvider": "LLM Provider"
-    }
+    },
+    "allSettled": "All documents are processed",
+    "attention": {
+      "processing": "{{count}} processing",
+      "queued": "{{count}} queued",
+      "failed": "{{count}} failed"
+    },
+    "documentsOnly_one": "{{count}} document",
+    "documentsOnly_other": "{{count}} documents"
   },
   "header": {
     "documents": "Documents",
@@ -153,6 +164,7 @@
       "uploadWhileWorking": "Add more files anytime · max {{limit}}",
       "pdfParserHint": "Choose a PDF parser override for this upload, or keep the workspace default.",
       "pdfParser": "Parser for this upload",
+      "pdfParserShort": "Parser",
       "pdfParserDefault": "Workspace Default",
       "pdfParserDefaultWithValue": "Workspace Default ({{value}})",
       "pdfParserVision": "Vision",
@@ -327,7 +339,7 @@
     },
     "clearAll": "Clear All",
     "bulk": {
-      "selected": "{{count}} document(s) selected",
+      "selected": "{{count}} selected",
       "select": "Select",
       "selectAll": "Select all",
       "delete": "Delete",
@@ -368,6 +380,7 @@
       "reprocess": "Reprocess",
       "delete": "Delete",
       "viewInGraph": "Open graph",
+      "finishDelete": "Finish delete",
       "cancel": "Cancel Extraction",
       "copyId": "Copy ID",
       "viewPdf": "View PDF"
@@ -480,6 +493,9 @@
         "pdfToMdAria": "PDF drives Markdown — markdown follows the PDF page",
         "mdToPdfAria": "Markdown drives PDF — PDF follows the markdown page"
       }
+    },
+    "detail": {
+      "viewInGraph": "View in knowledge graph"
     }
   },
   "graph": {
@@ -626,8 +642,39 @@
     "showOnGraphHint": "Highlight answer entities on the knowledge graph",
     "startConversation": "Start a conversation",
     "startConversationSubtitle": "Ask questions about your knowledge graph",
+    "stop": "Stop",
+    "queued": "Queued",
+    "clearQueue": "Clear queued message",
+    "jumpToLatest": "Jump to latest",
+    "continue": "Continue",
+    "stoppedBanner": "Stopped — partial answer kept",
+    "errorTitle": "Couldn't complete that query",
+    "stage": {
+      "retrieving": "Searching knowledge…",
+      "reading": "Reading sources…",
+      "generating": "Writing answer…",
+      "complete": "Answer ready",
+      "stopped": "Stopped",
+      "error": "Failed",
+      "sourceCount": "{{count}} sources",
+      "thinking": "Thinking…"
+    },
+    "feedback": {
+      "up": "Helpful",
+      "down": "Not helpful",
+      "failed": "Could not save feedback"
+    },
+    "stats": {
+      "entities": "entities",
+      "relationships": "relationships"
+    },
+    "emptyNoDocs": "No documents yet — upload documents to ground answers in your knowledge graph.",
+    "corpusSuggestion": "What do we know about {{name}}?",
+    "yourMessage": "Your message",
     "modes": {
       "groupLabel": "Query retrieval mode",
+      "menuTitle": "Retrieval mode",
+      "recommendedBadge": "Recommended",
       "select": "Select {{label}} query mode",
       "selectRecommended": "Select {{label}} query mode (Recommended)",
       "recommendedSuffix": " · Recommended",
@@ -665,12 +712,140 @@
       "relationships": "Relationships",
       "documents": "Documents"
     },
+    "citations": {
+      "confidence": {
+        "strong": "Strong",
+        "good": "Good",
+        "related": "Related",
+        "mentioned": "Mentioned"
+      },
+      "confidencePercentTitle": "{{pct}}% confidence",
+      "confidenceAria": "Confidence: {{pct}}%",
+      "untitled": "Untitled",
+      "untitledDocument": "Untitled Document",
+      "noSourceDocuments": "No source documents",
+      "documentCount_one": "{{count}} document",
+      "documentCount_other": "{{count}} documents",
+      "passageCount_one": "{{count}} passage",
+      "passageCount_other": "{{count}} passages",
+      "sourceDocumentsList": "Source documents",
+      "openDocumentTitle": "Open: {{title}}",
+      "openDocumentAria": "Open document: {{title}}",
+      "showLess": "Show less",
+      "morePassages_one": "+{{count}} more passage",
+      "morePassages_other": "+{{count}} more passages",
+      "openPassageTitle": "Click to open and highlight this passage in the document viewer",
+      "openPassageAria": "Open passage {{index}}: {{preview}}{{ellipsis}}",
+      "pageRangeAria": "Pages {{start}} to {{end}}",
+      "pageSingleAria": "Page {{page}}",
+      "openPdfPageTitle": "Open PDF at page {{page}}",
+      "goToPageAria": "Go to {{pageAria}} in document viewer",
+      "lineRange": "L{{start}}–{{end}}",
+      "pageHeader": "Page {{page}}",
+      "openPdfAtPageAria": "Open PDF at page {{page}}",
+      "jumpToPageTitle": "Jump to page {{page}} in the document viewer",
+      "noKnowledge": "No knowledge extracted",
+      "keyTopics": "Key Topics",
+      "matchPercent": "{{pct}}% match",
+      "viewSourceDocument": "View source document",
+      "exploreInGraph": "Explore in graph",
+      "moreTopics": "+{{count}} more",
+      "connections": "Connections",
+      "viewSource": "View source",
+      "moreConnections": "+{{count}} more connections",
+      "exploreGraphTitle": "Explore Knowledge Graph",
+      "exploreGraphSubtitle": "{{topics}} topics · {{connections}} connections",
+      "exploreGraphAria": "Explore graph with {{topics}} topics and {{connections}} connections",
+      "openGraphExplorer": "Open Graph Explorer",
+      "sourceCount_one": "{{count}} Source",
+      "sourceCount_other": "{{count}} Sources",
+      "topicCount_one": "{{count}} Topic",
+      "topicCount_other": "{{count}} Topics",
+      "panelAria": "Source citations: {{sources}} sources, {{topics}} topics, {{confidence}} confidence",
+      "tabDocs": "Docs",
+      "tabTopics": "Topics",
+      "tabGraph": "Graph",
+      "inlineSource": "Source #{{index}}",
+      "inlineDocument": "Document: {{id}}",
+      "noSourcesFound": "No sources found",
+      "sourcesLabel": "Sources",
+      "more": "+{{count}} more",
+      "entityCount": "{{count}} entities",
+      "sourceCount": "{{count}} sources",
+      "topicCount": "{{count}} topics",
+      "openSource": "Open source",
+      "openSourcePage": "Open source · {{page}}",
+      "openSourceAria": "Open source {{index}}: {{title}}"
+    },
     "history": {
       "title": "History",
+      "toggle": "Toggle history",
+      "expand": "Expand history",
+      "collapse": "Collapse history",
+      "resize": "Resize history panel",
+      "newConversation": "New conversation",
+      "open": "Open conversation history",
+      "search": "Search conversations...",
+      "empty": "No conversations yet",
+      "noResults": "No conversations found",
+      "startFirst": "Start your first conversation",
+      "deleted": "Conversation deleted",
+      "deleteFailed": "Failed to delete conversation",
+      "deleteTitle": "Delete conversation?",
+      "deleteMultipleTitle": "Delete {{count}} conversations?",
+      "deleteDescription": "This action cannot be undone. This will permanently delete the conversation and all its messages.",
+      "group": {
+        "today": "Today",
+        "yesterday": "Yesterday",
+        "last7": "Previous 7 days",
+        "older": "Older"
+      },
       "recent": "Recent Queries",
       "favorites": "Favorites",
       "noHistory": "No query history",
       "clear": "Clear History"
+    },
+    "slash": {
+      "newChat": "New chat"
+    },
+    "model": {
+      "default": "Default model",
+      "change": "Change model",
+      "search": "Search models…",
+      "serverDefault": "Server default",
+      "loadError": "Could not load models. The server default will be used.",
+      "noResults": "No models match “{{query}}”",
+      "stream": "Stream answer",
+      "streamHint": "Tokens appear as they are written",
+      "noStreamHint": "This model can’t stream — answers arrive at once",
+      "noStreaming": "No live streaming",
+      "noStreamBadge": "no stream",
+      "vision": "Vision",
+      "thinking": "Reasoning"
+    },
+    "editMessage": "Edit message",
+    "thinkingLive": "Thinking…",
+    "thoughtFor": "Thought for {{seconds}}s",
+    "reasoning": "Reasoning",
+    "toggleReasoning": "Toggle reasoning details",
+    "thinking": "Reasoning Process",
+    "thinkingSteps": "step(s)",
+    "generating": "Generating response...",
+    "assistantMessage": "Assistant response",
+    "placeholderHint": "Ask a question…  type @ to focus on a document",
+    "mention": {
+      "title": "Scope to document",
+      "list": "Matching documents",
+      "none": "No document matches “{{query}}”",
+      "empty": "No completed documents yet",
+      "navigate": "navigate",
+      "select": "select",
+      "dismiss": "dismiss"
+    },
+    "scope": {
+      "chips": "Scoped documents",
+      "unknownDoc": "Document",
+      "removeDoc": "Remove {{title}} from scope"
     }
   },
   "pipeline": {

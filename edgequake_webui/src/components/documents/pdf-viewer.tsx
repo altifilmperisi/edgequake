@@ -35,8 +35,9 @@ import {
   scrollTopForPage,
 } from '@/lib/documents/page-scroll';
 import {
+  PDF_LOAD_OPTIONS,
+  buildAuthenticatedPdfSource,
   extractPdfSourceUrl,
-  fetchAuthenticatedPdfData,
   isApiProtectedPdfUrl,
   type PdfFileSource,
 } from '@/lib/documents/resolve-authenticated-pdf-source';
@@ -76,8 +77,12 @@ if (typeof window !== 'undefined') {
   });
 }
 
-/** Windowed render kicks in above this page count (SPEC-143). */
-const WINDOW_THRESHOLD = 20;
+/**
+ * Windowed render kicks in above this page count (SPEC-143). Every mounted
+ * <Page> owns a canvas + text layer, so keep the live window small: only
+ * pages near the reading position are rasterised and fetched (range requests).
+ */
+const WINDOW_THRESHOLD = 6;
 const WINDOW_RADIUS = 2;
 
 interface PDFViewerProps {
@@ -264,7 +269,9 @@ export function PDFViewer({
   const pagesQuery = useQuery({
     queryKey: ['document-pages', documentId],
     queryFn: () => listDocumentPages(documentId!),
-    enabled: Boolean(documentId),
+    // Wait for the PDF itself: page-1 bytes must not compete with this call.
+    enabled: Boolean(documentId) && numPages > 0,
+    staleTime: 60_000,
   });
   const pageSummary = pagesQuery.data?.pages?.find((p) => p.page_number === displayPage);
   const overlayDisabled = layoutToggleDisabled(
@@ -520,7 +527,6 @@ export function PDFViewer({
   // buildHeaders → in-memory bytes (same pattern as AuthenticatedMarkdownImage).
   useEffect(() => {
     let cancelled = false;
-    const ac = new AbortController();
 
     const sourceUrl = extractPdfSourceUrl(file);
     Promise.resolve().then(async () => {
@@ -553,27 +559,17 @@ export function PDFViewer({
         return;
       }
 
-      try {
-        const dataFile = await fetchAuthenticatedPdfData(sourceUrl, ac.signal);
-        if (cancelled) return;
-        setResolvedFile(dataFile);
+      // Auth-protected API URL: hand pdf.js the URL + session headers so it
+      // streams and range-fetches. No whole-file download before first paint;
+      // HTTP failures surface through <Document onLoadError>.
+      if (!cancelled) {
+        setResolvedFile(buildAuthenticatedPdfSource(sourceUrl));
         setUrlOk(true);
-        setProbeError(null);
-      } catch (err) {
-        if (cancelled || ac.signal.aborted) return;
-        const message =
-          err instanceof Error
-            ? err.message
-            : 'ResponseException: Unexpected server response';
-        setProbeError(message);
-        setUrlOk(false);
-        setIsLoading(false);
       }
     });
 
     return () => {
       cancelled = true;
-      ac.abort();
     };
   }, [file, authRetryKey]);
 
@@ -669,7 +665,7 @@ export function PDFViewer({
       tabIndex={0}
     >
       {showToolbar && (
-        <div className="flex items-center justify-between gap-2 p-2 border-b bg-muted/30">
+        <div className="flex h-12 shrink-0 items-center justify-between gap-2 border-b bg-muted/30 px-2">
           <div className="flex items-center gap-1">
             <Button
               variant="ghost"
@@ -811,6 +807,7 @@ export function PDFViewer({
         <div ref={stackRef} className="flex flex-col items-center gap-4 py-4">
           <Document
             file={documentFile}
+            options={PDF_LOAD_OPTIONS}
             onLoadSuccess={handleLoadSuccess}
             onLoadError={handleLoadError}
             loading={<PDFLoadingSkeleton />}
@@ -862,8 +859,9 @@ export function PDFViewer({
                     />
                   ) : (
                     <div
-                      className="flex items-center justify-center text-xs text-muted-foreground"
+                      className="flex items-center justify-center bg-muted/40 text-xs tabular-nums text-muted-foreground/70"
                       style={{ height: placeholderHeight }}
+                      data-testid="pdf-page-placeholder"
                     >
                       {t('documents.viewer.pagePlaceholder', 'Page {{n}}', { n })}
                     </div>

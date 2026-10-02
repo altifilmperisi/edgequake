@@ -99,14 +99,17 @@ function ParserSelect({
       className={cn(
         'flex items-center gap-2',
         hideSideLabel ? 'min-w-0 flex-1' : 'shrink-0',
-        compact && 'opacity-80',
       )}
       onClick={(event) => event.stopPropagation()}
       onKeyDown={(event) => event.stopPropagation()}
     >
-      {!compact && !hideSideLabel && (
+      {/* Always labelled so the select reads as "applies to the next upload",
+          not a free-floating control (compact density keeps the short form). */}
+      {!hideSideLabel && (
         <span className="text-xs text-muted-foreground whitespace-nowrap">
-          {t('documents.upload.pdfParser', 'Parser for this upload')}
+          {compact
+            ? t('documents.upload.pdfParserShort', 'Parser')
+            : t('documents.upload.pdfParser', 'Parser for this upload')}
         </span>
       )}
       <Select
@@ -232,7 +235,7 @@ export function DocumentDropzone({
       className={cn(
         // Always a full-width single-line drop band — never a multi-paragraph hero
         // that steals the inventory flex budget (SPEC-099 scroll layout).
-        'w-full border-dashed cursor-pointer transition-all duration-200',
+        'w-full border-dashed cursor-pointer transition-colors duration-200',
         'flex items-center gap-3 min-w-0',
         collapsed
           ? 'rounded-md border px-3 py-1.5 gap-2'
@@ -302,8 +305,8 @@ export function DocumentDropzone({
       </div>
       <div
         className={cn(
-          'shrink-0 flex items-center gap-2',
-          (compact || collapsed) && 'opacity-80',
+          // No opacity dimming: it pushed the muted "Parser" label below WCAG AA.
+          'shrink-0 flex items-center gap-2 sm:border-l sm:border-border/70 sm:pl-3',
         )}
         data-testid="upload-parser-vision-combo"
         onClick={(event) => event.stopPropagation()}

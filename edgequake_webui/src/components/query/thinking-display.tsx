@@ -15,6 +15,7 @@ import { cn } from '@/lib/utils';
 import { Brain, ChevronDown, ChevronRight } from 'lucide-react';
 import { memo, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { parseCOTContent } from '@/lib/query/parse-cot-streaming';
 
 interface ThinkingDisplayProps {
   content: string;
@@ -22,54 +23,12 @@ interface ThinkingDisplayProps {
   className?: string;
 }
 
-interface ParsedContent {
-  thinking: string[];
-  response: string;
-}
-
-/**
- * Parse COT (Chain of Thought) content from LLM responses.
- * Supports multiple thinking block formats:
- * - <think>...</think>
- * - <thinking>...</thinking>
- * - **Thinking:**...
- */
-export function parseCOTContent(content: string | undefined | null): ParsedContent {
-  // Handle undefined/null content safely
-  if (!content || typeof content !== 'string') {
-    return { thinking: [], response: '' };
-  }
-  
-  const thinking: string[] = [];
-  let response = content;
-
-  // Pattern 1: <think>...</think> tags
-  const thinkTagRegex = /<think>([\s\S]*?)<\/think>/gi;
-  let match;
-  while ((match = thinkTagRegex.exec(content)) !== null) {
-    thinking.push(match[1].trim());
-  }
-  response = response.replace(thinkTagRegex, '').trim();
-
-  // Pattern 2: <thinking>...</thinking> tags
-  const thinkingTagRegex = /<thinking>([\s\S]*?)<\/thinking>/gi;
-  while ((match = thinkingTagRegex.exec(content)) !== null) {
-    thinking.push(match[1].trim());
-  }
-  response = response.replace(thinkingTagRegex, '').trim();
-
-  // Pattern 3: **Thinking:** block until next section
-  const thinkingBlockRegex = /\*\*Thinking:\*\*\s*([\s\S]*?)(?=\n\n\*\*[A-Z]|\n\n---|\n\n#{1,3}\s|$)/gi;
-  while ((match = thinkingBlockRegex.exec(content)) !== null) {
-    thinking.push(match[1].trim());
-  }
-  response = response.replace(thinkingBlockRegex, '').trim();
-
-  return {
-    thinking,
-    response,
-  };
-}
+// Re-export streaming-aware parser (SPEC-155) — SSOT in lib/query
+export {
+  parseCOTContent,
+  parseCOTStreaming,
+  type ParsedCotStreaming,
+} from "@/lib/query/parse-cot-streaming";
 
 /**
  * Component to display LLM chain-of-thought reasoning in a collapsible section.

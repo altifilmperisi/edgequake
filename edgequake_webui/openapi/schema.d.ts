@@ -751,6 +751,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/conversations/{conversation_id}/messages/{message_id}/feedback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Set thumbs feedback on a message. */
+        patch: operations["set_message_feedback"];
+        trace?: never;
+    };
     "/api/v1/conversations/{id}": {
         parameters: {
             query?: never;
@@ -1474,6 +1491,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/documents/{document_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel a document's in-flight pipeline work, even without a live task. */
+        post: operations["cancel_document"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/documents/{document_id}/deletion-impact": {
         parameters: {
             query?: never;
@@ -1823,6 +1857,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/graph/communities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List workspace communities aggregated from node `community_id` properties. */
+        get: operations["get_graph_communities"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/graph/degrees/batch": {
         parameters: {
             query?: never;
@@ -1838,6 +1889,8 @@ export interface paths {
          *     50x faster than calling GET /graph/nodes/{id} multiple times.
          *
          *     Performance: <100ms for 100 nodes (vs 5000ms+ with individual queries).
+         *
+         *     SPEC-155 B03: requires TenantContext and filters by workspace.
          */
         post: operations["get_degrees_batch"];
         delete?: never;
@@ -1936,6 +1989,23 @@ export interface paths {
         };
         /** Get entity neighborhood (connected nodes within specified depth). */
         get: operations["get_entity_neighborhood"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/graph/facets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Entity-type and relationship-type facet counts for Graph Studio legend. */
+        get: operations["get_graph_facets"];
         put?: never;
         post?: never;
         delete?: never;
@@ -4098,6 +4168,25 @@ export interface components {
             affected: number;
         };
         /**
+         * @description Response from cancelling a document by id.
+         * @example {
+         *       "document_id": {},
+         *       "status": {},
+         *       "task_cancelled": {},
+         *       "track_id": {}
+         *     }
+         */
+        CancelDocumentResponse: {
+            /** @description Document that was cancelled. */
+            document_id: string;
+            /** @description Resulting status (always `cancelled`). */
+            status: string;
+            /** @description True when a live/queued task row was cancelled (false for orphan rows). */
+            task_cancelled: boolean;
+            /** @description Track ID the document was linked to, when any. */
+            track_id?: string | null;
+        };
+        /**
          * @description Cancel pipeline response.
          * @example {
          *       "message": {},
@@ -4309,6 +4398,12 @@ export interface components {
             /** @enum {string} */
             type: "thinking";
         } | {
+            detail?: string | null;
+            /** @description retrieving | reading | generating */
+            stage: string;
+            /** @enum {string} */
+            type: "stage";
+        } | {
             /** @description SPEC-142: verified markdown answer (replace streamed tokens). */
             answer?: string | null;
             /** Format: uuid */
@@ -4325,6 +4420,7 @@ export interface components {
              *     @implements SPEC-032: Provider lineage in streaming responses
              */
             llm_provider?: string | null;
+            subgraph?: null | components["schemas"]["SubgraphBundle"];
             /** Format: int32 */
             tokens_used: number;
             /** @enum {string} */
@@ -4490,6 +4586,22 @@ export interface components {
             source_text?: string | null;
             /** @description Start line. */
             start_line?: number | null;
+        };
+        /**
+         * @description Community summary for Graph Studio legend / hulls.
+         * @example {
+         *       "id": {},
+         *       "label": {},
+         *       "modularity": {},
+         *       "size": {}
+         *     }
+         */
+        CommunitySummary: {
+            id: string;
+            label?: string | null;
+            /** Format: double */
+            modularity?: number | null;
+            size: number;
         };
         /**
          * @description Component health status.
@@ -4833,21 +4945,27 @@ export interface components {
          *       "degree": {},
          *       "description": {},
          *       "entity_type": {},
+         *       "graph_node_id": {},
          *       "id": {},
          *       "lineage": {},
          *       "name": {},
-         *       "score": {}
+         *       "score": {},
+         *       "source_document_ids": []
          *     }
          */
         ContextEntity: {
             degree: number;
             description: string;
             entity_type: string;
+            /** @description Graph node id (workspace-scoped AGE node id / entity name). */
+            graph_node_id: string;
             id: string;
             lineage?: null | components["schemas"]["EntityLineage"];
             name: string;
             /** Format: float */
             score: number;
+            /** @description Full document lineage arrays (SPEC-155 — do not collapse to one). */
+            source_document_ids?: string[];
         };
         /**
          * @example {
@@ -5624,6 +5742,33 @@ export interface components {
             embedding_model: string;
         };
         /**
+         * @description Directional degree breakdown — always serialized as `{in, out, total}`.
+         *
+         *     Bare JSON numbers still deserialize as `total` for one-release compat.
+         * @example {
+         *       "in": {},
+         *       "out": {},
+         *       "total": {}
+         *     }
+         */
+        DegreeBreakdown: {
+            /**
+             * Format: int64
+             * @description Incoming edge count.
+             */
+            in: number;
+            /**
+             * Format: int64
+             * @description Outgoing edge count.
+             */
+            out: number;
+            /**
+             * Format: int64
+             * @description `in + out` (self-loops counted once per product decision).
+             */
+            total: number;
+        };
+        /**
          * @description Bulk document deletion response.
          *
          *     WHY: Frontend "Clear All" button needs a bulk delete endpoint.
@@ -6220,6 +6365,7 @@ export interface components {
          *       "progress_counts": {},
          *       "query_ready": {},
          *       "queue_position": {},
+         *       "run_progress": {},
          *       "source_type": {},
          *       "stage_message": {},
          *       "stage_progress": {},
@@ -6306,6 +6452,7 @@ export interface components {
              * @description SPEC-091 IS2 / LAW-IS4: 1-based FCFS queue position for pending admission.
              */
             queue_position?: number | null;
+            run_progress?: null | components["schemas"]["RunProgress"];
             /**
              * @description Document source type (pdf, markdown, text).
              *     @implements SPEC-002
@@ -6572,12 +6719,15 @@ export interface components {
          * @example {
          *       "source_chunk_ids": [],
          *       "source_document_id": {},
+         *       "source_document_ids": [],
          *       "source_file_path": {}
          *     }
          */
         EntityLineage: {
             source_chunk_ids?: string[];
+            /** @description Prefer `source_document_ids` arrays; singular kept for one-release compat. */
             source_document_id?: string | null;
+            source_document_ids?: string[];
             source_file_path?: string | null;
         };
         /**
@@ -7115,8 +7265,20 @@ export interface components {
             relationship: components["schemas"]["RelationshipResponse"];
         };
         /**
+         * @description Response for `GET /graph/communities`.
+         * @example {
+         *       "communities": []
+         *     }
+         */
+        GraphCommunitiesResponse: {
+            communities: components["schemas"]["CommunitySummary"][];
+        };
+        /**
          * @description Graph edge response.
          * @example {
+         *       "description": {},
+         *       "id": {},
+         *       "keywords": [],
          *       "properties": {},
          *       "relationship_type": {},
          *       "source": {},
@@ -7125,6 +7287,12 @@ export interface components {
          *     }
          */
         GraphEdgeResponse: {
+            /** @description Relationship description when present. */
+            description?: string;
+            /** @description Stable multigraph edge id including relation type (SPEC-155 B06). */
+            id: string;
+            /** @description Keywords (comma-joined or JSON array flattened). */
+            keywords?: string[];
             /** @description Additional properties. */
             properties: unknown;
             /**
@@ -7145,8 +7313,20 @@ export interface components {
             weight: number;
         };
         /**
+         * @description Response for `GET /graph/facets`.
+         * @example {
+         *       "entity_types": [],
+         *       "relationship_types": []
+         *     }
+         */
+        GraphFacetsResponse: {
+            entity_types: components["schemas"]["TypeFacetCount"][];
+            relationship_types: components["schemas"]["TypeFacetCount"][];
+        };
+        /**
          * @description Graph node response.
          * @example {
+         *       "community_id": {},
          *       "degree": {},
          *       "description": {},
          *       "id": {},
@@ -7156,8 +7336,10 @@ export interface components {
          *     }
          */
         GraphNodeResponse: {
-            /** @description Number of connections. */
-            degree: number;
+            /** @description Index-time Louvain community label when present (SPEC-155 B07). */
+            community_id?: string | null;
+            /** @description Degree SSOT `{in, out, total}` (SPEC-155). */
+            degree: components["schemas"]["DegreeBreakdown"];
             /** @description Node description. */
             description: string;
             /** @description Node ID. */
@@ -7189,11 +7371,13 @@ export interface components {
         GraphStreamEvent: {
             /** @description Edges to be streamed (estimated). */
             edges_to_stream: number;
+            /** @description True when streamed set is a proper subset of workspace totals (SPEC-155). */
+            is_truncated?: boolean;
             /** @description Nodes to be streamed. */
             nodes_to_stream: number;
-            /** @description Total edges in graph. */
+            /** @description Total edges in graph (workspace-exact). */
             total_edges: number;
-            /** @description Total nodes in graph. */
+            /** @description Total nodes in graph (workspace-exact). */
             total_nodes: number;
             /** @enum {string} */
             type: "metadata";
@@ -7459,6 +7643,7 @@ export interface components {
          *       "mode": {},
          *       "progress": {},
          *       "progress_01": {},
+         *       "run_progress": {},
          *       "source_type": {},
          *       "stage": {},
          *       "stage_status": {},
@@ -7482,6 +7667,7 @@ export interface components {
             progress: components["schemas"]["IngestionProgressDetail"];
             /** Format: float */
             progress_01?: number | null;
+            run_progress?: null | components["schemas"]["RunProgress"];
             source_type?: string | null;
             stage: string;
             stage_status: string;
@@ -7780,6 +7966,7 @@ export interface components {
          * @example {
          *       "edges": [],
          *       "is_truncated": {},
+         *       "max_nodes": {},
          *       "nodes": [],
          *       "total_edges": {},
          *       "total_nodes": {}
@@ -7790,11 +7977,13 @@ export interface components {
             edges: components["schemas"]["GraphEdgeResponse"][];
             /** @description Whether the graph was truncated. */
             is_truncated: boolean;
+            /** @description Echo of request `max_nodes` clamp (SPEC-155 truncation contract). */
+            max_nodes: number;
             /** @description Nodes in the graph. */
             nodes: components["schemas"]["GraphNodeResponse"][];
-            /** @description Total edge count in storage. */
+            /** @description Workspace-exact total edge count (SPEC-155 B01). */
             total_edges: number;
-            /** @description Total node count in storage. */
+            /** @description Workspace-exact total node count (SPEC-155 B01). */
             total_nodes: number;
         };
         /**
@@ -8481,6 +8670,9 @@ export interface components {
          *       "conversation_id": {},
          *       "created_at": {},
          *       "duration_ms": {},
+         *       "feedback_rating": {},
+         *       "feedback_reason": {},
+         *       "finish_reason": {},
          *       "id": {},
          *       "is_error": {},
          *       "llm_model": {},
@@ -8510,6 +8702,12 @@ export interface components {
              * @description Duration in ms.
              */
             duration_ms?: number | null;
+            /** @description User thumbs feedback. @implements SPEC-155 B2 */
+            feedback_rating?: string | null;
+            /** @description Optional feedback reason. @implements SPEC-155 B2 */
+            feedback_reason?: string | null;
+            /** @description Generation finish reason. @implements SPEC-155 B3 */
+            finish_reason?: string | null;
             /**
              * Format: uuid
              * @description Message ID.
@@ -9034,8 +9232,8 @@ export interface components {
          *     }
          */
         NeighborhoodNode: {
-            /** @description Node degree (number of connections). */
-            degree: number;
+            /** @description Degree SSOT `{in, out, total}` (SPEC-155). */
+            degree: components["schemas"]["DegreeBreakdown"];
             /** @description Entity description. */
             description: string;
             /** @description Entity type. */
@@ -9053,8 +9251,8 @@ export interface components {
          *     }
          */
         NodeDegree: {
-            /** @description Number of connections. */
-            degree: number;
+            /** @description Degree SSOT `{in, out, total}` (bare number still accepted on deserialize via DegreeBreakdown). */
+            degree: components["schemas"]["DegreeBreakdown"];
             /** @description Node ID. */
             node_id: string;
         };
@@ -10468,8 +10666,8 @@ export interface components {
          *     }
          */
         PopularLabel: {
-            /** @description Number of connections (degree). */
-            degree: number;
+            /** @description Degree SSOT `{in, out, total}`. */
+            degree: components["schemas"]["DegreeBreakdown"];
             /** @description Brief description. */
             description: string;
             /** @description Entity type. */
@@ -10503,7 +10701,7 @@ export interface components {
         PopularLabelsResponse: {
             /** @description List of popular labels sorted by degree. */
             labels: components["schemas"]["PopularLabel"][];
-            /** @description Total entity count in graph. */
+            /** @description Workspace-exact entity count in graph. */
             total_entities: number;
         };
         /**
@@ -12130,6 +12328,87 @@ export interface components {
             token_type_hint?: string | null;
         };
         /**
+         * @description Phase strip ids (Admit is queue-only and has no work tasks).
+         * @example {}
+         * @enum {string}
+         */
+        RunPhaseId: "prepare" | "extract" | "materialize";
+        /**
+         * @example {
+         *       "finished_at": {},
+         *       "id": {},
+         *       "started_at": {},
+         *       "state": {},
+         *       "tasks": []
+         *     }
+         */
+        RunPhaseProgress: {
+            /** Format: date-time */
+            finished_at?: string | null;
+            id: components["schemas"]["RunPhaseId"];
+            /** Format: date-time */
+            started_at?: string | null;
+            state: components["schemas"]["RunPhaseState"];
+            tasks?: components["schemas"]["RunTaskProgress"][];
+        };
+        /**
+         * @example {}
+         * @enum {string}
+         */
+        RunPhaseState: "pending" | "active" | "done";
+        /**
+         * @description Durable, monotonic progress ledger for one document run.
+         * @example {
+         *       "phases": [],
+         *       "seq": {},
+         *       "updated_at": {}
+         *     }
+         */
+        RunProgress: {
+            phases: components["schemas"]["RunPhaseProgress"][];
+            /**
+             * Format: int64
+             * @description Monotonic write sequence (fencing + coalesce).
+             */
+            seq: number;
+            /** Format: date-time */
+            updated_at?: string | null;
+        };
+        /**
+         * @description Stable task id within a phase.
+         * @example {}
+         * @enum {string}
+         */
+        RunTaskId: "pages" | "figures" | "chunks" | "embeddings" | "entities" | "relationships";
+        /**
+         * @example {
+         *       "done": {},
+         *       "id": {},
+         *       "in_flight": {},
+         *       "total": {},
+         *       "unit": {}
+         *     }
+         */
+        RunTaskProgress: {
+            /** Format: int64 */
+            done: number;
+            id: components["schemas"]["RunTaskId"];
+            /**
+             * Format: int64
+             * @description Concurrent workers currently in flight (informational; not part of fill).
+             */
+            in_flight?: number | null;
+            /** Format: int64 */
+            total: number;
+            unit: components["schemas"]["RunTaskUnit"];
+        };
+        /**
+         * @description Count unit for a task (wire vocabulary matches `IngestionProgressCounts`).
+         * @example {}
+         * @enum {string}
+         */
+        RunTaskUnit: "pages" | "figures" | "chunks" | "entities" | "relationships" | "embeddings";
+        /**
          * @example {
          *       "embedding_model": {},
          *       "embedding_provider": {},
@@ -12344,6 +12623,19 @@ export interface components {
             default_max_workspaces: number;
             /** @description Note about retroactivity. */
             note?: string | null;
+        };
+        /**
+         * @description Set message feedback request DTO (SPEC-155 B2).
+         * @example {
+         *       "rating": {},
+         *       "reason": {}
+         *     }
+         */
+        SetMessageFeedbackApiRequest: {
+            /** @description Thumbs rating: `up`, `down`, or null to clear. */
+            rating?: string | null;
+            /** @description Optional free-text reason. */
+            reason?: string | null;
         };
         /**
          * @example {
@@ -13262,6 +13554,17 @@ export interface components {
             is_truncated: boolean;
             token_budget: number;
             tokens_used: number;
+        };
+        /**
+         * @description Name/count facet entry.
+         * @example {
+         *       "count": {},
+         *       "name": {}
+         *     }
+         */
+        TypeFacetCount: {
+            count: number;
+            name: string;
         };
         /**
          * @example {
@@ -15367,6 +15670,42 @@ export interface operations {
             };
         };
     };
+    set_message_feedback: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Conversation ID */
+                conversation_id: string;
+                /** @description Message ID */
+                message_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetMessageFeedbackApiRequest"];
+            };
+        };
+        responses: {
+            /** @description Feedback updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageResponse"];
+                };
+            };
+            /** @description Message not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     get_conversation: {
         parameters: {
             query?: never;
@@ -16179,6 +16518,15 @@ export interface operations {
                     "application/pdf": unknown;
                 };
             };
+            /** @description Partial PDF data for a `Range: bytes=` request */
+            206: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/pdf": unknown;
+                };
+            };
             /** @description Not authorized */
             403: {
                 headers: {
@@ -16188,6 +16536,13 @@ export interface operations {
             };
             /** @description PDF not found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range not satisfiable */
+            416: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -16678,6 +17033,43 @@ export interface operations {
             };
             /** @description Not found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    cancel_document: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Document ID */
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Document cancelled (idempotent) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CancelDocumentResponse"];
+                };
+            };
+            /** @description Document not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Document already finished and cannot be cancelled */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -17318,6 +17710,26 @@ export interface operations {
             };
         };
     };
+    get_graph_communities: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Communities retrieved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GraphCommunitiesResponse"];
+                };
+            };
+        };
+    };
     get_degrees_batch: {
         parameters: {
             query?: never;
@@ -17592,6 +18004,26 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    get_graph_facets: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Facets retrieved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GraphFacetsResponse"];
+                };
             };
         };
     };

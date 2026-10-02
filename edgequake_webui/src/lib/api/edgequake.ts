@@ -10,6 +10,7 @@ export * from "./edgequake/health";
 export * from "./edgequake/auth";
 export * from "./edgequake/workspaces";
 export * from "./edgequake/documents";
+export * from "./edgequake/document-cancel";
 export * from "./edgequake/pages-health";
 export * from "./edgequake/query";
 export * from "./edgequake/graph";

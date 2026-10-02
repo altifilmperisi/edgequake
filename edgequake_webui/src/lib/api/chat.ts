@@ -199,6 +199,11 @@ export type ChatStreamEvent =
       content: string;
     }
   | {
+      type: "stage";
+      stage: "retrieving" | "reading" | "generating";
+      detail?: string;
+    }
+  | {
       type: "done";
       assistant_message_id: string;
       tokens_used: number;
@@ -356,6 +361,8 @@ export function reduceStreamingEvent(
       };
     case "thinking":
       // Could store thinking content separately if needed
+      return currentState;
+    case "stage":
       return currentState;
     case "done":
       return {

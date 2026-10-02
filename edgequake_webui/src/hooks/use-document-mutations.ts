@@ -23,13 +23,16 @@ import type {
     ReprocessMode,
 } from "@/lib/api/edgequake";
 import {
-    cancelTask,
     deleteAllDocuments,
     deleteDocument,
     reprocessDocument,
     retryTask,
 } from "@/lib/api/edgequake";
 import { invalidateKnowledgeGraph } from "@/lib/cache-manager";
+import {
+    cancelDocumentRun,
+    type CancelableDocument,
+} from "@/lib/documents/cancel-document-run";
 import {
     applyDeletionCompleted,
     applyDeletionFailed,
@@ -142,7 +145,12 @@ export interface UseDocumentMutationsReturn {
    * Cancel processing for a document by track ID.
    * Stops the extraction pipeline.
    */
-  cancelMutation: UseMutationResult<void, Error, string, unknown>;
+  cancelMutation: UseMutationResult<
+    void,
+    Error,
+    CancelableDocument,
+    unknown
+  >;
 
   /**
    * Retry a failed task by its track_id.
@@ -418,18 +426,18 @@ export function useDocumentMutations(
 
   /**
    * WHY: Cancel mutation for stopping in-progress extraction.
-   * Track ID required to identify the specific processing task.
+   * Document-keyed (SPEC-155): works with or without a track_id.
    */
   const cancelMutation = useMutation({
-    mutationFn: async (trackId: string) => {
-      await cancelTask(trackId);
-    },
-    onMutate: async (trackId: string) => {
-      const { pinCancelIntent, patchDocumentsCancelOptimistic } = await import(
-        "@/lib/documents/cancel-intent"
-      );
-      pinCancelIntent(trackId);
-      patchDocumentsCancelOptimistic(queryClient, trackId);
+    // SPEC-155: document-keyed — rows without a track_id (orphans) cancel too.
+    mutationFn: async (doc: CancelableDocument) => {
+      const outcome = await cancelDocumentRun(queryClient, {
+        documentId: doc.id,
+        trackId: doc.track_id,
+      });
+      if (outcome === "failed") {
+        throw new Error("Cancel failed");
+      }
     },
     onSuccess: () => {
       toast.success(

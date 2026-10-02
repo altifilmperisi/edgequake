@@ -1,10 +1,11 @@
 use axum::extract::{Path, State};
 use axum::Json;
 use serde::Serialize;
-use tracing::info;
+use tracing::debug;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
+use super::byte_range::{evaluate_range, ByteRange};
 use super::helpers::get_pdf_storage;
 use crate::error::{ApiError, ApiResult};
 use crate::middleware::TenantContext;
@@ -63,6 +64,8 @@ pub struct PdfContentResponse {
     ),
     responses(
         (status = 200, description = "Raw PDF data", content_type = "application/pdf"),
+        (status = 206, description = "Partial PDF data for a `Range: bytes=` request", content_type = "application/pdf"),
+        (status = 416, description = "Range not satisfiable"),
         (status = 404, description = "PDF not found"),
         (status = 403, description = "Not authorized"),
         (status = 500, description = "Internal server error")
@@ -72,18 +75,18 @@ pub struct PdfContentResponse {
 pub async fn download_pdf(
     State(state): State<AppState>,
     context: TenantContext,
+    headers: axum::http::HeaderMap,
     Path(pdf_id): Path<String>,
 ) -> ApiResult<axum::response::Response<axum::body::Body>> {
-    use axum::http::header;
-    use axum::response::IntoResponse;
-
     let pdf_id = Uuid::parse_str(&pdf_id)
         .map_err(|_| ApiError::BadRequest("Invalid PDF ID format".to_string()))?;
 
     let pdf_storage = get_pdf_storage(&state)?;
 
-    let pdf = pdf_storage
-        .get_pdf(&pdf_id)
+    // Header-only lookup: auth + size without loading the blob, so a Range
+    // request never costs a whole-file read.
+    let info = pdf_storage
+        .get_pdf_blob_info(&pdf_id)
         .await
         .map_err(|e| ApiError::Internal(format!("Failed to get PDF: {}", e)))?
         .ok_or_else(|| ApiError::NotFound("PDF not found".to_string()))?;
@@ -94,30 +97,91 @@ pub async fn download_pdf(
     // UUID which is unique per workspace, so access is implicitly scoped.
     // If workspace header IS provided, verify it matches for defense-in-depth.
     if let Some(workspace_id) = context.workspace_id_uuid() {
-        if pdf.workspace_id != workspace_id {
+        if info.workspace_id != workspace_id {
             return Err(ApiError::forbidden());
         }
     }
 
-    info!(
-        "PDF download: id={}, filename={}, size={}",
-        pdf_id,
-        pdf.filename,
-        pdf.pdf_data.len()
+    let range_header = headers
+        .get(axum::http::header::RANGE)
+        .and_then(|v| v.to_str().ok());
+    let range = evaluate_range(range_header, info.total_bytes);
+    debug!(
+        "PDF download: id={}, filename={}, size={}, range={:?} -> {:?}",
+        pdf_id, info.filename, info.total_bytes, range_header, range
     );
 
-    // Build response with PDF data
-    let content_disposition = format!("inline; filename=\"{}\"", pdf.filename);
+    let body = match range {
+        ByteRange::Full => {
+            let pdf = pdf_storage
+                .get_pdf(&pdf_id)
+                .await
+                .map_err(|e| ApiError::Internal(format!("Failed to get PDF: {}", e)))?
+                .ok_or_else(|| ApiError::NotFound("PDF not found".to_string()))?;
+            pdf.pdf_data
+        }
+        ByteRange::Partial { start, end } => pdf_storage
+            .get_pdf_bytes_range(&pdf_id, start, end)
+            .await
+            .map_err(|e| ApiError::Internal(format!("Failed to read PDF range: {}", e)))?
+            .ok_or_else(|| ApiError::NotFound("PDF not found".to_string()))?,
+        ByteRange::Unsatisfiable => Vec::new(),
+    };
 
-    Ok((
-        [
-            (header::CONTENT_TYPE, "application/pdf"),
-            (header::CONTENT_DISPOSITION, content_disposition.as_str()),
-            (header::CACHE_CONTROL, "private, max-age=3600"),
-        ],
-        pdf.pdf_data,
-    )
-        .into_response())
+    Ok(build_pdf_response(
+        &info.filename,
+        info.total_bytes,
+        range,
+        body,
+    ))
+}
+
+/// Build the `200` / `206` / `416` PDF response for an evaluated range.
+///
+/// WHY range support: pdf.js reads the xref at the end of the file and then
+/// only the chunks backing the pages in view, so page 1 paints without
+/// transferring the whole file. `Content-Encoding: identity` is explicit because
+/// pdf.js disables range requests on compressed responses (and gzip on a PDF
+/// gains nothing).
+fn build_pdf_response(
+    filename: &str,
+    total: u64,
+    range: ByteRange,
+    body: Vec<u8>,
+) -> axum::response::Response<axum::body::Body> {
+    use axum::http::{header, StatusCode};
+    use axum::response::IntoResponse;
+
+    let content_disposition = format!("inline; filename=\"{}\"", filename);
+    let common = [
+        (header::CONTENT_TYPE, "application/pdf".to_string()),
+        (header::CONTENT_DISPOSITION, content_disposition),
+        (header::CACHE_CONTROL, "private, max-age=3600".to_string()),
+        (header::ACCEPT_RANGES, "bytes".to_string()),
+        (header::CONTENT_ENCODING, "identity".to_string()),
+    ];
+
+    match range {
+        ByteRange::Full => (StatusCode::OK, common, body).into_response(),
+        ByteRange::Partial { start, end } => (
+            StatusCode::PARTIAL_CONTENT,
+            common,
+            [(
+                header::CONTENT_RANGE,
+                format!("bytes {start}-{end}/{total}"),
+            )],
+            body,
+        )
+            .into_response(),
+        ByteRange::Unsatisfiable => (
+            StatusCode::RANGE_NOT_SATISFIABLE,
+            [
+                (header::ACCEPT_RANGES, "bytes".to_string()),
+                (header::CONTENT_RANGE, format!("bytes */{total}")),
+            ],
+        )
+            .into_response(),
+    }
 }
 
 /// Get PDF content metadata including markdown.
@@ -190,4 +254,54 @@ pub async fn get_pdf_content(
         markdown_content: pdf.markdown_content,
         is_processed,
     }))
+}
+
+#[cfg(test)]
+mod range_response_tests {
+    use super::{build_pdf_response, evaluate_range};
+    use axum::http::{header, StatusCode};
+
+    fn sample() -> Vec<u8> {
+        (0u8..100).collect()
+    }
+
+    /// Mirror of the handler: evaluate the header, then slice like storage does.
+    fn respond(range_header: Option<&str>) -> axum::response::Response<axum::body::Body> {
+        let data = sample();
+        let range = evaluate_range(range_header, data.len() as u64);
+        let body = match range {
+            super::ByteRange::Full => data.clone(),
+            super::ByteRange::Partial { start, end } => {
+                data[start as usize..=end as usize].to_vec()
+            }
+            super::ByteRange::Unsatisfiable => Vec::new(),
+        };
+        build_pdf_response("a.pdf", data.len() as u64, range, body)
+    }
+
+    #[tokio::test]
+    async fn full_response_advertises_range_support() {
+        let res = respond(None);
+        assert_eq!(res.status(), StatusCode::OK);
+        assert_eq!(res.headers()[header::ACCEPT_RANGES], "bytes");
+        assert_eq!(res.headers()[header::CONTENT_ENCODING], "identity");
+    }
+
+    #[tokio::test]
+    async fn range_request_returns_206_with_exact_slice() {
+        let res = respond(Some("bytes=10-19"));
+        assert_eq!(res.status(), StatusCode::PARTIAL_CONTENT);
+        assert_eq!(res.headers()[header::CONTENT_RANGE], "bytes 10-19/100");
+        let body = axum::body::to_bytes(res.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        assert_eq!(body.as_ref(), &sample()[10..=19]);
+    }
+
+    #[tokio::test]
+    async fn out_of_bounds_range_returns_416() {
+        let res = respond(Some("bytes=500-"));
+        assert_eq!(res.status(), StatusCode::RANGE_NOT_SATISFIABLE);
+        assert_eq!(res.headers()[header::CONTENT_RANGE], "bytes */100");
+    }
 }

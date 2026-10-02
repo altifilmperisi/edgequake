@@ -125,6 +125,9 @@ mod tests {
             is_error: false,
             llm_provider: Some("ollama".to_string()),
             llm_model: Some("gemma3:latest".to_string()),
+            feedback_rating: None,
+            feedback_reason: None,
+            finish_reason: None,
             created_at: "2024-01-01T00:00:00Z".to_string(),
             updated_at: "2024-01-01T00:00:00Z".to_string(),
         };

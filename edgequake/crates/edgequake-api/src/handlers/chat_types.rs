@@ -208,6 +208,14 @@ pub enum ChatStreamEvent {
     /// Thinking/reasoning phase content.
     Thinking { content: String },
 
+    /// Explicit retrieval/generation stage for UI timeline (SPEC-155).
+    Stage {
+        /// retrieving | reading | generating
+        stage: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        detail: Option<String>,
+    },
+
     /// Stream complete - assistant message saved.
     Done {
         assistant_message_id: Uuid,
@@ -371,6 +379,26 @@ mod tests {
         let json = serde_json::to_value(&event).unwrap();
         assert_eq!(json["type"], "thinking");
         assert!(json["content"].as_str().unwrap().contains("Analyzing"));
+    }
+
+    #[test]
+    fn test_chat_stream_event_stage() {
+        let event = ChatStreamEvent::Stage {
+            stage: "retrieving".to_string(),
+            detail: None,
+        };
+        let json = serde_json::to_value(&event).unwrap();
+        assert_eq!(json["type"], "stage");
+        assert_eq!(json["stage"], "retrieving");
+        assert!(json.get("detail").is_none());
+
+        let event = ChatStreamEvent::Stage {
+            stage: "reading".to_string(),
+            detail: Some("3 sources".to_string()),
+        };
+        let json = serde_json::to_value(&event).unwrap();
+        assert_eq!(json["stage"], "reading");
+        assert_eq!(json["detail"], "3 sources");
     }
 
     // ---- Issue #203: ImageAttachment struct tests ----

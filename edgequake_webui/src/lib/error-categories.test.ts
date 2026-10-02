@@ -334,6 +334,7 @@ describe('getCategoryColor', () => {
       'storage',
       'pipeline',
       'network',
+      'lifecycle',
       'unknown',
     ];
 
@@ -354,5 +355,28 @@ describe('getCategoryColor', () => {
 
     expect(llmColors.bg).not.toBe(storageColors.bg);
     expect(storageColors.bg).not.toBe(pipelineColors.bg);
+  });
+});
+
+describe('lifecycle (tombstoned document) errors', () => {
+  const MSG =
+    'Knowledge graph persist failed: Storage error: Conflict: cannot ingest into a tombstoned document';
+
+  it('is not mislabelled as a transient storage outage', () => {
+    const r = categorizeError(MSG);
+    expect(r.category).toBe('lifecycle');
+    expect(r.isTransient).toBe(false);
+    expect(r.retryable).toBe(false);
+    expect(r.suggestion).not.toMatch(/try again shortly/i);
+  });
+
+  it('recognises the typed worker failure message', () => {
+    expect(categorizeError('Document 01a0f632 was deleted but its cleanup did not finish [failure_class=document_deleted]').category).toBe('lifecycle');
+  });
+
+  it('keeps ordinary storage errors transient and retryable', () => {
+    const r = categorizeError('Storage error: connection pool timed out');
+    expect(r.category).toBe('storage');
+    expect(r.retryable).toBe(true);
   });
 });

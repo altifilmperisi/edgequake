@@ -153,6 +153,7 @@ pub(crate) async fn list_documents_inner(
         stage_progress: Option<f32>,
         stage_message: Option<String>,
         progress_counts: Option<crate::handlers::ingestion_types::IngestionProgressCounts>,
+        run_progress: Option<crate::services::RunProgress>,
         pdf_id: Option<String>,
         chunk_count: Option<usize>,
         cancelled_from_stage: Option<String>,
@@ -331,6 +332,10 @@ pub(crate) async fn list_documents_inner(
                         .as_deref()
                         .and_then(crate::services::parse_counts_from_message)
                 });
+            // SPEC-155: typed run-progress ledger.
+            meta.run_progress = obj
+                .get("run_progress")
+                .and_then(crate::services::run_progress_from_value);
 
             // SPEC-002: Get pdf_id (linked PDF document for viewing)
             meta.pdf_id = obj
@@ -398,6 +403,7 @@ pub(crate) async fn list_documents_inner(
                 display_status: None,
                 ui_phase: None,
                 progress_counts: meta.progress_counts,
+                run_progress: meta.run_progress,
                 queue_position: None,
                 eta_seconds: None,
                 eta_basis: None,

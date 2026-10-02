@@ -10,6 +10,11 @@
 import type { Document } from "@/types";
 import type { QueryClient } from "@tanstack/react-query";
 import { normalizeProgress01 } from "@/lib/documents/status-domain";
+import {
+  clampMonotonic,
+  isRunProgress,
+  type RunProgress,
+} from "@/lib/pipeline/run-progress";
 
 /** High-frequency events that must not trigger documents-list refetch. */
 const LIST_NOISE_TYPES = new Set([
@@ -63,7 +68,10 @@ export interface ProgressCacheMessage {
     stage?: string;
     stage_message?: string;
     stage_progress?: number | null;
+    /** SPEC-155: typed ledger when the server broadcasts it. */
+    run_progress?: import("@/lib/pipeline/run-progress").RunProgress | null;
   };
+  run_progress?: import("@/lib/pipeline/run-progress").RunProgress | null;
 }
 
 export function isListNoiseProgressEvent(type: string | undefined): boolean {
@@ -145,17 +153,9 @@ function patchFieldsFromMessage(
           ? current_page
           : undefined;
 
-    // Reject decreasing completed_pages / progress vs cached values.
-    const prevDone = existing?.stage_message?.match(/(\d+)\//)?.[1];
-    const prevCompleted = prevDone ? Number(prevDone) : undefined;
-    if (
-      typeof done === "number" &&
-      typeof prevCompleted === "number" &&
-      done < prevCompleted &&
-      existing?.current_stage === "converting"
-    ) {
-      return fields;
-    }
+    // SPEC-155: monotonicity lives in the run_progress ledger (clampMonotonic).
+    // Do not regex-parse the previous stage_message — that broke when figures
+    // replaced pages in the free-text counter.
 
     if (typeof progress === "number") {
       let normalized = normalizeProgress01(progress);
@@ -182,6 +182,17 @@ function patchFieldsFromMessage(
       const phaseLabel = humanizePdfPhase(phase);
       fields.stage_message = `Converting ${done}/${total_pages} pages${phaseLabel}`;
     }
+    const incomingLedger =
+      (isRunProgress(message.data?.run_progress)
+        ? message.data.run_progress
+        : null) ??
+      (isRunProgress(message.run_progress) ? message.run_progress : null);
+    if (incomingLedger || existing?.run_progress) {
+      fields.run_progress = clampMonotonic(
+        existing?.run_progress as RunProgress | null | undefined,
+        incomingLedger,
+      );
+    }
     return fields;
   }
 
@@ -205,6 +216,14 @@ function patchFieldsFromMessage(
         if (normalized >= 1) normalized = 0.99;
         fields.stage_progress = normalized;
       }
+    }
+    if (isRunProgress(message.data.run_progress) || existing?.run_progress) {
+      fields.run_progress = clampMonotonic(
+        existing?.run_progress as RunProgress | null | undefined,
+        isRunProgress(message.data.run_progress)
+          ? message.data.run_progress
+          : null,
+      );
     }
     return fields;
   }

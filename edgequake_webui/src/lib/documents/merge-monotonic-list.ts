@@ -13,6 +13,11 @@ import {
   getDocumentDisplayStatus,
   isTerminalStatus,
 } from "./status-domain";
+import {
+  clampMonotonic,
+  isRunProgress,
+  type RunProgress,
+} from "@/lib/pipeline/run-progress";
 
 /**
  * Merge polled list rows with the previous React Query cache.
@@ -76,6 +81,20 @@ export function mergeMonotonicListDocuments(
         stage_message: prev.stage_message ?? incoming.stage_message,
         stage_progress: prev.stage_progress ?? incoming.stage_progress,
         track_id: prev.track_id ?? incoming.track_id,
+        run_progress: clampMonotonic(
+          prev.run_progress as RunProgress | null | undefined,
+          incoming.run_progress as RunProgress | null | undefined,
+        ),
+      };
+    }
+    // Same or advanced stage: still never regress the typed ledger.
+    if (isRunProgress(prev.run_progress) || isRunProgress(incoming.run_progress)) {
+      return {
+        ...incoming,
+        run_progress: clampMonotonic(
+          prev.run_progress as RunProgress | null | undefined,
+          incoming.run_progress as RunProgress | null | undefined,
+        ),
       };
     }
     return incoming;

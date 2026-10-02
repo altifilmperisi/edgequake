@@ -83,6 +83,8 @@ pub fn apply_doc_terminal_fields(
     metadata.insert("stage_message".to_string(), json!(message));
     // Clear embedding-band progress so UI cannot show residual 99% after terminal.
     metadata.insert("stage_progress".to_string(), json!(0.0));
+    crate::services::clear_run_progress(metadata);
+    crate::services::clear_progress_counts(metadata);
     metadata.insert("error_message".to_string(), json!(message));
     metadata.insert("failure_class".to_string(), json!(failure.as_str()));
     metadata.insert(

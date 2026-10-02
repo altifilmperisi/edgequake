@@ -96,14 +96,10 @@ pub const LOCAL_MERGE_MAX_ASYNC: usize = 2;
 /// Fallback: `EDGEQUAKE_LLM_MAX_ASYNC` / `MAX_ASYNC` × 2, else
 /// `EDGEQUAKE_EMBED_MAX_ASYNC` × 2, else [`DEFAULT_MERGE_MAX_ASYNC`].
 ///
-/// For Ollama / LM Studio, caps at [`LOCAL_MERGE_MAX_ASYNC`] unless
-/// `EDGEQUAKE_ALLOW_LOCAL_HIGH_CONCURRENCY=1`.
-pub fn merge_max_async_from_env() -> usize {
-    let requested = merge_max_async_requested_from_env();
-    apply_local_merge_async_clamp(requested, &default_llm_provider_from_env())
-}
-
-fn merge_max_async_requested_from_env() -> usize {
+/// This is the **requested** fan-out (provider-agnostic). The local-provider
+/// cap is applied where the LLM that serves the merge is known — see
+/// `MergerConfig::for_provider` — never from the process default provider.
+pub fn merge_max_async_requested_from_env() -> usize {
     if let Ok(raw) = std::env::var("EDGEQUAKE_MERGE_MAX_ASYNC") {
         if let Some(n) = parse_merge_max_async(&raw) {
             return n;
@@ -127,31 +123,20 @@ fn merge_max_async_requested_from_env() -> usize {
     DEFAULT_MERGE_MAX_ASYNC
 }
 
-fn default_llm_provider_from_env() -> String {
-    std::env::var("EDGEQUAKE_DEFAULT_LLM_PROVIDER")
-        .or_else(|_| std::env::var("EDGEQUAKE_LLM_PROVIDER"))
-        .unwrap_or_default()
-}
-
-/// Cap merge fan-out for capacity-bound local providers.
+/// Cap merge fan-out for capacity-bound local providers (SSOT helper).
 pub fn apply_local_merge_async_clamp(requested: usize, provider_name: &str) -> usize {
     let bounded = requested.clamp(1, 64);
-    if !crate::pipeline::is_local_extraction_provider(provider_name)
-        || crate::pipeline::allow_local_high_concurrency()
-    {
-        return bounded;
-    }
-    if bounded > LOCAL_MERGE_MAX_ASYNC {
+    let effective =
+        crate::pipeline::cap_for_local_provider(provider_name, bounded, LOCAL_MERGE_MAX_ASYNC);
+    if effective < bounded {
         tracing::info!(
             provider = provider_name,
             requested = bounded,
-            effective = LOCAL_MERGE_MAX_ASYNC,
+            effective,
             "Local merge concurrency clamped (set EDGEQUAKE_ALLOW_LOCAL_HIGH_CONCURRENCY=1 to override)"
         );
-        LOCAL_MERGE_MAX_ASYNC
-    } else {
-        bounded
     }
+    effective
 }
 
 /// Pure parser for `EDGEQUAKE_MERGE_MAX_ASYNC` (clamped 1..=64).

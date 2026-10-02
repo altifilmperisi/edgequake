@@ -43,6 +43,7 @@ use uuid::Uuid;
 use crate::{
     conversation_service::ConversationService,
     error::{Error, Result},
+    types::SetMessageFeedbackRequest,
     types::{
         Conversation, ConversationFilter, ConversationSortField, CreateConversationRequest,
         CreateMessageRequest, Folder, ImportError, ImportResult, Message, MessageRole,
@@ -117,6 +118,9 @@ impl ConversationServiceImpl {
             is_error: row.is_error,
             llm_provider: row.llm_provider,
             llm_model: row.llm_model,
+            feedback_rating: row.feedback_rating,
+            feedback_reason: row.feedback_reason,
+            finish_reason: row.finish_reason,
             created_at: row.created_at,
             updated_at: row.updated_at,
         }
@@ -336,6 +340,27 @@ impl ConversationService for ConversationServiceImpl {
                 request.is_error,
                 request.llm_provider.as_deref(),
                 request.llm_model.as_deref(),
+                request.finish_reason.as_deref(),
+            )
+            .await
+            .map_err(Self::map_error)?;
+
+        Ok(Self::row_to_message(row))
+    }
+
+    async fn set_message_feedback(
+        &self,
+        conversation_id: Uuid,
+        message_id: Uuid,
+        request: SetMessageFeedbackRequest,
+    ) -> Result<Message> {
+        let row = self
+            .storage
+            .update_message_feedback(
+                conversation_id,
+                message_id,
+                request.rating.as_deref(),
+                request.reason.as_deref(),
             )
             .await
             .map_err(Self::map_error)?;

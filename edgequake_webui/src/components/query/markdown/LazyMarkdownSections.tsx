@@ -224,6 +224,7 @@ interface LazySectionProps {
   estimatedHeight: number;
   isStreaming: boolean;
   onSourceClick?: (id: string) => void;
+  resolveCitation?: import('./citation-resolver').CitationResolver;
   highlightedIndices?: Set<number>;
   /** If true, render immediately (first visible sections, or contains highlight). */
   renderImmediately: boolean;
@@ -240,6 +241,7 @@ const LazySection = memo(function LazySection({
   estimatedHeight,
   isStreaming,
   onSourceClick,
+  resolveCitation,
   highlightedIndices,
   renderImmediately,
 }: LazySectionProps) {
@@ -304,6 +306,7 @@ const LazySection = memo(function LazySection({
         tokens={tokens}
         isStreaming={isStreaming}
         onSourceClick={onSourceClick}
+        resolveCitation={resolveCitation}
         highlightedIndices={highlightedIndices}
       />
     </div>
@@ -319,6 +322,7 @@ interface LazyMarkdownSectionsProps {
   isStreaming?: boolean;
   className?: string;
   onSourceClick?: (id: string) => void;
+  resolveCitation?: import('./citation-resolver').CitationResolver;
   highlightedIndices?: Set<number>;
   /** SPEC-143: mount the section that contains this page anchor immediately. */
   revealPage?: number | null;
@@ -337,6 +341,7 @@ export const LazyMarkdownSections = memo(function LazyMarkdownSections({
   isStreaming = false,
   className,
   onSourceClick,
+  resolveCitation,
   highlightedIndices,
   revealPage = null,
 }: LazyMarkdownSectionsProps) {
@@ -403,6 +408,7 @@ export const LazyMarkdownSections = memo(function LazyMarkdownSections({
           estimatedHeight={estimatedHeights[idx]}
           isStreaming={isStreaming}
           onSourceClick={onSourceClick}
+          resolveCitation={resolveCitation}
           highlightedIndices={perSectionHighlights[idx]}
           renderImmediately={immediateRenderSet.has(idx)}
         />

@@ -23,6 +23,13 @@ import {
   type IngestionRunStage,
   type IngestionRunView,
 } from "./ingestion-run-view";
+import {
+  activePhaseId,
+  findPhase,
+  formatPhaseCaption,
+  overallFromLedger,
+  phaseFill01,
+} from "./run-progress";
 
 export type StageStepStatus =
   | "pending"
@@ -518,6 +525,18 @@ export function buildStageTimeline(run: IngestionRunView): StageTimeline {
     admissionCleaning: isAdmission ? admissionCleaning : false,
   });
 
+  // SPEC-155: when a typed ledger is present, prefer its equal-weight phases
+  // over the legacy message-derived counts (fixes figures resetting Prepare).
+  let finalOverall = overall01;
+  let finalStageProgress = stageProgress01;
+  let finalStageCounts = stageCountsLabel;
+  if (run.runProgress && !isAdmission && !isComplete) {
+    finalOverall = overallFromLedger(run.runProgress);
+    const activeId = activePhaseId(run.runProgress);
+    finalStageProgress = phaseFill01(findPhase(run.runProgress, activeId));
+    finalStageCounts = formatPhaseCaption(run.runProgress) ?? stageCountsLabel;
+  }
+
   const activeStepId =
     timelineSteps.find(
       (s) =>
@@ -529,8 +548,8 @@ export function buildStageTimeline(run: IngestionRunView): StageTimeline {
   // Terminal cancel: freeze overall bar (no fake completion).
   const frozenOverall =
     isCancelled || isStopping
-      ? Math.min(0.99, overall01)
-      : overall01;
+      ? Math.min(0.99, finalOverall)
+      : finalOverall;
 
   return {
     steps: timelineSteps,
@@ -540,7 +559,7 @@ export function buildStageTimeline(run: IngestionRunView): StageTimeline {
     admissionPhase,
     overallProgress01: frozenOverall,
     overallIsEstimate: !isComplete,
-    stageProgress01,
-    stageCountsLabel,
+    stageProgress01: finalStageProgress,
+    stageCountsLabel: finalStageCounts,
   };
 }

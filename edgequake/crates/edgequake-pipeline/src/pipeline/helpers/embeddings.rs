@@ -230,15 +230,17 @@ async fn embed_batched_with_retry(
 /// X-07: transient classification is solely `LlmError::retry_strategy()`.
 pub const LOCAL_EMBED_MAX_ASYNC: usize = 1;
 
-/// Max concurrent embedding API sub-batches (LightRAG `embedding_func_max_async` ≈ 8).
+/// Max concurrent embedding API sub-batches for `provider_name`
+/// (LightRAG `embedding_func_max_async` ≈ 8).
 ///
-/// Override with `EDGEQUAKE_EMBED_MAX_ASYNC` (clamped 1..=32).
-/// For Ollama / LM Studio, caps at [`LOCAL_EMBED_MAX_ASYNC`] unless
-/// `EDGEQUAKE_ALLOW_LOCAL_HIGH_CONCURRENCY=1`.
-pub fn embed_max_async() -> usize {
+/// Override with `EDGEQUAKE_EMBED_MAX_ASYNC` (clamped 1..=32). The local-provider
+/// cap ([`LOCAL_EMBED_MAX_ASYNC`]) is decided by the **embedding provider that is
+/// actually called** — never by the process-default LLM provider — so a cloud
+/// embedder keeps full fan-out even when the default LLM is Ollama.
+pub fn embed_max_async_for(provider_name: &str) -> usize {
     let requested =
         parse_embed_max_async(&std::env::var("EDGEQUAKE_EMBED_MAX_ASYNC").unwrap_or_default());
-    apply_local_embed_async_clamp(requested, &default_llm_provider_from_env())
+    apply_local_embed_async_clamp(requested, provider_name)
 }
 
 /// Pure parser for `EDGEQUAKE_EMBED_MAX_ASYNC` (testable without env mutation).
@@ -251,33 +253,22 @@ pub fn parse_embed_max_async(raw: &str) -> usize {
         .unwrap_or(8)
 }
 
-fn default_llm_provider_from_env() -> String {
-    std::env::var("EDGEQUAKE_DEFAULT_LLM_PROVIDER")
-        .or_else(|_| std::env::var("EDGEQUAKE_LLM_PROVIDER"))
-        .unwrap_or_default()
-}
-
-/// Cap embed fan-out for capacity-bound local providers.
+/// Cap embed fan-out for capacity-bound local providers (SSOT helper).
 ///
 /// Returns the effective concurrency (may be lower than `requested`).
 pub fn apply_local_embed_async_clamp(requested: usize, provider_name: &str) -> usize {
     let bounded = requested.clamp(1, 32);
-    if !crate::pipeline::is_local_extraction_provider(provider_name)
-        || crate::pipeline::allow_local_high_concurrency()
-    {
-        return bounded;
-    }
-    if bounded > LOCAL_EMBED_MAX_ASYNC {
+    let effective =
+        crate::pipeline::cap_for_local_provider(provider_name, bounded, LOCAL_EMBED_MAX_ASYNC);
+    if effective < bounded {
         tracing::info!(
             provider = provider_name,
             requested = bounded,
-            effective = LOCAL_EMBED_MAX_ASYNC,
+            effective,
             "Local embed concurrency clamped (set EDGEQUAKE_ALLOW_LOCAL_HIGH_CONCURRENCY=1 to override)"
         );
-        LOCAL_EMBED_MAX_ASYNC
-    } else {
-        bounded
     }
+    effective
 }
 
 /// Plan token/count-aware sub-batches as `(start_index, end_index)` half-open ranges.
@@ -325,6 +316,26 @@ async fn embed_with_token_budget(
     progress: Option<(&EmbedProgressCallback, &'static str)>,
     cancel: Option<&tokio_util::sync::CancellationToken>,
 ) -> crate::error::Result<Vec<Vec<f32>>> {
+    let max_async = embed_max_async_for(provider.name());
+    embed_with_token_budget_at(provider, texts, max_async, None, progress, cancel).await
+}
+
+/// Token-budgeted embedding at an explicit fan-out (`max_async` sub-batches).
+///
+/// Split from [`embed_with_token_budget`] so the concurrency decision (policy)
+/// is separate from the fan-out mechanism and testable with injected latency.
+///
+/// `slots`, when set, is a shared semaphore across concurrent embed stages
+/// (SPEC-156 chunk/entity/relationship join) so total in-flight HTTP calls
+/// stay ≤ `embed_max_async`.
+async fn embed_with_token_budget_at(
+    provider: &Arc<dyn edgequake_llm::traits::EmbeddingProvider>,
+    texts: &[String],
+    max_async: usize,
+    slots: Option<&Arc<tokio::sync::Semaphore>>,
+    progress: Option<(&EmbedProgressCallback, &'static str)>,
+    cancel: Option<&tokio_util::sync::CancellationToken>,
+) -> crate::error::Result<Vec<Vec<f32>>> {
     if texts.is_empty() {
         return Ok(Vec::new());
     }
@@ -340,10 +351,17 @@ async fn embed_with_token_budget(
     };
 
     let ranges = plan_embed_sub_batches(texts, provider.max_tokens(), provider.max_batch_size());
-    let concurrency = embed_max_async().min(ranges.len().max(1));
+    let concurrency = max_async.max(1).min(ranges.len().max(1));
 
     // Single sub-batch: no fan-out overhead.
     if ranges.len() <= 1 {
+        let _permit = if let Some(sem) = slots {
+            Some(sem.acquire().await.map_err(|_| {
+                crate::error::PipelineError::EmbeddingError("embed semaphore closed".into())
+            })?)
+        } else {
+            None
+        };
         let batch_result = embed_batched_with_retry(provider, texts, cancel).await?;
         emit(batch_result.len());
         return Ok(batch_result);
@@ -361,6 +379,8 @@ async fn embed_with_token_budget(
     let provider = Arc::clone(provider);
     let texts_owned: Vec<String> = texts.to_vec();
     let cancel_owned = cancel.cloned();
+    // SPEC-156: optional shared permit pool across chunk/entity/relationship joins.
+    let shared_slots = slots.cloned();
 
     // X-18: per-sub-batch Result — do not fail-fast the whole collect on one error.
     // Preserve range identity on Err so we can retry / skip individually.
@@ -371,7 +391,24 @@ async fn embed_with_token_budget(
             let provider = Arc::clone(&provider);
             let batch = texts_owned[start..end].to_vec();
             let cancel = cancel_owned.clone();
+            let slots = shared_slots.clone();
             async move {
+                let _permit = if let Some(sem) = slots.as_ref() {
+                    match sem.acquire().await {
+                        Ok(p) => Some(p),
+                        Err(_) => {
+                            return Err((
+                                start,
+                                end,
+                                crate::error::PipelineError::EmbeddingError(
+                                    "embed semaphore closed".into(),
+                                ),
+                            ));
+                        }
+                    }
+                } else {
+                    None
+                };
                 match embed_batched_with_retry(&provider, &batch, cancel.as_ref()).await {
                     Ok(emb) => Ok((start, emb)),
                     Err(e) => Err((start, end, e)),
@@ -455,11 +492,11 @@ async fn embed_with_token_budget(
     }
 
     if all_embeddings.len() != texts.len() {
-        tracing::warn!(
-            expected = texts.len(),
-            actual = all_embeddings.len(),
-            "X-18: parallel embed partial sub-batch result (tolerated)"
-        );
+        return Err(crate::error::PipelineError::EmbeddingError(format!(
+            "Embedding count mismatch: expected {}, got {} (partial sub-batch failure)",
+            texts.len(),
+            all_embeddings.len()
+        )));
     }
 
     Ok(all_embeddings)
@@ -487,6 +524,7 @@ async fn safe_embed(
     texts: &[String],
     max_chars: usize,
     kind: &str,
+    slots: Option<&Arc<tokio::sync::Semaphore>>,
     progress: Option<(&EmbedProgressCallback, &'static str)>,
     cancel: Option<&tokio_util::sync::CancellationToken>,
 ) -> crate::error::Result<Vec<Vec<f32>>> {
@@ -511,7 +549,21 @@ async fn safe_embed(
         provider.model(),
         provider.name(),
         async {
-            let emb = embed_with_token_budget(provider, &guarded.texts, progress, cancel).await?;
+            let emb = match slots {
+                Some(sem) => {
+                    let max_async = embed_max_async_for(provider.name());
+                    embed_with_token_budget_at(
+                        provider,
+                        &guarded.texts,
+                        max_async,
+                        Some(sem),
+                        progress,
+                        cancel,
+                    )
+                    .await?
+                }
+                None => embed_with_token_budget(provider, &guarded.texts, progress, cancel).await?,
+            };
             let dim = emb.first().map(|v| v.len());
             edgequake_observability::record_embedding_io(kind, guarded.texts.len(), emb.len(), dim);
             Ok::<_, crate::error::PipelineError>(emb)
@@ -519,12 +571,11 @@ async fn safe_embed(
     )
     .await?;
     if embeddings.len() != texts.len() {
-        tracing::warn!(
-            expected = texts.len(),
-            actual = embeddings.len(),
-            kind,
-            "{kind} embedding count mismatch - some items may lack embeddings"
-        );
+        return Err(crate::error::PipelineError::EmbeddingError(format!(
+            "{kind} embedding count mismatch: expected {}, got {}",
+            texts.len(),
+            embeddings.len()
+        )));
     }
     // X-10: L2-normalize on write (same algorithm as Embedding::normalize).
     for vector in &mut embeddings {
@@ -598,122 +649,164 @@ impl Pipeline {
         stats.embedding_provider = Some(provider.name().to_string());
         stats.embedding_dimensions = Some(provider.dimension());
 
-        // Pre-compute the safe character limit for this provider once.
-        // WHY: Avoids repeated calls to max_tokens() in tight loops and keeps
-        // the guard logic in a single reusable helper (DRY).
         let max_chars = embed_max_chars(provider.max_tokens());
+        let max_async = embed_max_async_for(provider.name());
+        // SPEC-156: one shared budget across chunk/entity/relationship embeds.
+        let slots = Arc::new(tokio::sync::Semaphore::new(max_async.max(1)));
 
-        // ── Chunk embeddings ──
-        if self.config.enable_chunk_embeddings {
-            let texts: Vec<String> = chunks.iter().map(|c| c.content.clone()).collect();
-            // Notify: starting chunk embeddings
+        let do_chunks = self.config.enable_chunk_embeddings;
+        let do_entities = self.config.enable_entity_embeddings;
+        let do_relationships = self.config.enable_relationship_embeddings;
+
+        let chunk_texts: Option<Vec<String>> = if do_chunks {
+            Some(chunks.iter().map(|c| c.content.clone()).collect())
+        } else {
+            None
+        };
+        // Unique-before-embed once; reuse for cost estimate (SPEC-047 P6 / SPEC-156).
+        let unique_ents = if do_entities {
+            Some(unique_entities_for_embed(extractions))
+        } else {
+            None
+        };
+        let unique_rels = if do_relationships {
+            Some(unique_relationships_for_embed(extractions))
+        } else {
+            None
+        };
+        let entity_texts: Option<Vec<String>> = unique_ents
+            .as_ref()
+            .map(|u| u.iter().map(|e| e.text.clone()).collect());
+        let relationship_texts: Option<Vec<String>> = unique_rels
+            .as_ref()
+            .map(|u| u.iter().map(|e| e.text.clone()).collect());
+
+        if let Some(ref texts) = chunk_texts {
             Self::emit_embed_progress(progress, "chunks", 0, texts.len());
-            let embeddings = safe_embed(
-                provider,
-                &texts,
-                max_chars,
-                "Chunk",
-                progress.map(|cb| (cb, "chunks")),
-                cancel,
-            )
-            .await?;
+        }
+        if let Some(ref u) = unique_ents {
+            tracing::info!(
+                unique_entities = u.len(),
+                mention_entities = u.iter().map(|e| e.mentions.len()).sum::<usize>(),
+                "Entity embed: unique-before-embed (SPEC-047 P6)"
+            );
+            Self::emit_embed_progress(progress, "entities", 0, u.len());
+        }
+        if let Some(ref u) = unique_rels {
+            tracing::info!(
+                unique_relationships = u.len(),
+                mention_relationships = u.iter().map(|e| e.mentions.len()).sum::<usize>(),
+                "Relationship embed: unique-before-embed (SPEC-047 P6)"
+            );
+            Self::emit_embed_progress(progress, "relationships", 0, u.len());
+        }
+
+        let provider = Arc::clone(provider);
+        let cancel_owned = cancel.cloned();
+        let slots_c = Arc::clone(&slots);
+        let slots_e = Arc::clone(&slots);
+        let slots_r = Arc::clone(&slots);
+        let progress_c = progress.cloned();
+        let progress_e = progress.cloned();
+        let progress_r = progress.cloned();
+
+        // Box::pin each arm so try_join! holds three pointers, not three full
+        // embed FSMs (same pattern as SPEC-047 hybrid/mix — debug-build stack
+        // overflow on large document ingest).
+        let (chunk_embeddings, entity_embeddings, relationship_embeddings) = tokio::try_join!(
+            Box::pin(async {
+                match chunk_texts.as_ref() {
+                    Some(texts) => {
+                        let emb = safe_embed(
+                            &provider,
+                            texts,
+                            max_chars,
+                            "Chunk",
+                            Some(&slots_c),
+                            progress_c.as_ref().map(|cb| (cb, "chunks")),
+                            cancel_owned.as_ref(),
+                        )
+                        .await?;
+                        Ok::<_, crate::error::PipelineError>(Some(emb))
+                    }
+                    None => Ok(None),
+                }
+            }),
+            Box::pin(async {
+                match entity_texts.as_ref() {
+                    Some(texts) => {
+                        let emb = safe_embed(
+                            &provider,
+                            texts,
+                            max_chars,
+                            "Entity",
+                            Some(&slots_e),
+                            progress_e.as_ref().map(|cb| (cb, "entities")),
+                            cancel_owned.as_ref(),
+                        )
+                        .await?;
+                        Ok(Some(emb))
+                    }
+                    None => Ok(None),
+                }
+            }),
+            Box::pin(async {
+                match relationship_texts.as_ref() {
+                    Some(texts) => {
+                        let emb = safe_embed(
+                            &provider,
+                            texts,
+                            max_chars,
+                            "Relationship",
+                            Some(&slots_r),
+                            progress_r.as_ref().map(|cb| (cb, "relationships")),
+                            cancel_owned.as_ref(),
+                        )
+                        .await?;
+                        Ok(Some(emb))
+                    }
+                    None => Ok(None),
+                }
+            }),
+        )?;
+
+        if let (Some(texts), Some(embeddings)) = (chunk_texts.as_ref(), chunk_embeddings) {
             for (chunk, embedding) in chunks.iter_mut().zip(embeddings) {
                 chunk.embedding = Some(embedding);
             }
-            // Notify: chunk embeddings complete
             Self::emit_embed_progress(progress, "chunks", texts.len(), texts.len());
         }
-
-        // ── Entity embeddings (unique-before-embed, SPEC-047 P6 / LightRAG) ──
-        // WHY: mega-docs extract thousands of *mentions* but only hundreds of
-        // unique EntityIds. Embedding every mention is O(Σ mentions); LightRAG
-        // embeds once per unique name after merge. We collapse within-doc first,
-        // embed unique texts, then broadcast the vector to all mentions so the
-        // merger's collect path stays unchanged.
-        if self.config.enable_entity_embeddings {
-            let unique = unique_entities_for_embed(extractions);
-            let mention_total: usize = unique.iter().map(|u| u.mentions.len()).sum();
-            let all_entity_texts: Vec<String> = unique.iter().map(|u| u.text.clone()).collect();
-
-            tracing::info!(
-                unique_entities = unique.len(),
-                mention_entities = mention_total,
-                "Entity embed: unique-before-embed (SPEC-047 P6)"
-            );
-
-            Self::emit_embed_progress(progress, "entities", 0, unique.len());
-
-            let all_embeddings = safe_embed(
-                provider,
-                &all_entity_texts,
-                max_chars,
-                "Entity",
-                progress.map(|cb| (cb, "entities")),
-                cancel,
-            )
-            .await?;
-            for (embedding, entry) in all_embeddings.into_iter().zip(unique.iter()) {
-                // Store once on the first mention; merger `dedupe_entities_by_id`
-                // picks up any available embedding (avoids cloning Vec<f32> × mentions).
+        if let (Some(unique), Some(embeddings)) = (unique_ents.as_ref(), entity_embeddings) {
+            for (embedding, entry) in embeddings.into_iter().zip(unique.iter()) {
                 if let Some(&(ext_idx, ent_idx)) = entry.mentions.first() {
                     extractions[ext_idx].entities[ent_idx].embedding = Some(embedding);
                 }
             }
-
             Self::emit_embed_progress(progress, "entities", unique.len(), unique.len());
         }
-
-        // ── Relationship embeddings (unique-before-embed) ──
-        if self.config.enable_relationship_embeddings {
-            let unique = unique_relationships_for_embed(extractions);
-            let mention_total: usize = unique.iter().map(|u| u.mentions.len()).sum();
-            let all_relationship_texts: Vec<String> =
-                unique.iter().map(|u| u.text.clone()).collect();
-
-            tracing::info!(
-                unique_relationships = unique.len(),
-                mention_relationships = mention_total,
-                "Relationship embed: unique-before-embed (SPEC-047 P6)"
-            );
-
-            Self::emit_embed_progress(progress, "relationships", 0, unique.len());
-
-            let all_embeddings = safe_embed(
-                provider,
-                &all_relationship_texts,
-                max_chars,
-                "Relationship",
-                progress.map(|cb| (cb, "relationships")),
-                cancel,
-            )
-            .await?;
-            for (embedding, entry) in all_embeddings.into_iter().zip(unique.iter()) {
+        if let (Some(unique), Some(embeddings)) = (unique_rels.as_ref(), relationship_embeddings) {
+            for (embedding, entry) in embeddings.into_iter().zip(unique.iter()) {
                 if let Some(&(ext_idx, rel_idx)) = entry.mentions.first() {
                     extractions[ext_idx].relationships[rel_idx].embedding = Some(embedding);
                 }
             }
-
             Self::emit_embed_progress(progress, "relationships", unique.len(), unique.len());
         }
 
-        // ── Embedding cost calculation (unique texts only) ──
-        // WHY estimate_embed_tokens: uses the same EMBED_CHARS_PER_TOKEN denominator
-        // as sub-batch sizing — one constant, one formula (DRY). Cost tracks what
-        // we actually sent to the provider (unique), not mention cardinality.
+        // Embedding cost from the same unique texts we sent (DRY / SPEC-156).
         let mut total_embed_tokens = 0usize;
-
-        if self.config.enable_chunk_embeddings {
-            let chunk_text_len: usize = chunks.iter().map(|c| c.content.len()).sum();
+        if let Some(ref texts) = chunk_texts {
+            let chunk_text_len: usize = texts.iter().map(|t| t.len()).sum();
             total_embed_tokens += estimate_embed_tokens(chunk_text_len);
         }
-        if self.config.enable_entity_embeddings {
-            for entry in unique_entities_for_embed(extractions) {
-                total_embed_tokens += estimate_embed_tokens(entry.text.len());
+        if let Some(ref texts) = entity_texts {
+            for t in texts {
+                total_embed_tokens += estimate_embed_tokens(t.len());
             }
         }
-        if self.config.enable_relationship_embeddings {
-            for entry in unique_relationships_for_embed(extractions) {
-                total_embed_tokens += estimate_embed_tokens(entry.text.len());
+        if let Some(ref texts) = relationship_texts {
+            for t in texts {
+                total_embed_tokens += estimate_embed_tokens(t.len());
             }
         }
 
@@ -1203,6 +1296,201 @@ mod tests {
         assert_eq!(apply_local_embed_async_clamp(1, "lmstudio"), 1);
     }
 
+    /// Provider with injected per-call latency; each vector encodes the input's
+    /// numeric suffix so ordering can be verified after parallel fan-out.
+    struct LatencyEmbedProvider {
+        provider_name: &'static str,
+        delay: std::time::Duration,
+    }
+
+    #[async_trait::async_trait]
+    impl edgequake_llm::traits::EmbeddingProvider for LatencyEmbedProvider {
+        fn name(&self) -> &str {
+            self.provider_name
+        }
+        fn model(&self) -> &str {
+            "latency-embed"
+        }
+        fn dimension(&self) -> usize {
+            2
+        }
+        fn max_tokens(&self) -> usize {
+            100_000
+        }
+        fn max_batch_size(&self) -> usize {
+            1 // one text per call → N sub-batches
+        }
+        async fn embed(&self, texts: &[String]) -> edgequake_llm::Result<Vec<Vec<f32>>> {
+            tokio::time::sleep(self.delay).await;
+            Ok(texts
+                .iter()
+                .map(|t| {
+                    let n: f32 = t.trim_start_matches('t').parse().unwrap_or(-1.0);
+                    vec![n, 1.0]
+                })
+                .collect())
+        }
+    }
+
+    fn latency_provider(
+        name: &'static str,
+        delay_ms: u64,
+    ) -> Arc<dyn edgequake_llm::traits::EmbeddingProvider> {
+        Arc::new(LatencyEmbedProvider {
+            provider_name: name,
+            delay: std::time::Duration::from_millis(delay_ms),
+        })
+    }
+
+    fn numbered_texts(n: usize) -> Vec<String> {
+        (0..n).map(|i| format!("t{i}")).collect()
+    }
+
+    /// Fan-out mechanism: 8-way is markedly faster than serial and keeps order.
+    #[tokio::test]
+    async fn embed_fanout_is_faster_than_serial_and_preserves_order() {
+        let provider = latency_provider("mistral", 40);
+        let texts = numbered_texts(8);
+
+        let t0 = std::time::Instant::now();
+        let serial = embed_with_token_budget_at(&provider, &texts, 1, None, None, None)
+            .await
+            .unwrap();
+        let serial_elapsed = t0.elapsed();
+
+        let t1 = std::time::Instant::now();
+        let parallel = embed_with_token_budget_at(&provider, &texts, 8, None, None, None)
+            .await
+            .unwrap();
+        let parallel_elapsed = t1.elapsed();
+
+        assert_eq!(serial, parallel, "parallel fan-out must preserve order");
+        for (i, v) in parallel.iter().enumerate() {
+            assert_eq!(v[0], i as f32);
+        }
+        assert!(
+            parallel_elapsed * 3 < serial_elapsed,
+            "expected >3x speedup: serial={serial_elapsed:?} parallel={parallel_elapsed:?}"
+        );
+    }
+
+    /// SPEC-156: shared semaphore across concurrent embed stages caps peak in-flight.
+    #[tokio::test]
+    async fn shared_embed_slots_cap_peak_across_joined_stages() {
+        use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
+
+        struct PeakEmbedProvider {
+            peak: Arc<AtomicUsize>,
+            in_flight: Arc<AtomicUsize>,
+            delay: std::time::Duration,
+        }
+
+        #[async_trait::async_trait]
+        impl edgequake_llm::traits::EmbeddingProvider for PeakEmbedProvider {
+            fn name(&self) -> &str {
+                "mistral"
+            }
+            fn model(&self) -> &str {
+                "peak-embed"
+            }
+            fn dimension(&self) -> usize {
+                2
+            }
+            fn max_tokens(&self) -> usize {
+                100_000
+            }
+            fn max_batch_size(&self) -> usize {
+                1
+            }
+            async fn embed(&self, texts: &[String]) -> edgequake_llm::Result<Vec<Vec<f32>>> {
+                let cur = self.in_flight.fetch_add(1, AtomicOrdering::SeqCst) + 1;
+                self.peak.fetch_max(cur, AtomicOrdering::SeqCst);
+                tokio::time::sleep(self.delay).await;
+                self.in_flight.fetch_sub(1, AtomicOrdering::SeqCst);
+                Ok(texts.iter().map(|_| vec![0.0, 1.0]).collect())
+            }
+        }
+
+        let peak = Arc::new(AtomicUsize::new(0));
+        let provider: Arc<dyn edgequake_llm::traits::EmbeddingProvider> =
+            Arc::new(PeakEmbedProvider {
+                peak: Arc::clone(&peak),
+                in_flight: Arc::new(AtomicUsize::new(0)),
+                delay: std::time::Duration::from_millis(30),
+            });
+        let slots = Arc::new(tokio::sync::Semaphore::new(3));
+        let a = numbered_texts(4);
+        let b = numbered_texts(4);
+        let c = numbered_texts(4);
+        let slots_a = Arc::clone(&slots);
+        let slots_b = Arc::clone(&slots);
+        let slots_c = Arc::clone(&slots);
+        let p_a = Arc::clone(&provider);
+        let p_b = Arc::clone(&provider);
+        let p_c = Arc::clone(&provider);
+
+        let t0 = std::time::Instant::now();
+        let (ra, rb, rc) = tokio::try_join!(
+            embed_with_token_budget_at(&p_a, &a, 8, Some(&slots_a), None, None),
+            embed_with_token_budget_at(&p_b, &b, 8, Some(&slots_b), None, None),
+            embed_with_token_budget_at(&p_c, &c, 8, Some(&slots_c), None, None),
+        )
+        .unwrap();
+        let elapsed = t0.elapsed();
+
+        assert_eq!(ra.len() + rb.len() + rc.len(), 12);
+        let observed_peak = peak.load(AtomicOrdering::SeqCst);
+        assert!(
+            observed_peak > 1 && observed_peak <= 3,
+            "peak in-flight must be in (1, 3], got {observed_peak}"
+        );
+        // 12 serial × 30ms = 360ms; with 3 slots ≈ 120ms (+slack).
+        assert!(
+            elapsed < std::time::Duration::from_millis(280),
+            "joined stages under shared slots should overlap: {elapsed:?}"
+        );
+    }
+
+    /// Policy: concurrency follows the embedding provider that is called,
+    /// not the process-default LLM provider (the ingestion-slowness root cause).
+    #[tokio::test]
+    async fn embed_policy_cloud_provider_fans_out_local_provider_stays_serial() {
+        let texts = numbered_texts(6);
+        let delay = 40u64;
+        let serial_floor = std::time::Duration::from_millis(delay * 6 * 9 / 10);
+
+        let cloud = latency_provider("mistral", delay);
+        let t0 = std::time::Instant::now();
+        embed_with_token_budget(&cloud, &texts, None, None)
+            .await
+            .unwrap();
+        let cloud_elapsed = t0.elapsed();
+        assert!(
+            cloud_elapsed * 2 < serial_floor,
+            "cloud embedder must fan out: {cloud_elapsed:?} vs serial {serial_floor:?}"
+        );
+
+        let local = latency_provider("ollama", delay);
+        let t1 = std::time::Instant::now();
+        embed_with_token_budget(&local, &texts, None, None)
+            .await
+            .unwrap();
+        assert!(
+            t1.elapsed() >= serial_floor,
+            "local embedder must stay serial, took {:?}",
+            t1.elapsed()
+        );
+    }
+
+    #[test]
+    fn embed_max_async_for_is_provider_scoped() {
+        // Pure clamp: same request, different upstream → different effective fan-out.
+        assert_eq!(apply_local_embed_async_clamp(8, "mistral"), 8);
+        assert_eq!(apply_local_embed_async_clamp(8, "openai"), 8);
+        assert_eq!(apply_local_embed_async_clamp(8, "ollama"), 1);
+        assert_eq!(apply_local_embed_async_clamp(8, "lm-studio"), 1);
+    }
+
     #[test]
     fn spec047_p6_plan_embed_sub_batches_respects_count_limit() {
         let texts: Vec<String> = (0..20).map(|i| format!("t{i}")).collect();
@@ -1289,9 +1577,10 @@ mod tests {
         }
     }
 
-    /// SPEC-083 X-18: one failed sub-batch must not fail the entire embed collect.
+    /// SPEC-156: partial sub-batch failure after retry must hard-fail (count mismatch).
+    /// Sub-batches still collect individually (no fail-fast Result gather).
     #[tokio::test]
-    async fn unit_embed_partial_subbatch_tolerated() {
+    async fn unit_embed_partial_subbatch_hard_fails_on_count_mismatch() {
         // 12 texts, max_batch=5 → ≥3 sub-batches; poison only the middle range.
         let mut texts: Vec<String> = (0..12).map(|i| format!("ok-{i}")).collect();
         texts[5] = "POISON-item".into();
@@ -1302,27 +1591,25 @@ mod tests {
                 poison: "POISON".into(),
             });
 
-        let result = embed_with_token_budget(&provider, &texts, None, None)
+        let err = embed_with_token_budget(&provider, &texts, None, None)
             .await
-            .expect("X-18: partial failure must not fail whole embed");
-        // Surviving batches: [0..5) and [10..12) → 5 + 2 = 7 (poison batch [5..10) dropped).
+            .expect_err("SPEC-156: count mismatch after partial failure must Err");
+        let msg = err.to_string();
         assert!(
-            result.len() < texts.len() && !result.is_empty(),
-            "expected partial embeddings, got {}",
-            result.len()
+            msg.contains("mismatch") || msg.contains("partial"),
+            "unexpected error: {msg}"
         );
-        assert_eq!(result.len(), 7);
 
         // Contract: production path must not use fail-fast Result collect.
         let src = include_str!("embeddings.rs");
         let prod = src.split("#[cfg(test)]").next().expect("prod");
         assert!(
             !prod.contains("collect::<crate::error::Result<Vec<_>>>"),
-            "X-18: must not fail-fast collect Result of all sub-batches"
+            "must not fail-fast collect Result of all sub-batches"
         );
         assert!(
-            prod.contains("tolerating partial batch") || prod.contains("X-18"),
-            "X-18: partial tolerance path must be present"
+            prod.contains("Embedding count mismatch"),
+            "SPEC-156 hard-fail path must be present"
         );
     }
 }

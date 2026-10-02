@@ -641,7 +641,6 @@ impl EdgeQuake {
                         .with_entity_schema(entity_schema)
                         .with_config(GleaningConfig {
                             max_gleaning: self.config.max_gleaning,
-                            always_glean: false,
                         }),
                 )
             } else {

@@ -85,6 +85,7 @@ pub(crate) async fn reprocess_one_document(params: ReprocessOneParams<'_>) -> Re
 
     let decision = admit_document_for_reprocess(
         state,
+        tenant_ctx,
         doc_id,
         doc_track_id,
         doc_status,
@@ -700,8 +701,10 @@ async fn enqueue_text_reprocess(
 }
 
 /// Gather live task/deletion/cancel facts and evaluate the admission SSOT.
+#[allow(clippy::too_many_arguments)] // flat facts feeding one pure admission matrix
 pub(super) async fn admit_document_for_reprocess(
     state: &AppState,
+    tenant_ctx: &crate::middleware::TenantContext,
     document_id: &str,
     doc_track_id: Option<&str>,
     status: Option<&str>,
@@ -734,12 +737,24 @@ pub(super) async fn admit_document_for_reprocess(
         _ => false,
     };
 
-    crate::services::evaluate_reprocess_admission(crate::services::ReprocessAdmitContext {
-        status,
-        force,
-        restart_from_scratch,
-        has_active_ingest_task,
-        has_active_deletion_task,
-        cancel_intent,
-    })
+    let tombstoned =
+        crate::services::document_tombstone::is_document_tombstoned(state, tenant_ctx, document_id)
+            .await;
+
+    let decision =
+        crate::services::evaluate_reprocess_admission(crate::services::ReprocessAdmitContext {
+            status,
+            force,
+            restart_from_scratch,
+            has_active_ingest_task,
+            has_active_deletion_task,
+            cancel_intent,
+            tombstoned,
+        });
+
+    // Heal the projection so the row stops advertising Reprocess/Retry.
+    if decision.skip_reason() == Some(crate::services::ReprocessSkipReason::Tombstoned) {
+        crate::services::document_tombstone::flag_delete_incomplete(state, document_id).await;
+    }
+    decision
 }

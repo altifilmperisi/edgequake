@@ -239,8 +239,8 @@ pub use page_state_storage::{
 };
 pub use pdf_storage::{
     calculate_pdf_checksum, validate_pdf_data, CreatePdfRequest, DocumentStatsUpdate,
-    ExtractionMethod, ListPdfFilter, PdfDocument, PdfDocumentStorage, PdfList, PdfProcessingStatus,
-    UpdatePdfProcessingRequest,
+    ExtractionMethod, ListPdfFilter, PdfBlobInfo, PdfDocument, PdfDocumentStorage, PdfList,
+    PdfProcessingStatus, UpdatePdfProcessingRequest,
 };
 #[cfg(feature = "postgres")]
 pub use projection::{

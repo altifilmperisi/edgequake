@@ -23,19 +23,15 @@ import {
     type CategorizedError,
 } from '@/lib/error-categories';
 import {
-    AlertCircle,
-    Brain,
-    Check,
-    ClipboardCopy,
-    Cpu,
-    Database,
-    FileWarning,
-    Lightbulb,
-    RefreshCw,
-    RotateCcw,
-    Wifi,
+  AlertCircle,
+  Check,
+  ClipboardCopy,
+  Lightbulb,
+  RefreshCw,
+  RotateCcw,
 } from 'lucide-react';
 import { useCallback, useMemo, useState } from 'react';
+import { getCategoryIconComponent } from './error-category-icon';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
@@ -88,24 +84,7 @@ export function ErrorMessagePopover({
     [categorized.category]
   );
 
-  // Get the appropriate icon component for the category
-  const CategoryIcon = useMemo(() => {
-    switch (categorized.category) {
-      case 'llm':
-      case 'llm_timeout':
-        return Brain;
-      case 'embedding':
-        return Cpu;
-      case 'storage':
-        return Database;
-      case 'pipeline':
-        return FileWarning;
-      case 'network':
-        return Wifi;
-      default:
-        return AlertCircle;
-    }
-  }, [categorized.category]);
+  const CategoryIcon = getCategoryIconComponent(categorized.category);
 
   const handleCopy = useCallback(async () => {
     try {
@@ -231,7 +210,8 @@ export function ErrorMessagePopover({
               )}
             </Button>
 
-            {onRetry && (
+            {/* No Retry for deterministic lifecycle conflicts (e.g. already deleted). */}
+            {onRetry && categorized.retryable && (
               <Button
                 variant="ghost"
                 size="sm"

@@ -1171,3 +1171,170 @@ async fn issue304_interrupted_pdf_force_entities_enqueues_full_pg() {
     let _ = _guard;
     println!("✅ ISSUE-304 Interrupted PDF → Full PdfProcessing (PostgreSQL): PASSED");
 }
+
+// ============================================================================
+// Incident: tombstoned-but-visible document must be refused BEFORE any work
+// ============================================================================
+
+/// Metadata → (tenant TenantContext) for authority reads.
+fn tenant_ctx_for(meta: &Value) -> edgequake_api::TenantContext {
+    edgequake_api::TenantContext {
+        tenant_id: meta
+            .get("tenant_id")
+            .and_then(|v| v.as_str())
+            .map(str::to_string),
+        workspace_id: meta
+            .get("workspace_id")
+            .and_then(|v| v.as_str())
+            .map(str::to_string),
+        user_id: None,
+    }
+}
+
+/// Reproduces the 2026-10 incident: a delete tombstones the document, the
+/// physical cascade fails (row stays, status reads `failed`), then the user hits
+/// Reprocess. Before the fix this was admitted and burned ~50 min of LLM spend
+/// before the persist gate said "cannot ingest into a tombstoned document".
+#[tokio::test]
+async fn tombstoned_document_is_refused_at_admission_and_worker_pg() {
+    use edgequake_storage::contracts::{
+        AccessScope, DeleteDocument, DocumentId, TenantId, WorkspaceId,
+    };
+
+    let _serial = db_test_serial().await;
+    let pool = require_postgres!();
+    let state = create_postgres_test_state(&pool).await;
+    let server = Server::new(create_test_config(), state.clone());
+    let app = server.build_router();
+
+    let doc_id = upload_and_process(
+        &state,
+        &app,
+        "Doomed Document PG",
+        "Alice works at Acme. Bob manages Alice at Acme in Paris.",
+    )
+    .await;
+    let meta_key = format!("{doc_id}-metadata");
+    let kv = &state.storage.kv_storage;
+    let meta = kv
+        .get_by_id(&meta_key)
+        .await
+        .unwrap()
+        .expect("metadata after ingest");
+    let tenant_ctx = tenant_ctx_for(&meta);
+    let tenant = Uuid::parse_str(tenant_ctx.tenant_id.as_deref().expect("tenant")).unwrap();
+    let workspace = Uuid::parse_str(tenant_ctx.workspace_id.as_deref().expect("ws")).unwrap();
+
+    // Phase 1 of delete only: irreversible tombstone. (Phase 2 "failed": rows stay.)
+    let scope = AccessScope::new(TenantId::new(tenant), WorkspaceId::new(workspace));
+    let document = DocumentId::new(Uuid::parse_str(&doc_id).unwrap());
+    let revision = state
+        .document_reader
+        .as_ref()
+        .unwrap()
+        .get_many(&scope, &[document])
+        .await
+        .unwrap()
+        .into_iter()
+        .next()
+        .flatten()
+        .map(|v| v.revision)
+        .unwrap_or(0);
+    state
+        .lifecycle_committer
+        .as_ref()
+        .unwrap()
+        .tombstone_document(&DeleteDocument {
+            scope,
+            document_id: document,
+            expected_revision: revision,
+            idempotency_key: format!("incident:{doc_id}"),
+            command_digest: [7u8; 32],
+        })
+        .await
+        .expect("tombstone");
+
+    // The stale projection the user saw: a plain reprocessable `failed`.
+    let mut stale = meta.clone();
+    stale["status"] = json!("failed");
+    stale["current_stage"] = json!("failed");
+    kv.upsert(&[(meta_key.clone(), stale)]).await.unwrap();
+
+    assert!(
+        edgequake_api::services::document_tombstone::is_document_tombstoned(
+            &state,
+            &tenant_ctx,
+            &doc_id
+        )
+        .await,
+        "authority must report the tombstone"
+    );
+
+    // 1) Admission: refused with an explicit reason even with force.
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/documents/reprocess")
+                .header("Content-Type", "application/json")
+                .header("X-Tenant-ID", tenant.to_string())
+                .header("X-Workspace-ID", workspace.to_string())
+                .body(Body::from(
+                    json!({"document_id": doc_id, "force": true}).to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let body = extract_json(response).await;
+    assert_eq!(
+        body["requeued"], 0,
+        "tombstoned doc must not be requeued: {body}"
+    );
+    assert_eq!(body["skip_reasons"]["tombstoned"], 1, "{body}");
+
+    // ...and the projection is healed so the row stops offering Reprocess.
+    let healed = kv.get_by_id(&meta_key).await.unwrap().unwrap();
+    assert_eq!(healed["status"], "delete_failed");
+    assert_eq!(healed["failure_class"], "document_deleted");
+
+    // 2) Worker pre-flight: a task that slipped in (retry/recovery/old queue row)
+    //    fails at t=0, typed + permanent, and leaves the row delete_failed.
+    let mut stale_again = healed.clone();
+    stale_again["status"] = json!("processing");
+    kv.upsert(&[(meta_key.clone(), stale_again)]).await.unwrap();
+    let mut task = edgequake_tasks::Task::new(
+        tenant,
+        workspace,
+        edgequake_tasks::TaskType::PdfProcessing,
+        json!({"existing_document_id": doc_id, "pdf_id": Uuid::new_v4().to_string()}),
+    );
+    let processor = edgequake_api::DocumentTaskProcessor::new(
+        Arc::clone(&state.query.pipeline),
+        Arc::clone(&state.query.llm_provider),
+        Arc::clone(&state.storage.kv_storage),
+        Arc::clone(&state.storage.vector_storage),
+        Arc::clone(&state.storage.vector_registry),
+        Arc::clone(&state.storage.graph_storage),
+        edgequake_tasks::PipelineState::default(),
+    )
+    .with_app_state(state.clone());
+    let err = edgequake_tasks::TaskProcessor::process(
+        &processor,
+        &mut task,
+        tokio_util::sync::CancellationToken::new(),
+    )
+    .await
+    .expect_err("tombstoned document must fail the task immediately");
+    let msg = err.to_string();
+    assert_eq!(
+        edgequake_tasks::classify_ingestion_failure(&msg),
+        edgequake_tasks::IngestionFailureClass::DocumentDeleted,
+        "{msg}"
+    );
+    assert!(edgequake_tasks::is_permanent_ingestion_failure(&msg));
+    let after = kv.get_by_id(&meta_key).await.unwrap().unwrap();
+    assert_eq!(after["status"], "delete_failed", "guard heals stale status");
+    println!("✅ Tombstoned document refused at admission + worker (PostgreSQL): PASSED");
+}

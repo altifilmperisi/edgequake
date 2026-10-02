@@ -17,6 +17,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import type { LucideIcon } from 'lucide-react';
 import { Minus, TrendingDown, TrendingUp } from 'lucide-react';
+import Link from 'next/link';
 
 export type StatsCardVariant = 'documents' | 'entities' | 'relationships' | 'types' | 'default';
 
@@ -36,6 +37,8 @@ interface StatsCardProps {
   variant?: StatsCardVariant;
   /** LS-03: Optional hint shown when value is 0 — guides new users. */
   zeroHint?: string;
+  /** Makes the whole card a link to where the number comes from. */
+  href?: string;
 }
 
 const variantStyles: Record<StatsCardVariant, string> = {
@@ -73,6 +76,7 @@ export function StatsCard({
   className,
   variant = 'default',
   zeroHint,
+  href,
 }: StatsCardProps) {
   if (isLoading) {
     return (
@@ -93,7 +97,7 @@ export function StatsCard({
 
   const TrendIcon = trend?.isPositive ? TrendingUp : trend?.value === 0 ? Minus : TrendingDown;
 
-  return (
+  const card = (
     <Card
       data-testid="stats-card"
       data-variant={variant}
@@ -105,12 +109,13 @@ export function StatsCard({
         // without kinetic noise.
         'relative overflow-hidden transition-all duration-200 border-0 shadow-sm',
         'hover:shadow-md',
-        'focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2',
+        // The link (when present) owns the focus ring; avoid a double ring.
+        !href && 'focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2',
         variantStyles[variant],
         className
       )}
     >
-      <CardContent className="p-4">
+      <CardContent className="p-3 sm:p-4">
         <div className="flex items-center justify-between gap-3">
           <div className="space-y-1 min-w-0 flex-1">
             <p className="text-xs font-medium text-muted-foreground truncate">
@@ -154,7 +159,7 @@ export function StatsCard({
           </div>
           <div 
             className={cn(
-              'flex h-11 w-11 items-center justify-center rounded-lg flex-shrink-0',
+              'flex h-9 w-9 sm:h-11 sm:w-11 items-center justify-center rounded-lg flex-shrink-0',
               'transition-transform duration-200 group-hover:scale-105',
               variantIconBg[variant]
             )}
@@ -168,5 +173,16 @@ export function StatsCard({
         <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-current to-transparent opacity-20" />
       )}
     </Card>
+  );
+
+  if (!href) return card;
+  return (
+    <Link
+      href={href}
+      aria-label={`${title}: ${typeof value === 'number' ? value.toLocaleString() : value}`}
+      className="block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+    >
+      {card}
+    </Link>
   );
 }

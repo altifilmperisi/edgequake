@@ -17,7 +17,8 @@ pub use conversation::{
     CreateConversationRequest, CreateFolderRequest, CreateMessageRequest, Folder, ImportError,
     ImportResult, Message, MessageContext, MessageContextEntity, MessageContextRelationship,
     MessageRole, MessageSource, PaginatedConversations, PaginatedMessages, PaginationMeta,
-    UpdateConversationRequest, UpdateFolderRequest, UpdateMessageRequest,
+    SetMessageFeedbackRequest, UpdateConversationRequest, UpdateFolderRequest,
+    UpdateMessageRequest,
 };
 pub use document::{Document, DocumentStatus};
 pub use embedding::{DimensionMismatch, Embedding, EmbeddingConfig};

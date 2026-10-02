@@ -11,6 +11,7 @@
  * - Storage: Database errors, connection issues
  * - Pipeline: Parse failures, chunk issues, content validation
  * - Network: Timeout, connection refused
+ * - Lifecycle: Document was deleted (tombstoned) — retry can never succeed
  * - Unknown: Uncategorized errors
  */
 
@@ -21,6 +22,7 @@ export type ErrorCategory =
   | "storage"
   | "pipeline"
   | "network"
+  | "lifecycle"
   | "unknown";
 
 export interface CategorizedError {
@@ -32,6 +34,12 @@ export interface CategorizedError {
   summary: string;
   /** Whether the error is likely transient (retryable) */
   isTransient: boolean;
+  /**
+   * Whether offering a Retry/Reprocess action makes sense at all. False for
+   * deterministic lifecycle conflicts (e.g. document already deleted) where
+   * every retry fails identically and only burns LLM spend.
+   */
+  retryable: boolean;
   /** Suggested action for the user */
   suggestion: string;
   /** Original error message for technical details */
@@ -42,10 +50,27 @@ interface ErrorPattern {
   category: ErrorCategory;
   patterns: RegExp[];
   isTransient: boolean;
+  /** Defaults to true; set false when retrying can never help. */
+  retryable?: boolean;
   suggestion: string;
 }
 
 const ERROR_PATTERNS: ErrorPattern[] = [
+  // Lifecycle conflict — MUST precede storage ("Storage error: Conflict: …").
+  // The document is tombstoned: the delete is irreversible, so ingest can never
+  // succeed. Mislabelling this as a transient DB outage invited futile retries.
+  {
+    category: "lifecycle",
+    patterns: [
+      /tombstoned/i,
+      /was deleted but its cleanup/i,
+      /failure_class=document_deleted/i,
+    ],
+    isTransient: false,
+    retryable: false,
+    suggestion:
+      "This document was deleted but the cleanup never finished, so it can't be processed again. Delete it to finish the cleanup, then re-upload the file.",
+  },
   // LLM Rate Limit Errors
   {
     category: "llm",
@@ -226,6 +251,7 @@ const CATEGORY_LABELS: Record<ErrorCategory, string> = {
   storage: "Database",
   pipeline: "Processing",
   network: "Network",
+  lifecycle: "Deleted document",
   unknown: "Unknown",
 };
 
@@ -251,6 +277,7 @@ export function categorizeError(message: string): CategorizedError {
           categoryLabel: CATEGORY_LABELS[pattern.category],
           summary: extractSummary(message),
           isTransient: pattern.isTransient,
+          retryable: pattern.retryable ?? true,
           suggestion: pattern.suggestion,
           originalMessage: message,
         };
@@ -264,6 +291,7 @@ export function categorizeError(message: string): CategorizedError {
     categoryLabel: CATEGORY_LABELS.unknown,
     summary: extractSummary(message),
     isTransient: false,
+    retryable: true,
     suggestion: "Check the error details and try again.",
     originalMessage: message,
   };
@@ -304,6 +332,8 @@ export function getCategoryIcon(category: ErrorCategory): string {
       return "FileWarning";
     case "network":
       return "Wifi";
+    case "lifecycle":
+      return "Trash2";
     case "unknown":
     default:
       return "AlertCircle";
@@ -349,6 +379,12 @@ export function getCategoryColor(category: ErrorCategory): {
         bg: "bg-cyan-50 dark:bg-cyan-950/50",
         text: "text-cyan-700 dark:text-cyan-400",
         border: "border-cyan-200 dark:border-cyan-800",
+      };
+    case "lifecycle":
+      return {
+        bg: "bg-slate-50 dark:bg-slate-900/50",
+        text: "text-slate-700 dark:text-slate-300",
+        border: "border-slate-200 dark:border-slate-700",
       };
     case "unknown":
     default:

@@ -8,7 +8,10 @@
 "use client";
 
 import { AdmissionPhaseRow } from "@/components/documents/admission-phase-row";
-import { PhaseStrip } from "@/components/documents/phase-strip";
+import {
+  PhaseStrip,
+  type PhaseStripProgress,
+} from "@/components/documents/phase-strip";
 import { cn } from "@/lib/utils";
 import type { IngestionRunView } from "@/lib/pipeline/ingestion-run-view";
 import {
@@ -26,7 +29,32 @@ interface ServerStageStepperProps {
    * `wire`: full UnifiedStage chips (Pipeline / Details).
    */
   variant?: "phases" | "wire";
+  /**
+   * Headline already painted by the parent card. When it already contains the
+   * step detail sentence, the detail box is kept for assistive tech but not
+   * painted a second time.
+   */
+  headlineText?: string;
+  /**
+   * `phases` variant only: paint the strip as the progress bar itself
+   * (segmented) instead of chips with a separate meter.
+   */
+  phaseProgress?: PhaseStripProgress;
   className?: string;
+}
+
+/** True when the visible headline already says everything the detail box would. */
+export function isDetailRedundantWithHeadline(
+  headlineText: string | undefined,
+  detailLine: string | null | undefined,
+): boolean {
+  if (!headlineText || !detailLine) return false;
+  const normalize = (s: string) => s.toLowerCase().replace(/[\s·]+/g, "");
+  const headline = normalize(headlineText);
+  const detail = normalize(detailLine);
+  if (!headline || !detail) return false;
+  // Detail is often "<headline> · 3%": the percentage lives in the meter row.
+  return headline.includes(detail) || detail.includes(headline);
 }
 
 function statusClasses(status: StageStepStatus): string {
@@ -67,6 +95,8 @@ export function ServerStageStepper({
   run,
   hideSkipped = false,
   variant = "phases",
+  headlineText,
+  phaseProgress,
   className,
 }: ServerStageStepperProps) {
   const timeline = buildStageTimeline(run);
@@ -80,6 +110,10 @@ export function ServerStageStepper({
       s.status === "cancelled",
   );
   const detailLine = formatStepDetailLine(active?.detail);
+  const detailRedundant = isDetailRedundantWithHeadline(
+    headlineText,
+    active ? `${active.label} ${detailLine ?? ""}` : detailLine,
+  );
   const admissionPhase = timeline.admissionPhase;
   const isCancelTerminal =
     run.stageStatus === "cancelled" ||
@@ -105,7 +139,7 @@ export function ServerStageStepper({
       ) : null}
 
       {variant === "phases" ? (
-        <PhaseStrip run={run} />
+        <PhaseStrip run={run} progress={phaseProgress} />
       ) : (
       <div className="flex flex-wrap items-center gap-1.5 text-xs">
         {steps.map((step) => (
@@ -139,6 +173,7 @@ export function ServerStageStepper({
         <div
           className={cn(
             "rounded-md border px-2 py-1.5 text-xs tabular-nums",
+            detailRedundant && active.status !== "failed" && "sr-only",
             active.status === "failed"
               ? "border-rose-200 bg-rose-50/80 text-rose-800 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200"
               : "border-sky-200/80 bg-sky-50/60 text-sky-900 dark:border-sky-900 dark:bg-sky-950/30 dark:text-sky-100",

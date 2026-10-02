@@ -22,6 +22,10 @@ export interface QueryMessage {
   timestamp?: number;
   llmProvider?: string;
   llmModel?: string;
+  /** Client-side: stream was aborted with partial content */
+  stopped?: boolean;
+  /** Persisted thumbs feedback (SPEC-155 B2) */
+  feedbackRating?: "up" | "down" | null;
 }
 
 export interface AttachedImage {

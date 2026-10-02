@@ -37,6 +37,10 @@ export interface DocumentPreviewRightPanelProps {
   onViewInGraph: (doc: Document) => void;
   /** Handler for view full document action */
   onViewFull: (doc: Document) => void;
+  /** Handler for cancelling in-flight work */
+  onCancel?: (doc: Document) => void;
+  /** Whether a cancel request is in flight */
+  isCancelling?: boolean;
   /** Whether delete is in progress */
   isDeleting: boolean;
   /** Whether reprocess is in progress */
@@ -59,6 +63,8 @@ export function DocumentPreviewRightPanel({
   selectedDocument,
   onDelete,
   onReprocess,
+  onCancel,
+  isCancelling = false,
   onViewInGraph,
   onViewFull,
   isDeleting,
@@ -106,6 +112,8 @@ export function DocumentPreviewRightPanel({
             onClose();
           }}
           onReprocess={onReprocess}
+          onCancel={onCancel}
+          isCancelling={isCancelling}
           onViewFull={onViewFull}
           onViewInGraph={onViewInGraph}
           isDeleting={isDeleting}

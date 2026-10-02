@@ -308,3 +308,105 @@ async fn e2e_p7b_parallel_unique_entity_merge_correct() {
         );
     }
 }
+
+// ---------------------------------------------------------------------------
+// Ingestion perf: merge fan-out is provider-scoped and actually parallel.
+// ---------------------------------------------------------------------------
+
+/// Merge backend with injected per-call latency (models a cloud LLM round trip).
+struct LatencyMergeBackend {
+    delay: std::time::Duration,
+    calls: AtomicUsize,
+}
+
+#[async_trait]
+impl DescriptionMergeBackend for LatencyMergeBackend {
+    async fn merge_entity_descriptions(
+        &self,
+        _entity_name: &str,
+        descriptions: &[String],
+    ) -> PipelineResult<String> {
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        tokio::time::sleep(self.delay).await;
+        Ok(format!("LLM_ENTITY({})", descriptions.len()))
+    }
+
+    async fn merge_relationship_descriptions(
+        &self,
+        _source: &str,
+        _target: &str,
+        descriptions: &[String],
+    ) -> PipelineResult<String> {
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        tokio::time::sleep(self.delay).await;
+        Ok(format!("LLM_REL({})", descriptions.len()))
+    }
+}
+
+/// Seed `n` entities then update them all so every one needs an LLM summary
+/// (force threshold = 2 fragments); returns wall-clock of the update pass.
+async fn timed_llm_update_pass(merge_max_async: usize, n: usize) -> std::time::Duration {
+    let backend = Arc::new(LatencyMergeBackend {
+        delay: std::time::Duration::from_millis(40),
+        calls: AtomicUsize::new(0),
+    });
+    let graph = Arc::new(MemoryGraphStorage::new("perf-merge"));
+    let vector = Arc::new(MemoryVectorStorage::new("perf-merge", EMBED_DIM));
+    graph.initialize().await.unwrap();
+    vector.initialize().await.unwrap();
+    let config = MergerConfig {
+        force_llm_summary_on_merge: 2,
+        merge_max_async,
+        ..base_config()
+    };
+    let merger =
+        KnowledgeGraphMerger::new(config, graph, vector).with_merge_backend(backend.clone());
+
+    let mut seed = ExtractionResult::new("seed");
+    let mut update = ExtractionResult::new("update");
+    for i in 0..n {
+        seed.entities.push(entity(
+            &format!("Perf{i}"),
+            &format!("perf {i} seed"),
+            "seed",
+        ));
+        update.entities.push(entity(
+            &format!("Perf{i}"),
+            &format!("perf {i} distinct update"),
+            "update",
+        ));
+    }
+    merger.merge(vec![seed]).await.unwrap();
+    let start = std::time::Instant::now();
+    merger.merge(vec![update]).await.unwrap();
+    let elapsed = start.elapsed();
+    assert_eq!(
+        backend.calls.load(Ordering::SeqCst),
+        n,
+        "every updated entity must be LLM-summarized exactly once"
+    );
+    elapsed
+}
+
+#[tokio::test]
+async fn e2e_perf_parallel_llm_merge_scales_with_fanout() {
+    let serial = timed_llm_update_pass(1, 16).await;
+    let parallel = timed_llm_update_pass(8, 16).await;
+    assert!(
+        parallel * 3 < serial,
+        "8-way merge should be >3x faster than serial: serial={serial:?} parallel={parallel:?}"
+    );
+}
+
+/// Fan-out follows the LLM that serves the merge — not the process default.
+#[test]
+fn contract_merge_fanout_is_scoped_to_serving_provider() {
+    let requested = MergerConfig {
+        merge_max_async: 8,
+        ..MergerConfig::default()
+    };
+    assert_eq!(requested.clone().for_provider("mistral").merge_max_async, 8);
+    assert_eq!(requested.clone().for_provider("openai").merge_max_async, 8);
+    assert_eq!(requested.clone().for_provider("ollama").merge_max_async, 2);
+    assert_eq!(requested.for_provider("lmstudio").merge_max_async, 2);
+}

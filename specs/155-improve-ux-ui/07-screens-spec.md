@@ -66,20 +66,32 @@ export menu; LifecycleBadge DRY; humanise ErrorContent. Finding P05.
 
 ## Query `/query`
 
-**WHY:** Ask → streamed grounded answer.
+**WHY:** Ask → streamed grounded answer that can be verified and continued.
 
 ```text
-  Composer always enabled (Stop cancels)
-  Modes: segmented ≤4 primary + "More"  OR  basic/advanced (SPEC-029 PD-02)
-  History: drawer below lg; panel at lg+
-  Message: [Show on graph] when subgraph present
+  Header: title · history toggle · settings (no mode strip)
+  Messages: unboxed answer · stage timeline · early source chips · actions
+  Composer card: attach · scope · mode menu (Smart default) · model · Send/Stop
+  History: drawer < xl · docked panel xl+ · date groups · search all
 ```
 
-| State | Streaming · stop · error with retry · empty suggestions (no glow) |
+| State | Idle · Retrieving · Reading · Writing · Stopped · Failed · Complete · Empty |
 
-**Code:** remove `disabled={isLoading}` on textarea; `isComposing` guard;
-demote aria-live to status region not full log; remove gradient chrome;
-wire W6 button. Findings Q01–Q06.
+**Behaviour (W7Q):**
+- Composer always enabled; Enter while streaming queues; Esc/Stop keeps partial.
+- StageTimeline from `stage`/`thinking` SSE; source chips on `context` before tokens.
+- One `role="status"` live region (stage + completion only) — not `role="log"` on list.
+- CitationPopover on hover/focus; keyboard-complete Sources; no 7.5rem dead slot.
+- Inline ErrorState + Retry; failed/stopped turns persist.
+- ModeMenu in composer (outcome labels); drafts per conversation; `/` and `@` shortcuts.
+- History: date groups, all-conversation search, undo delete, single mount, roving focus.
+- Empty: no gradient; corpus-derived suggestions; first-run when zero docs.
+
+**Code modules:** `composer/`, `message/`, `citations/`, `history/`,
+`lib/query/build-chat-request`, `stream-session-reducer`, `conversation-recovery`,
+`hooks/use-query-stream-session`, `use-stick-to-bottom`.
+
+Findings Q01–Q27. Backend: Stage SSE (B1), message feedback (B2), abort partial (B3).
 
 ## Graph `/graph`
 

@@ -17,6 +17,7 @@
 //! | `completed` / `indexed`         | Skip    | Admit        | Admit        |
 //! | `deleting` / active deletion    | Skip‡   | Skip‡        | Skip‡        |
 //! | `delete_failed`                 | Skip‡   | Skip‡        | Skip‡        |
+//! | tombstoned (P0 authority)       | Skip‡   | Skip‡        | Skip‡        |
 //! | cancel intent (not yet terminal)| Skip‡   | Skip‡        | Skip‡        |
 //!
 //! † Full restart cancels/purges the ingest task before requeue.
@@ -35,6 +36,9 @@ pub enum ReprocessSkipReason {
     DeletingInProgress,
     /// Previous delete failed mid-cascade — must finish/reset delete first.
     DeleteFailed,
+    /// P0 authority tombstoned the document (irreversible); only finishing the
+    /// delete or a fresh upload can follow. The status projection may lag.
+    Tombstoned,
     /// Cancel intent is active; wait for terminal `cancelled`.
     CancellingInProgress,
     /// Targeted document_id was not found in scoped metadata.
@@ -52,6 +56,7 @@ impl ReprocessSkipReason {
             Self::AlreadyProcessing => "already_processing",
             Self::DeletingInProgress => "deleting_in_progress",
             Self::DeleteFailed => "delete_failed",
+            Self::Tombstoned => "tombstoned",
             Self::CancellingInProgress => "cancelling_in_progress",
             Self::NotFound => "not_found",
             Self::GraphCleanupFailed => "graph_cleanup_failed",
@@ -101,6 +106,9 @@ pub struct ReprocessAdmitContext<'a> {
     pub has_active_deletion_task: bool,
     /// Cancellation registry has intent for the document's track_id.
     pub cancel_intent: bool,
+    /// P0 authority says the document is tombstoned (irreversible), regardless
+    /// of what the `status` projection currently claims.
+    pub tombstoned: bool,
 }
 
 /// Statuses that are terminal for ingest and recoverable via reprocess.
@@ -149,6 +157,12 @@ pub fn evaluate_reprocess_admission(ctx: ReprocessAdmitContext<'_>) -> Reprocess
     // 1) Active deletion task always wins (status may lag).
     if ctx.has_active_deletion_task {
         return ReprocessAdmitDecision::Skip(ReprocessSkipReason::DeletingInProgress);
+    }
+
+    // 1b) Authority tombstone beats any projection status — ingest can never
+    //     succeed, so refuse before spending PDF/LLM budget (ignore force).
+    if ctx.tombstoned {
+        return ReprocessAdmitDecision::Skip(ReprocessSkipReason::Tombstoned);
     }
 
     // 2) Lifecycle-exclusive statuses — fail closed, ignore force.
@@ -239,6 +253,7 @@ mod tests {
             has_active_ingest_task: ingest,
             has_active_deletion_task: deletion,
             cancel_intent: cancel,
+            tombstoned: false,
         }
     }
 
@@ -248,6 +263,19 @@ mod tests {
             assert!(
                 evaluate_reprocess_admission(ctx(Some(s), false, false, false, false, false))
                     .is_admit()
+            );
+        }
+    }
+
+    #[test]
+    fn tombstoned_is_skipped_for_every_status_even_with_force_full() {
+        for status in ["failed", "cancelled", "completed", "processing", "pending"] {
+            let mut c = ctx(Some(status), true, true, false, false, false);
+            c.tombstoned = true;
+            assert_eq!(
+                evaluate_reprocess_admission(c),
+                ReprocessAdmitDecision::Skip(ReprocessSkipReason::Tombstoned),
+                "status={status}"
             );
         }
     }

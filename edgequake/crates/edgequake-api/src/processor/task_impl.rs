@@ -17,6 +17,10 @@ impl TaskProcessor for DocumentTaskProcessor {
         cancel_token: CancellationToken,
         fairness: Option<edgequake_tasks::FairnessPermit>,
     ) -> TaskResult<serde_json::Value> {
+        // Fail at t=0 (not after 50 min of LLM spend) if the document was tombstoned.
+        if let Some(error) = self.reject_if_document_tombstoned(task).await {
+            return Err(error);
+        }
         let ports = self.installed_operational_ports();
         crate::services::relational_sidecar_store::with_ports(ports, async {
             match task.task_type {
@@ -108,17 +112,7 @@ impl TaskProcessor for DocumentTaskProcessor {
         // Extract document_id from task_data to update document status.
         // For PdfProcessing tasks, it's in existing_document_id.
         // For Insert/Upload tasks, it's in metadata.document_id.
-        let document_id = task
-            .task_data
-            .get("existing_document_id")
-            .and_then(|v| v.as_str())
-            .or_else(|| {
-                task.task_data
-                    .get("metadata")
-                    .and_then(|m| m.get("document_id"))
-                    .and_then(|v| v.as_str())
-            })
-            .map(|s| s.to_string());
+        let document_id = super::deleted_document_guard::task_document_id(task);
 
         error!(
             task_id = %task.track_id,
@@ -138,8 +132,17 @@ impl TaskProcessor for DocumentTaskProcessor {
             0.0,
         );
 
+        // Tombstoned document: keep it `delete_failed` (not a retryable-looking `failed`).
+        let handled_as_deleted = match document_id {
+            Some(ref doc_id) => {
+                self.handle_deleted_document_failure(doc_id, error_msg)
+                    .await
+            }
+            None => false,
+        };
+
         // Update document metadata to "failed" with the actual error message
-        if let Some(ref doc_id) = document_id {
+        if let (false, Some(ref doc_id)) = (handled_as_deleted, &document_id) {
             let failure_msg = format!(
                 "Processing failed permanently after {} attempts. {}",
                 task.retry_count, error_msg

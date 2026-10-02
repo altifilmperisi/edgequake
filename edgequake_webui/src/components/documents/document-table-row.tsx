@@ -161,7 +161,7 @@ export interface DocumentTableRowProps {
   /** SPEC-151: open partial page reprocess dialog */
   onReprocessPages?: (doc: Document) => void;
   /** Called when Cancel action is triggered */
-  onCancel: (trackId: string) => void;
+  onCancel: (doc: Document) => void;
   /** Called when Delete action is triggered */
   onDelete: (docId: string) => void;
   /** Whether a retry operation is pending */
@@ -330,7 +330,7 @@ export const DocumentTableRow = memo(function DocumentTableRow({
       </TableCell>
 
       {/* Last Updated Date — shows when doc was last reprocessed/rebuilt */}
-      <TableCell className="max-w-0 overflow-hidden text-muted-foreground">
+      <TableCell className="max-w-0 overflow-hidden text-muted-foreground @max-2xl:hidden">
         {(doc.updated_at || doc.processed_at) ? (
           <span
             className="block truncate whitespace-nowrap"

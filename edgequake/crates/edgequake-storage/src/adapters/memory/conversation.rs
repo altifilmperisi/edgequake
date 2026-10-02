@@ -254,6 +254,9 @@ impl MemoryConversationStorage {
             is_error,
             llm_provider: None,
             llm_model: None,
+            feedback_rating: None,
+            feedback_reason: None,
+            finish_reason: None,
             created_at: now,
             updated_at: now,
         };
@@ -277,6 +280,7 @@ impl MemoryConversationStorage {
         is_error: Option<bool>,
         llm_provider: Option<&str>,
         llm_model: Option<&str>,
+        finish_reason: Option<&str>,
     ) -> Result<MessageRow> {
         let mut messages = self.messages.write().map_err(map_lock_err)?;
         let row = messages
@@ -309,6 +313,31 @@ impl MemoryConversationStorage {
         if let Some(m) = llm_model {
             row.llm_model = Some(m.to_string());
         }
+        if let Some(fr) = finish_reason {
+            row.finish_reason = Some(fr.to_string());
+        }
+        row.updated_at = Utc::now();
+        Ok(row.clone())
+    }
+
+    pub async fn update_message_feedback(
+        &self,
+        conversation_id: Uuid,
+        message_id: Uuid,
+        feedback_rating: Option<&str>,
+        feedback_reason: Option<&str>,
+    ) -> Result<MessageRow> {
+        let mut messages = self.messages.write().map_err(map_lock_err)?;
+        let row = messages
+            .get_mut(&message_id)
+            .ok_or_else(|| StorageError::NotFound(format!("Message {message_id} not found")))?;
+        if row.conversation_id != conversation_id {
+            return Err(StorageError::NotFound(format!(
+                "Message {message_id} not found in conversation {conversation_id}"
+            )));
+        }
+        row.feedback_rating = feedback_rating.map(str::to_string);
+        row.feedback_reason = feedback_reason.map(str::to_string);
         row.updated_at = Utc::now();
         Ok(row.clone())
     }
@@ -640,6 +669,7 @@ impl ConversationStorage for MemoryConversationStorage {
         is_error: Option<bool>,
         llm_provider: Option<&str>,
         llm_model: Option<&str>,
+        finish_reason: Option<&str>,
     ) -> Result<MessageRow> {
         MemoryConversationStorage::update_message(
             self,
@@ -653,6 +683,24 @@ impl ConversationStorage for MemoryConversationStorage {
             is_error,
             llm_provider,
             llm_model,
+            finish_reason,
+        )
+        .await
+    }
+
+    async fn update_message_feedback(
+        &self,
+        conversation_id: Uuid,
+        message_id: Uuid,
+        feedback_rating: Option<&str>,
+        feedback_reason: Option<&str>,
+    ) -> Result<MessageRow> {
+        MemoryConversationStorage::update_message_feedback(
+            self,
+            conversation_id,
+            message_id,
+            feedback_rating,
+            feedback_reason,
         )
         .await
     }

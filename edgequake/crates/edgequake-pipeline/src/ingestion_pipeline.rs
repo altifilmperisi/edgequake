@@ -263,10 +263,7 @@ pub fn build_ingestion_pipeline(
                 .with_language(language)
                 .with_reasoning_effort(effort)
                 .with_extraction_caps(caps)
-                .with_config(GleaningConfig {
-                    max_gleaning,
-                    always_glean: false,
-                }),
+                .with_config(GleaningConfig { max_gleaning }),
         )
     } else {
         base_extractor

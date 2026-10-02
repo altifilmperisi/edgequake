@@ -98,3 +98,42 @@ export function buildDocumentCitationUrl({
   const queryString = params.toString();
   return `${path}${queryString ? `?${queryString}` : ''}`;
 }
+
+/** True when an href is a document viewer deeplink (`/documents/{id}…`). */
+export function isDocumentDeeplink(href: string | undefined | null): boolean {
+  if (!href) return false;
+  try {
+    const path = href.startsWith('http')
+      ? new URL(href).pathname
+      : href.split('?')[0] ?? '';
+    return /^\/documents\//.test(path);
+  } catch {
+    return href.startsWith('/documents/');
+  }
+}
+
+/** Path + search for router.push from a citation href. */
+export function documentPathFromHref(href: string): string {
+  try {
+    if (href.startsWith('http')) {
+      const u = new URL(href);
+      return `${u.pathname}${u.search}`;
+    }
+  } catch {
+    /* fall through */
+  }
+  return href;
+}
+
+/** Parse 1-indexed page from `?page=N` in a citation href. */
+export function parsePageFromHref(href: string): number | undefined {
+  try {
+    const qs = href.includes('?') ? href.slice(href.indexOf('?') + 1) : '';
+    const page = new URLSearchParams(qs).get('page');
+    if (!page) return undefined;
+    const n = Number.parseInt(page, 10);
+    return Number.isFinite(n) && n >= 1 ? n : undefined;
+  } catch {
+    return undefined;
+  }
+}

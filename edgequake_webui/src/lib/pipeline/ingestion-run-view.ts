@@ -15,10 +15,17 @@ import {
   isOrphanAdmissionShell,
   isWaitingStatus,
 } from "./pipeline-document-state";
+import { stalledForMs as computeStalledForMs } from "./run-liveness";
 import {
   loadCancelledFromStage,
   rememberCancelledFromStage,
 } from "./cancelled-active-run-dismiss";
+import {
+  formatPhaseCaption,
+  isRunProgress,
+  synthesizeFromLegacy,
+  type RunProgress,
+} from "./run-progress";
 
 export { bareDocumentId };
 
@@ -74,6 +81,16 @@ export interface IngestionRunView {
    * Used by the timeline to freeze honest progress (INV-10).
    */
   cancelledAtStage?: IngestionRunStage;
+  /**
+   * SPEC-155: set when the run claims to be working but the server has been
+   * silent past STALL_AFTER_MS. UI must not paint it as live progress.
+   */
+  stalledForMs?: number;
+  /**
+   * SPEC-155: typed per-phase ledger (pages/figures/chunks…). Prefer over
+   * message regex + single stage_progress float.
+   */
+  runProgress?: RunProgress | null;
 }
 
 /** Compact ActiveRuns phase strip (IS3) — wire stages collapse into 4 phases. */
@@ -430,6 +447,21 @@ function sourceTypeOf(doc: Document): IngestionRunView["sourceType"] {
   return "unknown";
 }
 
+
+function resolveRunProgress(input: {
+  runProgress?: unknown;
+  stage?: string | null;
+  stageProgress01?: number | null;
+  counts?: { unit?: string; current?: number; total?: number } | null;
+}): RunProgress | null {
+  if (isRunProgress(input.runProgress)) return input.runProgress;
+  return synthesizeFromLegacy({
+    stage: input.stage,
+    stageProgress01: input.stageProgress01,
+    counts: input.counts,
+  });
+}
+
 export type BuildRunViewOpts = {
   hasQueueCoverage?: boolean;
 };
@@ -442,8 +474,10 @@ export function buildIngestionRunView(
   const status = getDocumentDisplayStatus(doc);
 
   // SPEC-050: delete is a terminal operation — feedback zone owns progress,
-  // not the ingest ActiveRuns stepper.
-  if (status === "deleting") {
+  // not the ingest ActiveRuns stepper. A half-finished delete (`delete_failed`)
+  // keeps its old track_id/stage, so without this it masqueraded as a live
+  // "Materialize" run with a meaningless Cancel button.
+  if (status === "deleting" || status === "delete_failed") {
     return null;
   }
 
@@ -582,13 +616,29 @@ export function buildIngestionRunView(
     }
   }
 
+  const stageStatus = stageStatusFor(stage, displayStatus);
+  const silentMs =
+    stageStatus === "active" ? computeStalledForMs(doc.updated_at) : null;
+
+  const runProgress = resolveRunProgress({
+    runProgress: doc.run_progress,
+    stage,
+    stageProgress01: progress01,
+    counts,
+  });
+  const ledgerCaption = formatPhaseCaption(runProgress);
+  if (ledgerCaption && stage !== "queued" && stage !== "cleaning") {
+    displayMessage = ledgerCaption;
+  }
+
   return {
     documentId: doc.id,
     trackId: doc.track_id ?? null,
     filename: doc.file_name || doc.title || doc.id,
     sourceType: sourceTypeOf(doc),
     stage,
-    stageStatus: stageStatusFor(stage, displayStatus),
+    stageStatus,
+    stalledForMs: silentMs ?? undefined,
     message: displayMessage,
     counts,
     progress01,
@@ -598,6 +648,7 @@ export function buildIngestionRunView(
     queuePosition,
     etaSeconds,
     etaBasis: etaBasis ?? undefined,
+    runProgress,
   };
 }
 
@@ -671,6 +722,12 @@ export function buildIngestionRunViewFromProgress(
     mode: opts.mode,
     updatedAt: progress.updated_at,
     cancelledAtStage,
+    runProgress: resolveRunProgress({
+      runProgress: (progress as { run_progress?: unknown }).run_progress,
+      stage,
+      stageProgress01: progress01,
+      counts,
+    }),
   };
 }
 
@@ -794,6 +851,8 @@ export function formatRunHeadline(run: IngestionRunView): string {
       `${stageDisplayName(run.stage)} · ${run.filename}`
     );
   }
+  const ledgerCaption = formatPhaseCaption(run.runProgress);
+  if (ledgerCaption) return ledgerCaption;
   const stage = stageDisplayName(run.stage, run.sourceType);
   if (run.counts) {
     return `${stage} · ${run.counts.current}/${run.counts.total} ${run.counts.unit}`;

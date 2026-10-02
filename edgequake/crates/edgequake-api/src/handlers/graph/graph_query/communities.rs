@@ -56,8 +56,7 @@ pub async fn get_graph_facets(
         }));
     }
 
-    let (_, facets) =
-        workspace_communities_and_facets(&storage.graph_storage, &tenant_ctx).await?;
+    let (_, facets) = workspace_communities_and_facets(&storage.graph_storage, &tenant_ctx).await?;
 
     Ok(Json(facets))
 }
