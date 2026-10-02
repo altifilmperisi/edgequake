@@ -144,18 +144,23 @@ test.describe("Document scope picker — scroll & a11y", () => {
     await page.getByTestId("scope-picker-option").first().click();
     await expect(
       page.getByRole("button", { name: /remove document 001 from scope/i }),
-    ).toBeVisible();
+    ).toBeVisible({ timeout: 15_000 });
 
     // Composer always uses `query-scope-chip` as the popover trigger (no separate Add).
     await page.getByTestId("query-scope-chip").click();
     const list = page.getByTestId("scope-picker-list");
-    await list.waitFor({ state: "visible" });
+    await list.waitFor({ state: "visible", timeout: 15_000 });
+    // Wait for the first page of results to paint before measuring scroll metrics
+    // (CI can open the popover shell before options layout → scrollHeight 0).
+    await expect(page.getByTestId("scope-picker-option")).toHaveCount(20, {
+      timeout: 15_000,
+    });
     await expectScrollable(list);
 
     // shrink-0 footer must remain visible (not clipped by overflow-hidden).
-    await expect(
-      page.getByRole("button", { name: /clear all/i }),
-    ).toBeVisible();
+    await expect(page.getByTestId("scope-picker-clear-all")).toBeVisible({
+      timeout: 10_000,
+    });
     await expect(page.getByText(/1 selected/i)).toBeVisible();
   });
 });

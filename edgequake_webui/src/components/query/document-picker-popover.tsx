@@ -390,6 +390,7 @@ export function DocumentPickerPopover({
                 </span>
                 <button
                   type="button"
+                  data-testid="scope-picker-clear-all"
                   onClick={clearAll}
                   className={cn(
                     'text-xs text-muted-foreground hover:text-destructive',
