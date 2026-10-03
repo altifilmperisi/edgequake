@@ -196,19 +196,25 @@ async fn validate_authorize_request(
 }
 
 fn session_from_cookie(state: &AppState, headers: &HeaderMap) -> Result<Option<Claims>, ApiError> {
-    let Some(cookie_header) = headers.get(header::COOKIE).and_then(|v| v.to_str().ok()) else {
-        return Ok(None);
-    };
-    let token = cookie_header.split(';').find_map(|part| {
-        let part = part.trim();
-        part.strip_prefix(&format!("{AUTH_COOKIE}=")).map(|v| {
-            // Cookie may be URL-encoded by the WebUI.
-            urlencoding::decode(v)
-                .map(|c| c.into_owned())
-                .unwrap_or_else(|_| v.to_string())
-        })
-    });
-    let Some(token) = token.filter(|t| !t.is_empty()) else {
+    let from_cookie = headers
+        .get(header::COOKIE)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|cookie_header| {
+            cookie_header.split(';').find_map(|part| {
+                let part = part.trim();
+                part.strip_prefix(&format!("{AUTH_COOKIE}=")).map(|v| {
+                    urlencoding::decode(v)
+                        .map(|c| c.into_owned())
+                        .unwrap_or_else(|_| v.to_string())
+                })
+            })
+        });
+    let from_bearer = headers
+        .get(header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+        .map(str::to_string);
+    let Some(token) = from_cookie.or(from_bearer).filter(|t| !t.is_empty()) else {
         return Ok(None);
     };
     match state.auth.jwt.verify_token(&token) {

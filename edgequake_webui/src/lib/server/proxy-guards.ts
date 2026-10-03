@@ -11,6 +11,7 @@ export const AUTH_COOKIE = "edgequake_access_token";
 
 export const PUBLIC_PREFIXES = [
   "/login",
+  "/auth/callback", // SPEC-158: SSO landing (single-use ?code= / ?error=)
   "/api",
   "/_next",
   "/favicon",

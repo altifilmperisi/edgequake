@@ -629,7 +629,14 @@ impl AppState {
         }
 
         // Create auth services
-        let auth = AuthRuntime::from_env();
+        // SPEC-158: durable federation store (identities, handoff codes, sessions, providers).
+        let auth = AuthRuntime::from_env().with_federation_store(Arc::new(
+            crate::services::federation::pg_store::PgFederationStore::new(pool.clone()),
+        ));
+        match auth.reload_providers().await {
+            Ok(n) => tracing::info!(providers = n, "SPEC-158 identity providers loaded"),
+            Err(e) => tracing::warn!(error = %e, "SPEC-158 identity provider load failed"),
+        }
 
         // Create PDF storage (SPEC-007) - uses the connection pool
         let pdf_storage: Arc<dyn edgequake_storage::PdfDocumentStorage> =

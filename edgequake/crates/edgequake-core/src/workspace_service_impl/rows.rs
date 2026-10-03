@@ -259,7 +259,15 @@ pub(crate) struct MembershipRow {
     role: String,
     is_active: bool,
     joined_at: chrono::DateTime<chrono::Utc>,
+    /// JSONB bag (SPEC-158: `source`/`provider` mark SSO-managed memberships).
+    metadata: serde_json::Value,
 }
+
+/// Column list matching [`MembershipRow`] (single source of truth for every membership SELECT).
+#[cfg(feature = "postgres")]
+pub(crate) const MEMBERSHIP_COLUMNS: &str =
+    "membership_id, tenant_id, workspace_id, user_id, role, \
+     is_active, joined_at, COALESCE(metadata, '{}'::jsonb) AS metadata";
 
 #[cfg(feature = "postgres")]
 impl MembershipRow {
@@ -272,7 +280,10 @@ impl MembershipRow {
             role: WorkspaceServiceImpl::parse_role(&self.role),
             is_active: self.is_active,
             joined_at: self.joined_at,
-            metadata: HashMap::new(),
+            metadata: match self.metadata {
+                serde_json::Value::Object(map) => map.into_iter().collect(),
+                _ => HashMap::new(),
+            },
         }
     }
 }

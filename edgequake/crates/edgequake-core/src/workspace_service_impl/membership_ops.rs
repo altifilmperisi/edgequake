@@ -8,7 +8,7 @@ use crate::{
 };
 
 #[cfg(feature = "postgres")]
-use super::rows::MembershipRow;
+use super::rows::{MembershipRow, MEMBERSHIP_COLUMNS};
 #[cfg(feature = "postgres")]
 use super::WorkspaceServiceImpl;
 
@@ -20,7 +20,7 @@ impl WorkspaceServiceImpl {
         sqlx::query(
             r#"
             INSERT INTO memberships (membership_id, tenant_id, workspace_id, user_id, role, is_active, joined_at, metadata)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, '{}'::jsonb)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             "#,
         )
         .bind(membership.membership_id)
@@ -30,6 +30,7 @@ impl WorkspaceServiceImpl {
         .bind(membership.role.to_string())
         .bind(membership.is_active)
         .bind(membership.joined_at)
+        .bind(sqlx::types::Json(&membership.metadata))
         .execute(&self.pool)
         .await
         .map_err(|e| Error::internal(format!("Failed to add membership: {}", e)))?;
@@ -38,13 +39,9 @@ impl WorkspaceServiceImpl {
     }
 
     pub(super) async fn pg_get_user_memberships(&self, user_id: Uuid) -> Result<Vec<Membership>> {
-        let rows: Vec<MembershipRow> = sqlx::query_as(
-            r#"
-            SELECT membership_id, tenant_id, workspace_id, user_id, role, is_active, joined_at
-            FROM memberships
-            WHERE user_id = $1
-            "#,
-        )
+        let rows: Vec<MembershipRow> = sqlx::query_as(&format!(
+            "SELECT {MEMBERSHIP_COLUMNS} FROM memberships WHERE user_id = $1"
+        ))
         .bind(user_id)
         .fetch_all(&self.pool)
         .await
@@ -57,13 +54,9 @@ impl WorkspaceServiceImpl {
         &self,
         tenant_id: Uuid,
     ) -> Result<Vec<Membership>> {
-        let rows: Vec<MembershipRow> = sqlx::query_as(
-            r#"
-            SELECT membership_id, tenant_id, workspace_id, user_id, role, is_active, joined_at
-            FROM memberships
-            WHERE tenant_id = $1
-            "#,
-        )
+        let rows: Vec<MembershipRow> = sqlx::query_as(&format!(
+            "SELECT {MEMBERSHIP_COLUMNS} FROM memberships WHERE tenant_id = $1"
+        ))
         .bind(tenant_id)
         .fetch_all(&self.pool)
         .await
@@ -92,9 +85,9 @@ impl WorkspaceServiceImpl {
         }
 
         // Fetch and return updated membership
-        let row: MembershipRow = sqlx::query_as(
-            "SELECT membership_id, tenant_id, workspace_id, user_id, role, is_active, joined_at FROM memberships WHERE membership_id = $1",
-        )
+        let row: MembershipRow = sqlx::query_as(&format!(
+            "SELECT {MEMBERSHIP_COLUMNS} FROM memberships WHERE membership_id = $1"
+        ))
         .bind(membership_id)
         .fetch_one(&self.pool)
         .await

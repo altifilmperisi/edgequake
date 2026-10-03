@@ -704,6 +704,7 @@ make backend-bg
 | `EDGEQUAKE_MIGRATE_LOCK_TIMEOUT` | Optional | Session `lock_timeout` for migrate (SPEC-150; default **5s**) | `5s` |
 | `EDGEQUAKE_MIGRATE_STATEMENT_TIMEOUT` | Optional | Override session `statement_timeout` for migrate (SPEC-150; default per lock_class) | `30s` |
 | `EDGEQUAKE_SERVE_RECONCILE` | Optional | One-release escape hatch: allow serve-time support reconcile (SPEC-150; default **off**) | `1` |
+| `EDGEQUAKE_OIDC_*` (policy) | Optional | SPEC-158 per-provider SSO policy: `KIND`, `SLUG`, `DISPLAY_NAME`, `TRUST_EMAIL`, `LINK_POLICY` (`never`/`verified_email`), `JIT`, `REQUIRE_ORG`, `TENANT_SLUG`, `SCOPES`, `ROLE_CLAIM`, `ROLE_MAP`, `DEFAULT_ROLE`, `MAX_ROLE`, `ALLOWED_HD`, `ALLOWED_TID`. Safest defaults; SSO forces `EDGEQUAKE_STRICT_TENANT_BIND` | `EDGEQUAKE_OIDC_KIND=keycloak` |
 | `OLLAMA_HOST`                  | Optional | Ollama server URL               | `http://localhost:11434`                             |
 | `OLLAMA_EMBEDDING_MODEL`       | Optional | Ollama embedding model          | `embeddinggemma:latest`                              |
 | `RUST_LOG`                     | Optional | Logging level                   | `debug`, `info`, `warn`                              |
@@ -841,7 +842,7 @@ Checklist summary:
 5. `git tag vX.Y.Z && git push origin vX.Y.Z` → GHCR via `release-docker.yml`
 6. Verify: `gh release view vX.Y.Z` + `docker buildx imagetools inspect ghcr.io/raphaelmansuy/edgequake:X.Y.Z`
 
-Current product pin: **v0.29.0**.
+Current product pin: **v0.30.0**.
 
 ## Automation & Agent Workflow
 

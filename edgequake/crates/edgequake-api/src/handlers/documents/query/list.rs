@@ -11,7 +11,8 @@ use tracing::debug;
 use crate::error::ApiResult;
 use crate::middleware::TenantContext;
 use crate::read_path::{
-    run_with_read_path_guard, should_skip_entity_reconcile, ReadPathDbPermit,
+    has_read_budget, run_with_read_path_guard, should_skip_entity_reconcile, ReadPathDbPermit,
+    LIST_AGE_RECONCILE_HEADROOM, LIST_PAGE_ENRICH_HEADROOM, LIST_RELATIONAL_HEADROOM,
     MAX_LIST_METADATA_ENTRIES,
 };
 use crate::services::document_metadata_scan::canonical_document_id;
@@ -21,6 +22,7 @@ use crate::services::tenant_guard::{
 };
 use crate::state::{PostgresRuntime, StorageRuntime, TaskRuntime};
 use edgequake_core::ResourceBudgetConfig;
+use tokio::time::Instant;
 
 use crate::handlers::documents_types::*;
 
@@ -52,8 +54,16 @@ pub async fn list_documents(
     tenant_ctx: TenantContext,
     Query(params): Query<ListDocumentsRequest>,
 ) -> ApiResult<Json<ListDocumentsResponse>> {
-    run_with_read_path_guard(&read_path_db, || {
-        list_documents_inner(storage, _pg_runtime, budget, tasks, tenant_ctx, params)
+    run_with_read_path_guard(&read_path_db, |deadline| {
+        list_documents_inner(
+            storage,
+            _pg_runtime,
+            budget,
+            tasks,
+            tenant_ctx,
+            params,
+            deadline,
+        )
     })
     .await
 }
@@ -66,9 +76,12 @@ pub async fn list_documents_for_mcp(
     tasks: TaskRuntime,
     tenant_ctx: TenantContext,
     params: ListDocumentsRequest,
+    deadline: Instant,
 ) -> ApiResult<ListDocumentsResponse> {
-    let Json(resp) =
-        list_documents_inner(storage, pg_runtime, budget, tasks, tenant_ctx, params).await?;
+    let Json(resp) = list_documents_inner(
+        storage, pg_runtime, budget, tasks, tenant_ctx, params, deadline,
+    )
+    .await?;
     Ok(resp)
 }
 
@@ -80,6 +93,7 @@ pub(crate) async fn list_documents_inner(
     tasks: TaskRuntime,
     tenant_ctx: TenantContext,
     params: ListDocumentsRequest,
+    deadline: Instant,
 ) -> ApiResult<Json<ListDocumentsResponse>> {
     debug!(
         tenant_id = ?tenant_ctx.tenant_id,
@@ -106,13 +120,21 @@ pub(crate) async fn list_documents_inner(
             MAX_LIST_METADATA_ENTRIES,
         )
         .await?;
-    let metadata_entries = crate::services::document_metadata_scan::merge_staging_metadata_entries(
-        storage.kv_storage.as_ref(),
-        pool,
-        &tenant_ctx,
-        scoped.entries,
-    )
-    .await?;
+    let metadata_entries = if has_read_budget(deadline, LIST_RELATIONAL_HEADROOM) {
+        crate::services::document_metadata_scan::merge_staging_metadata_entries(
+            storage.kv_storage.as_ref(),
+            pool,
+            &tenant_ctx,
+            scoped.entries,
+        )
+        .await?
+    } else {
+        tracing::debug!(
+            remaining_ms = crate::read_path::remaining_until(deadline).as_millis() as u64,
+            "Skipping staging metadata merge — interactive budget nearly spent"
+        );
+        scoped.entries
+    };
     let truncated = scoped.truncated;
     if truncated {
         tracing::warn!(
@@ -438,7 +460,9 @@ pub(crate) async fn list_documents_inner(
     #[cfg(feature = "postgres")]
     let mut sql_status_counts: Option<StatusCounts> = None;
     #[cfg(feature = "postgres")]
-    if _pg_runtime.pool.is_some() {
+    if _pg_runtime.pool.is_some()
+        && (documents.is_empty() || has_read_budget(deadline, LIST_RELATIONAL_HEADROOM))
+    {
         match crate::document_read_model::list_relational_document_summaries_limited(
             _pg_runtime.pool.as_ref(),
             &tenant_ctx,
@@ -476,6 +500,7 @@ pub(crate) async fn list_documents_inner(
         && params.date_from.is_none()
         && params.date_to.is_none()
         && params.document_pattern.is_none()
+        && has_read_budget(deadline, LIST_RELATIONAL_HEADROOM)
     {
         match crate::document_read_model::count_relational_document_statuses(
             _pg_runtime.pool.as_ref(),
@@ -606,48 +631,66 @@ pub(crate) async fn list_documents_inner(
         }
     }
 
-    // SPEC-057 P4: project display_status / ui_phase SSOT before pagination.
-    crate::services::ingestion_status_mapper::enrich_document_summaries_with_cancel(
-        &mut documents,
-        &tasks.cancellation_registry,
-        tasks.storage.as_ref(),
-    )
-    .await;
-
-    // SPEC-027 IMP-020: honor query pagination (status_counts remain over full pre-status set).
+    // SPEC-057 P4: project display_status / ui_phase SSOT after pagination
+    // (only the returned page is serialized). Cancel/task lookup is optional
+    // under the interactive envelope — sync mapper always runs.
     let page_size = budget.clamp_page_size(params.page_size.min(u32::MAX as usize) as u32) as usize;
     let page = params.page.max(1);
     let (mut documents, pagination) = paginate_vec(documents, page, page_size);
 
+    if has_read_budget(deadline, LIST_PAGE_ENRICH_HEADROOM) {
+        crate::services::ingestion_status_mapper::enrich_document_summaries_with_cancel(
+            &mut documents,
+            &tasks.cancellation_registry,
+            tasks.storage.as_ref(),
+        )
+        .await;
+    } else {
+        crate::services::ingestion_status_mapper::enrich_document_summaries(&mut documents);
+    }
+
     // SPEC-089 / GH-336 / LAW-H1: AGE entity_count heal for the returned page only.
     // Status counts / total already computed over the full filtered set above.
-    if should_skip_entity_reconcile(&tasks.storage).await {
-        // Serve KV/relational counts under queue/storage pressure — never hang on AGE.
-    } else {
-        crate::document_read_model::reconcile_entity_counts_with_graph(&storage, &mut documents)
+    if has_read_budget(deadline, LIST_AGE_RECONCILE_HEADROOM) {
+        if should_skip_entity_reconcile(&tasks.storage).await {
+            // Serve KV/relational counts under queue/storage pressure — never hang on AGE.
+        } else {
+            crate::document_read_model::reconcile_entity_counts_with_graph(
+                &storage,
+                &mut documents,
+            )
             .await;
+        }
     }
 
     // SPEC-091 IS2: queue position + ETA on the visible page (LAW-IS4).
-    crate::services::list_run_enrich::enrich_page_queue_estimates(
-        tasks.storage.as_ref(),
-        &mut documents,
-    )
-    .await;
+    if has_read_budget(deadline, LIST_PAGE_ENRICH_HEADROOM) {
+        crate::services::list_run_enrich::enrich_page_queue_estimates(
+            tasks.storage.as_ref(),
+            &mut documents,
+        )
+        .await;
+    }
 
     // SPEC-091 IS3 / LD-09: query_ready when serving fence is on.
     // SPEC-149: promote stuck projecting → completed when deliveries are applied.
     #[cfg(feature = "postgres")]
     if let Some(pool) = _pg_runtime.pool.as_ref() {
-        let fence_on = edgequake_storage::serving_fence::serving_fence_enabled_from_env();
-        crate::services::list_run_enrich::enrich_page_query_ready(pool, fence_on, &mut documents)
+        if has_read_budget(deadline, LIST_PAGE_ENRICH_HEADROOM) {
+            let fence_on = edgequake_storage::serving_fence::serving_fence_enabled_from_env();
+            crate::services::list_run_enrich::enrich_page_query_ready(
+                pool,
+                fence_on,
+                &mut documents,
+            )
             .await;
-        crate::services::list_run_enrich::enrich_page_projecting_promote(
-            &storage.kv_storage,
-            pool,
-            &mut documents,
-        )
-        .await;
+            crate::services::list_run_enrich::enrich_page_projecting_promote(
+                &storage.kv_storage,
+                pool,
+                &mut documents,
+            )
+            .await;
+        }
     }
 
     Ok(Json(ListDocumentsResponse {

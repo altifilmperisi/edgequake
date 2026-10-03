@@ -1639,6 +1639,19 @@ async fn async_main_postgres() -> Result<()> {
         config.port,
     );
 
+    // SPEC-158 LAW-158-9: SSO forces tenant binding and is fail-closed.
+    let sso_facts = state.auth.startup_facts();
+    state.security = edgequake_api::startup_sso::enforce_sso_security(
+        state.security.clone(),
+        &sso_facts,
+        state.auth.config.dev_mode,
+    );
+    enforce_startup_security(edgequake_api::startup_sso::validate_sso_startup(
+        &sso_facts,
+        &state.auth.config,
+        &state.security,
+    ));
+
     // SPEC-027 IMP-001: warn or exit on insecure production configuration
     enforce_startup_security(validate_startup_security(
         std::env::var("DATABASE_URL").ok().as_deref(),

@@ -99,9 +99,22 @@ pub fn default_identity_scope() -> (Uuid, Uuid) {
 /// JWT claims with default tenant/workspace scope (SPEC-027 phase 34).
 pub fn access_token_claims(user_id: Uuid, role: Role, expiry_seconds: i64) -> Claims {
     let (tenant_id, workspace_id) = default_identity_scope();
-    Claims::new(user_id, role, expiry_seconds)
-        .with_tenant_id(tenant_id.to_string())
-        .with_workspace_id(workspace_id.to_string())
+    access_token_claims_scoped(user_id, role, expiry_seconds, tenant_id, Some(workspace_id))
+}
+
+/// JWT claims bound to an explicit tenant/workspace (SPEC-158 — SSO org → tenant, LAW-158-5).
+pub fn access_token_claims_scoped(
+    user_id: Uuid,
+    role: Role,
+    expiry_seconds: i64,
+    tenant_id: Uuid,
+    workspace_id: Option<Uuid>,
+) -> Claims {
+    let claims = Claims::new(user_id, role, expiry_seconds).with_tenant_id(tenant_id.to_string());
+    match workspace_id {
+        Some(ws) => claims.with_workspace_id(ws.to_string()),
+        None => claims,
+    }
 }
 
 /// Map global auth role to PostgreSQL membership role string.

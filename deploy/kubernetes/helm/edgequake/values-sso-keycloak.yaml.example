@@ -1,0 +1,31 @@
+# SPEC-158 — enterprise SSO via Keycloak (Organizations = tenants). Copy and customize.
+#   helm upgrade --install edgequake deploy/kubernetes/helm/edgequake \
+#     -f values-production.yaml -f values-sso-keycloak.yaml
+#
+# Keycloak itself is deployed separately (Keycloak Operator / chart) from the published image
+# ghcr.io/raphaelmansuy/edgequake-keycloak:<version> (realm: deploy/keycloak/realm/).
+# The client secret is NEVER put in values: create the Secret out-of-band and reference it,
+# or pass it via --set-file / your secret manager (External Secrets, Sealed Secrets, ...).
+
+api:
+  env:
+    EDGEQUAKE_AUTH_ENABLED: "true"
+    EDGEQUAKE_STRICT_TENANT_BIND: "true" # required: SSO tokens are tenant-scoped
+    EDGEQUAKE_OIDC_ENABLED: "true"
+    EDGEQUAKE_OIDC_KIND: keycloak
+    EDGEQUAKE_OIDC_SLUG: keycloak
+    EDGEQUAKE_OIDC_DISPLAY_NAME: "Sign in with SSO"
+    # Issuer MUST equal Keycloak's frontend URL byte-for-byte (https required outside dev).
+    EDGEQUAKE_OIDC_ISSUER_URL: "https://sso.example.com/realms/edgequake"
+    EDGEQUAKE_OIDC_CLIENT_ID: edgequake-web
+    EDGEQUAKE_OIDC_REDIRECT_URI: "https://edgequake.example.com/api/v1/auth/oidc/callback"
+    EDGEQUAKE_OIDC_SUCCESS_REDIRECT_URL: "https://edgequake.example.com/auth/callback"
+    EDGEQUAKE_OIDC_ROLE_MAP: '{"eq-owner":"owner","eq-admin":"admin","eq-user":"member"}'
+  # Rendered into the chart-managed Secret (edgequake-api-secret). Prefer an existing Secret in prod.
+  extraSecretEnv:
+    EDGEQUAKE_OIDC_CLIENT_SECRET: "" # set via --set-file or your secret manager
+
+ingress:
+  enabled: true
+  # Back-channel logout (POST /api/v1/auth/oidc/backchannel-logout) is called by Keycloak
+  # server-to-server: allow it through the ingress and the NetworkPolicy.

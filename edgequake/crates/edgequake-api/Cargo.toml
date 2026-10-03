@@ -79,6 +79,8 @@ reqwest = { version = "0.12", default-features = false, features = [
 openidconnect = { version = "4.0", default-features = false, features = ["reqwest"] }
 url = "2.5"
 urlencoding = "2.1"
+# SPEC-158: back-channel logout_token verification (JWKS / client-secret HS*)
+jsonwebtoken = { workspace = true }
 lazy_static = "1.5"
 
 # File handling

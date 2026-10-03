@@ -5,23 +5,13 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { useSetupStatus } from '@/hooks/use-setup-status';
-import { login } from '@/lib/api/edgequake';
+import { SsoButtons } from '@/components/auth/sso-buttons';
+import { login, safeRedirectPath } from '@/lib/api/edgequake';
 import { getRuntimeConfig } from '@/lib/runtime-config';
 import { useAuthStore } from '@/stores/use-auth-store';
 import { AlertCircle, Eye, EyeOff, Loader2, Network } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useState } from 'react';
-
-/** Same-origin relative path only (blocks open redirects). */
-function safeRedirectPath(raw: string | null): string | null {
-  if (!raw || !raw.startsWith('/') || raw.startsWith('//')) {
-    return null;
-  }
-  if (raw.includes('://') || raw.includes('\\')) {
-    return null;
-  }
-  return raw;
-}
 
 function LoginPageInner() {
   const router = useRouter();
@@ -82,7 +72,8 @@ function LoginPageInner() {
             Sign in to access the Knowledge Graph RAG Platform
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
+          <SsoButtons redirect={postLoginPath} />
           <form
             onSubmit={handleSubmit}
             className="space-y-4"

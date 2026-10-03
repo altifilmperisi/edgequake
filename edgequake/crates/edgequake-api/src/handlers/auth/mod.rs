@@ -21,16 +21,22 @@
 //! - **BR0573**: Username and email must be unique
 
 mod api_keys;
+mod backchannel;
 mod extractors;
+mod handoff;
 mod oidc;
 mod refresh_cookie;
 mod session;
+mod sso_providers;
 mod user_management;
 
 pub use api_keys::*;
+pub use backchannel::*;
 pub use extractors::*;
+pub use handoff::*;
 pub use oidc::*;
 pub use session::*;
+pub use sso_providers::*;
 pub use user_management::*;
 
 // Re-export DTOs from auth_types module
@@ -160,7 +166,7 @@ pub(crate) struct ApiKeyRecord {
 // ============================================================================
 
 /// Find user by username or email (identity SSOT routing).
-pub(super) async fn find_user_by_login(
+pub(crate) async fn find_user_by_login(
     storage: &StorageRuntime,
     pg_runtime: Option<&crate::state::PostgresRuntime>,
     security: &crate::state::ApiSecurityConfig,
@@ -184,7 +190,7 @@ pub(super) async fn find_user_by_login(
 }
 
 /// Get user by ID (identity SSOT routing).
-pub(super) async fn get_user_by_id(
+pub(crate) async fn get_user_by_id(
     storage: &StorageRuntime,
     pg_runtime: Option<&crate::state::PostgresRuntime>,
     security: &crate::state::ApiSecurityConfig,
@@ -199,7 +205,7 @@ pub(super) async fn get_user_by_id(
 }
 
 /// Get user record with identity SSOT routing.
-pub(super) async fn get_record_by_id(
+pub(crate) async fn get_record_by_id(
     storage: &StorageRuntime,
     pg_runtime: Option<&crate::state::PostgresRuntime>,
     security: &crate::state::ApiSecurityConfig,

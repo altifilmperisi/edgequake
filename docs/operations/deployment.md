@@ -31,6 +31,12 @@ Without `make`:
 docker compose -f docker-compose.quickstart.yml up -d
 ```
 
+**Enterprise SSO (Keycloak overlay, SPEC-158):** `make dev-sso` layers `docker-compose.keycloak.yml`
+on the quickstart stack. Production hostnames:
+[Keycloak production configuration](../security/authentication/keycloak-quickstart.md#production-configuration-https-hostname).
+The public demo (`https://demo.edgequake.com`) stays on password login; v0.30.0
+does not enable `EDGEQUAKE_OIDC_ENABLED` there.
+
 **Access:**
 
 | Service   | URL                              |

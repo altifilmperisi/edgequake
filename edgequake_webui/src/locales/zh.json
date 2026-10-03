@@ -1402,5 +1402,48 @@
     "banner": {
       "working": "Working"
     }
+  },
+  "auth": {
+    "sso": {
+      "continueWith": "使用 {{name}} 继续",
+      "orLocal": "或使用密码登录",
+      "orgLabel": "组织（可选）",
+      "orgPlaceholder": "your-company",
+      "orgHint": "如果您只属于一个组织，请留空。",
+      "signingIn": "正在跳转到身份提供商…",
+      "completing": "正在完成登录…",
+      "backToLogin": "返回登录",
+      "pickOrg": "选择组织",
+      "pickOrgHint": "您的账户属于多个组织，请选择要登录的组织。",
+      "errors": {
+        "generic": "单点登录失败。请重试或联系管理员。",
+        "orgUnknown": "该组织不存在，或您不是其成员。",
+        "orgMissing": "身份提供商未返回组织信息，请联系管理员。",
+        "orgAmbiguous": "您的账户属于多个组织，请选择要登录的组织。",
+        "tenantSuspended": "该组织已被暂停，请联系管理员。",
+        "hdMismatch": "此 Google 账户不在允许的域内。",
+        "idpTenantNotAllowed": "您的目录（租户）不允许在此登录。",
+        "jitDisabled": "您的账户尚未创建，请联系管理员邀请您。",
+        "maxUsers": "该组织已达到用户数量上限。",
+        "membershipRevoked": "您对该组织的访问权限已被移除。",
+        "tenantAccessDenied": "您无权访问该组织。",
+        "accountExistsUnlinked": "该邮箱已存在账户。请使用密码登录，然后在个人资料中关联 SSO。",
+        "accessDenied": "身份提供商取消或拒绝了登录。",
+        "invalidHandoff": "此登录链接已过期或已被使用，请重新开始。",
+        "ssoUnavailable": "身份提供商不可达。请使用密码登录或稍后重试。",
+        "title": "登录失败"
+      },
+      "admin": {
+        "title": "身份提供商",
+        "description": "登录时可用的单点登录提供商。通过环境变量配置的提供商在此为只读。",
+        "empty": "未配置任何 SSO 提供商（仅密码登录）。",
+        "provider": "提供商",
+        "issuer": "颁发者",
+        "policy": "策略",
+        "env": "环境变量",
+        "trustEmail": "信任邮箱",
+        "noTrustEmail": "不信任邮箱"
+      }
+    }
   }
 }

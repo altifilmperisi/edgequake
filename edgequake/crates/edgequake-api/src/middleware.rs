@@ -691,9 +691,12 @@ fn is_public_request(state: &crate::state::AppState, method: &Method, path: &str
             | "/auth/refresh"
             | "/auth/oidc/login"
             | "/auth/oidc/callback"
+            | "/auth/handoff"
+            | "/auth/sso/providers"
             | "/setup/status"
             | "/setup/initialize"
-    ) || (*method == Method::POST && normalized_path == "/mcp")
+    ) || (*method == Method::POST
+        && matches!(normalized_path, "/mcp" | "/auth/oidc/backchannel-logout"))
         || (*method == Method::POST
             && normalized_path == "/users"
             && state.auth.config.allow_registration)

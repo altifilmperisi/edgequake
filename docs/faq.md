@@ -305,7 +305,7 @@ Full hardening checklist: [Runtime auth hardening](operations/runtime-auth-harde
 
 1. **Reverse proxy** (nginx/Caddy) with TLS
 2. **Network isolation** (private subnet)
-3. **External SSO** via [oauth2-proxy](https://github.com/oauth2-proxy/oauth2-proxy) (recommended over in-process OIDC for enterprise)
+3. **Enterprise SSO**: built-in OIDC with Keycloak (Organizations = tenants; Google, Entra, AWS and GitHub via brokering) — see [Authentication & SSO](security/authentication/index.md). [oauth2-proxy](https://github.com/oauth2-proxy/oauth2-proxy) in front of the API remains a supported alternative.
 
 Explicit opt-out (not recommended outside local dev): `EDGEQUAKE_AUTH_ENABLED=false` or `EDGEQUAKE_AUTH_DISABLED=true`.
 

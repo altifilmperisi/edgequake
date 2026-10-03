@@ -275,6 +275,17 @@ impl AppState {
         // The WorkspaceServiceImpl already creates default tenant/workspace
         #[cfg(feature = "postgres")]
         if let Some(ref pool) = self.pg_pool {
+            // The user row references tenants. A full Postgres boot seeds that row
+            // in WorkspaceServiceImpl::ensure_defaults; the lighter auth state used
+            // by tests does not. Seed it here so a fresh migrated database can host
+            // the default user.
+            crate::services::identity_storage::ensure_default_tenant_workspace(
+                pool,
+                &self.security,
+            )
+            .await
+            .map_err(|e| format!("default tenant: {e}"))?;
+
             // Ensure default user exists in PostgreSQL (with tenant_id for FK constraints)
             sqlx::query(
                 r#"

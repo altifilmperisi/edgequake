@@ -237,6 +237,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/identity-providers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** GET /api/v1/admin/identity-providers — persisted provider definitions (admin). */
+        get: operations["admin_list_identity_providers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/identity-providers/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** PUT /api/v1/admin/identity-providers/{slug} — upsert a provider and reload the registry. */
+        put: operations["admin_upsert_identity_provider"];
+        post?: never;
+        /** DELETE /api/v1/admin/identity-providers/{slug} */
+        delete: operations["admin_delete_identity_provider"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/migration-jobs": {
         parameters: {
             query?: never;
@@ -441,6 +476,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/handoff": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** POST /api/v1/auth/handoff — redeem a single-use SSO handoff code. */
+        post: operations["redeem_sso_handoff"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/login": {
         parameters: {
             query?: never;
@@ -501,6 +553,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/oidc/backchannel-logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** POST /api/v1/auth/oidc/backchannel-logout */
+        post: operations["oidc_backchannel_logout"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/oidc/callback": {
         parameters: {
             query?: never;
@@ -508,7 +577,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** GET /api/v1/auth/oidc/callback — complete OIDC flow and issue EdgeQuake JWT. */
+        /** GET /api/v1/auth/oidc/callback — complete OIDC flow and issue an EdgeQuake session. */
         get: operations["oidc_callback"];
         put?: never;
         post?: never;
@@ -549,6 +618,23 @@ export interface paths {
          * @description POST /api/v1/auth/refresh
          */
         post: operations["refresh_token"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/sso/providers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** GET /api/v1/auth/sso/providers — public, secret-free list for the login page. */
+        get: operations["list_sso_providers"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -3835,7 +3921,7 @@ export interface components {
             kv_identity_mirror_configured?: boolean | null;
             /** @description Effective KV mirror after policy resolution (`false` when PostgreSQL pool is SSOT). */
             kv_identity_mirror_effective?: boolean | null;
-            /** @description Whether OAuth2/OIDC login is implemented in-process (always `false` today). */
+            /** @description Whether at least one OAuth2/OIDC provider is runtime-active (SPEC-027 / SPEC-158). */
             oauth2_oidc_builtin?: boolean | null;
             /** @description OpenAPI document URL. */
             openapi_url: string;
@@ -3845,6 +3931,8 @@ export interface components {
             serving_fence_enabled?: boolean | null;
             /** @description Public shared-conversation path prefix. */
             shared_conversations_prefix: string;
+            /** @description SPEC-158: number of runtime-active SSO providers (env shim + registry). */
+            sso_providers?: number | null;
             /** @description Swagger UI entry point. */
             swagger_ui_url: string;
         };
@@ -3967,6 +4055,15 @@ export interface components {
             embedding_providers: components["schemas"]["ProviderInfo"][];
             /** @description List of available LLM providers */
             llm_providers: components["schemas"]["ProviderInfo"][];
+        };
+        /**
+         * @example {
+         *       "logout_token": {}
+         *     }
+         */
+        BackchannelLogoutForm: {
+            /** @description Signed `logout_token` JWT (`application/x-www-form-urlencoded`, OIDC BCL §2.5). */
+            logout_token: string;
         };
         /**
          * @description Request body for batch degree query.
@@ -7444,6 +7541,38 @@ export interface components {
         };
         /**
          * @example {
+         *       "code": {}
+         *     }
+         */
+        HandoffRequest: {
+            /** @description One-time code from the SSO redirect (`?code=…`). */
+            code: string;
+        };
+        /**
+         * @example {
+         *       "access_token": {},
+         *       "expires_in": {},
+         *       "redirect_after": {},
+         *       "tenant_id": {},
+         *       "token_type": {},
+         *       "user": {},
+         *       "workspace_id": {}
+         *     }
+         */
+        HandoffResponse: {
+            access_token: string;
+            /** Format: int64 */
+            expires_in: number;
+            /** @description Validated same-origin path to navigate to (never an absolute URL). */
+            redirect_after?: string | null;
+            tenant_id: string;
+            /** @description Always `Bearer`. */
+            token_type: string;
+            user: components["schemas"]["UserInfo"];
+            workspace_id?: string | null;
+        };
+        /**
+         * @example {
          *       "active": {},
          *       "app_id": {},
          *       "app_name": {}
@@ -10863,6 +10992,22 @@ export interface components {
             storage: components["schemas"]["StorageStatus"];
         };
         /**
+         * @description Public, secret-free provider description for the login page.
+         * @example {
+         *       "display_name": {},
+         *       "kind": {},
+         *       "login_path": {},
+         *       "slug": {}
+         *     }
+         */
+        ProviderSummary: {
+            display_name: string;
+            kind: string;
+            /** @description Relative login entrypoint (the SPA appends `org` / `redirect`). */
+            login_path: string;
+            slug: string;
+        };
+        /**
          * @description Combined provider health for LLM and embedding.
          *
          *     WHY: OODA-11 - Mission requirement: "know all parts of the applied
@@ -12916,6 +13061,14 @@ export interface components {
             start_line?: number | null;
         };
         /**
+         * @example {
+         *       "providers": []
+         *     }
+         */
+        SsoProvidersResponse: {
+            providers: components["schemas"]["ProviderSummary"][];
+        };
+        /**
          * @description Per-stage status payload.
          * @example {
          *       "chunk_count": {},
@@ -13176,6 +13329,46 @@ export interface components {
              * @description SPEC-059: fail-closed dimension mismatch rejections.
              */
             vector_dim_mismatch_rejected_total?: number;
+        };
+        /**
+         * @description Persisted provider definition (`identity_providers` row).
+         * @example {
+         *       "client_id": {},
+         *       "client_secret_ref": {},
+         *       "display_name": {},
+         *       "enabled": {},
+         *       "issuer": {},
+         *       "jit_enabled": {},
+         *       "kind": {},
+         *       "link_policy": {},
+         *       "max_role": {},
+         *       "metadata": {},
+         *       "redirect_uri": {},
+         *       "role_claim": {},
+         *       "role_map": {},
+         *       "scopes": [],
+         *       "slug": {},
+         *       "trust_email": {}
+         *     }
+         */
+        StoredProvider: {
+            client_id: string;
+            /** @description Environment variable name holding the client secret (never the secret). */
+            client_secret_ref?: string | null;
+            display_name: string;
+            enabled: boolean;
+            issuer: string;
+            jit_enabled: boolean;
+            kind: string;
+            link_policy: string;
+            max_role: string;
+            metadata: unknown;
+            redirect_uri: string;
+            role_claim: string;
+            role_map: unknown;
+            scopes: string[];
+            slug: string;
+            trust_email: boolean;
         };
         /**
          * @description Streaming query request.
@@ -14735,6 +14928,109 @@ export interface operations {
             };
         };
     };
+    admin_list_identity_providers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Stored identity providers */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoredProvider"][];
+                };
+            };
+            /** @description Admin role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    admin_upsert_identity_provider: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Provider slug */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StoredProvider"];
+            };
+        };
+        responses: {
+            /** @description Saved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoredProvider"];
+                };
+            };
+            /** @description Invalid provider definition */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Admin role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    admin_delete_identity_provider: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Provider slug */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Admin role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unknown provider */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     list_migration_jobs: {
         parameters: {
             query?: never;
@@ -15121,6 +15417,44 @@ export interface operations {
             };
         };
     };
+    redeem_sso_handoff: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HandoffRequest"];
+            };
+        };
+        responses: {
+            /** @description Access token for the SSO session */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HandoffResponse"];
+                };
+            };
+            /** @description Unknown, expired or already redeemed code */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Tenant suspended or membership revoked */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     login: {
         parameters: {
             query?: never;
@@ -15215,13 +15549,44 @@ export interface operations {
             };
         };
     };
+    oidc_backchannel_logout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/x-www-form-urlencoded": components["schemas"]["BackchannelLogoutForm"];
+            };
+        };
+        responses: {
+            /** @description Logout token accepted; matching sessions revoked */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid, unverifiable or replayed logout token */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     oidc_callback: {
         parameters: {
-            query: {
+            query?: {
                 /** @description Authorization code from IdP */
-                code: string;
+                code?: string;
                 /** @description CSRF state from login redirect */
-                state: string;
+                state?: string;
+                /** @description IdP error code */
+                error?: string;
             };
             header?: never;
             path?: never;
@@ -15229,7 +15594,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Login successful (JSON tokens) */
+            /** @description Login successful (JSON tokens; no success redirect configured) */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -15238,15 +15603,29 @@ export interface operations {
                     "application/json": components["schemas"]["LoginResponse"];
                 };
             };
-            /** @description Redirect to EDGEQUAKE_OIDC_SUCCESS_REDIRECT_URL with tokens in query */
-            302: {
+            /** @description Redirect to the SPA with an opaque single-use `code` (never tokens) */
+            303: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
             };
-            /** @description State mismatch or expired pending session */
+            /** @description State mismatch, replayed or expired pending session */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Tenant / provider policy denial */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Email belongs to an unlinked local account */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -15263,7 +15642,14 @@ export interface operations {
     };
     oidc_login: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Provider slug */
+                provider?: string;
+                /** @description Organization alias hint */
+                org?: string;
+                /** @description Same-origin path after login */
+                redirect?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -15271,13 +15657,13 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description Redirect to OIDC provider authorization URL */
-            302: {
+            303: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
             };
-            /** @description OIDC not enabled (EDGEQUAKE_OIDC_ENABLED=false) */
+            /** @description OIDC not enabled or provider unknown */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -15314,6 +15700,26 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    list_sso_providers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Configured SSO providers */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SsoProvidersResponse"];
+                };
             };
         };
     };

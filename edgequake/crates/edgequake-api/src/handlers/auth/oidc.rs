@@ -1,34 +1,55 @@
-//! OpenID Connect login handlers (SPEC-027 phase 54).
+//! OpenID Connect login handlers (SPEC-027 phase 54, SPEC-158 enterprise federation).
+//!
+//! `GET /auth/oidc/login`    — start (provider / org / redirect hints, durable pending state)
+//! `GET /auth/oidc/callback` — verify, resolve user + tenant + membership, issue session
+//!
+//! Browser flows (`EDGEQUAKE_OIDC_SUCCESS_REDIRECT_URL` set) never carry tokens in a URL: the
+//! callback sets the HttpOnly `eq_refresh` cookie and redirects with an opaque single-use `code`
+//! the SPA redeems at `POST /auth/handoff` (LAW-158-4).
 
 use axum::{
     extract::{FromRef, Query, State},
-    http::StatusCode,
+    http::{header, HeaderMap, StatusCode},
     response::{IntoResponse, Redirect, Response},
     Json,
 };
 use chrono::{Duration, Utc};
 use serde::Deserialize;
 use tracing::info;
-use uuid::Uuid;
 
 use edgequake_audit::{AuditEventType, AuditResult};
-use edgequake_auth::Role;
 
 use crate::error::ApiError;
 use crate::handlers::auth_types::{LoginResponse, UserInfo};
-use crate::services::oidc_flow::OidcServiceError;
-use crate::services::oidc_pending::{store_oidc_pending, take_oidc_pending};
+use crate::services::federation::handoff::{create_handoff, NewHandoff};
+use crate::services::federation::redirect::safe_redirect_path;
+use crate::services::federation::resolver::{resolve_federated_login, FederatedLogin};
+use crate::services::federation::store::{FederatedSession, LoginAttempt};
+use crate::services::login_tokens::{issue_session, IssuedSession, SessionContext};
+use crate::services::oidc_flow::{OidcFlowService, OidcPendingSession, OidcServiceError};
 use crate::services::record_compliance_event_runtime;
 use crate::state::{AppState, ComplianceRuntime, PostgresRuntime};
 
-use super::{
-    find_user_by_login, get_record_by_id, persist_user_record, RefreshTokenRecord, UserRecord,
-};
+use super::refresh_cookie::{cookie_secure_from_headers, set_refresh_cookie_header};
+
+const LOGIN_ATTEMPT_TTL_MINUTES: i64 = 10;
+
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
+pub struct OidcLoginQuery {
+    /// Provider slug (default: the configured default provider).
+    pub provider: Option<String>,
+    /// Organization alias hint (Keycloak `organization:{alias}`).
+    pub org: Option<String>,
+    /// Same-origin path to land on after login (validated, LAW-158-4).
+    pub redirect: Option<String>,
+}
 
 #[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub struct OidcCallbackQuery {
-    pub code: String,
-    pub state: String,
+    pub code: Option<String>,
+    pub state: Option<String>,
+    /// IdP-reported error (`access_denied`, …).
+    pub error: Option<String>,
 }
 
 /// GET /api/v1/auth/oidc/login — redirect to IdP authorization endpoint (PKCE).
@@ -36,228 +57,363 @@ pub struct OidcCallbackQuery {
     get,
     path = "/api/v1/auth/oidc/login",
     tag = "Authentication",
+    params(
+        ("provider" = Option<String>, Query, description = "Provider slug"),
+        ("org" = Option<String>, Query, description = "Organization alias hint"),
+        ("redirect" = Option<String>, Query, description = "Same-origin path after login")
+    ),
     responses(
-        (status = 302, description = "Redirect to OIDC provider authorization URL"),
-        (status = 503, description = "OIDC not enabled (EDGEQUAKE_OIDC_ENABLED=false)")
+        (status = 303, description = "Redirect to OIDC provider authorization URL"),
+        (status = 503, description = "OIDC not enabled or provider unknown")
     )
 )]
-pub async fn oidc_login(State(state): State<AppState>) -> Result<Response, ApiError> {
-    let Some(service) = state.auth.oidc_service.as_ref() else {
-        return Err(map_oidc_service_error(OidcServiceError::NotConfigured));
+pub async fn oidc_login(
+    State(state): State<AppState>,
+    Query(query): Query<OidcLoginQuery>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    let Some(service) = state.auth.provider_or_default(query.provider.as_deref()) else {
+        let mapped = map_oidc_service_error(OidcServiceError::NotConfigured);
+        if let Some(response) = spa_sso_unavailable(&headers, None, &mapped) {
+            return Ok(response);
+        }
+        return Err(mapped);
+    };
+    let org = query
+        .org
+        .as_deref()
+        .map(str::trim)
+        .filter(|o| !o.is_empty());
+    let start = match service.begin_login(org).await {
+        Ok(start) => start,
+        Err(err) => {
+            let mapped = map_oidc_service_error(err);
+            if let Some(response) = spa_sso_unavailable(
+                &headers,
+                service.config().success_redirect_url.as_deref(),
+                &mapped,
+            ) {
+                return Ok(response);
+            }
+            return Err(mapped);
+        }
     };
 
-    let start = service
-        .begin_login()
-        .await
-        .map_err(map_oidc_service_error)?;
-    store_oidc_pending(&state.storage, &start.pending.csrf_token, &start.pending).await?;
+    state
+        .auth
+        .federation
+        .put_login_attempt(&LoginAttempt {
+            state: start.pending.csrf_token.clone(),
+            provider_slug: service.slug().to_string(),
+            pkce_verifier: start.pending.pkce_verifier.clone(),
+            nonce: start.pending.nonce.clone(),
+            organization_hint: org.map(|o| o.to_ascii_lowercase()),
+            redirect_after: query
+                .redirect
+                .as_deref()
+                .map(|r| safe_redirect_path(Some(r)))
+                .filter(|r| r != "/"),
+            expires_at: Utc::now() + Duration::minutes(LOGIN_ATTEMPT_TTL_MINUTES),
+        })
+        .await?;
     Ok(Redirect::to(&start.authorization_url).into_response())
 }
 
-/// GET /api/v1/auth/oidc/callback — complete OIDC flow and issue EdgeQuake JWT.
+/// GET /api/v1/auth/oidc/callback — complete OIDC flow and issue an EdgeQuake session.
 #[utoipa::path(
     get,
     path = "/api/v1/auth/oidc/callback",
     tag = "Authentication",
     params(
-        ("code" = String, Query, description = "Authorization code from IdP"),
-        ("state" = String, Query, description = "CSRF state from login redirect")
+        ("code" = Option<String>, Query, description = "Authorization code from IdP"),
+        ("state" = Option<String>, Query, description = "CSRF state from login redirect"),
+        ("error" = Option<String>, Query, description = "IdP error code")
     ),
     responses(
-        (status = 200, description = "Login successful (JSON tokens)", body = LoginResponse),
-        (status = 302, description = "Redirect to EDGEQUAKE_OIDC_SUCCESS_REDIRECT_URL with tokens in query"),
-        (status = 401, description = "State mismatch or expired pending session"),
+        (status = 200, description = "Login successful (JSON tokens; no success redirect configured)", body = LoginResponse),
+        (status = 303, description = "Redirect to the SPA with an opaque single-use `code` (never tokens)"),
+        (status = 401, description = "State mismatch, replayed or expired pending session"),
+        (status = 403, description = "Tenant / provider policy denial"),
+        (status = 409, description = "Email belongs to an unlinked local account"),
         (status = 503, description = "OIDC not enabled")
     )
 )]
 pub async fn oidc_callback(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Query(query): Query<OidcCallbackQuery>,
 ) -> Result<Response, ApiError> {
-    let Some(service) = state.auth.oidc_service.as_ref() else {
+    if !state.auth.sso_active() {
+        return Err(map_oidc_service_error(OidcServiceError::NotConfigured));
+    }
+    let state_param = query
+        .state
+        .as_deref()
+        .ok_or_else(|| ApiError::auth_unauthorized("oidc_callback", "state_missing", None))?;
+    // Atomic single-use take: replay / expiry / multi-replica safe (EC-158-24, EC-158-31).
+    let attempt = state
+        .auth
+        .federation
+        .take_login_attempt(state_param)
+        .await?
+        .ok_or_else(|| ApiError::auth_unauthorized("oidc_callback", "state_expired", None))?;
+    let Some(provider) = state.auth.provider(&attempt.provider_slug) else {
         return Err(map_oidc_service_error(OidcServiceError::NotConfigured));
     };
+    let success_url = provider.config().success_redirect_url.clone();
 
-    let pending = take_oidc_pending(&state.storage, &query.state).await?;
-    let identity = service
-        .complete_login(&query.code, &query.state, &pending)
+    let outcome = complete_callback(&state, &provider, &attempt, &query).await;
+    match (outcome, success_url) {
+        (Ok(done), Some(url)) => handoff_redirect(&state, &headers, &provider, &url, done).await,
+        (Ok(done), None) => Ok(json_login(done)),
+        (Err(error), Some(url)) => Ok(error_redirect(&url, &error)),
+        (Err(error), None) => Err(error),
+    }
+}
+
+struct CallbackDone {
+    login: FederatedLogin,
+    session: IssuedSession,
+    redirect_after: Option<String>,
+}
+
+async fn complete_callback(
+    state: &AppState,
+    provider: &OidcFlowService,
+    attempt: &LoginAttempt,
+    query: &OidcCallbackQuery,
+) -> Result<CallbackDone, ApiError> {
+    if let Some(idp_error) = query.error.as_deref() {
+        audit(state, "sso_login", AuditResult::Failure, None);
+        return Err(ApiError::auth_unauthorized(
+            "oidc_callback",
+            "idp_error",
+            Some(idp_error),
+        ));
+    }
+    let code = query
+        .code
+        .as_deref()
+        .ok_or_else(|| ApiError::auth_unauthorized("oidc_callback", "code_missing", None))?;
+    let pending = OidcPendingSession {
+        csrf_token: attempt.state.clone(),
+        pkce_verifier: attempt.pkce_verifier.clone(),
+        nonce: attempt.nonce.clone(),
+    };
+
+    let result = finish_login(state, provider, attempt, code, &pending).await;
+    match &result {
+        Ok(done) => audit(
+            state,
+            "sso_login",
+            AuditResult::Success,
+            Some(done.login.record.user_id.clone()),
+        ),
+        Err(_) => audit(state, "sso_login", AuditResult::Failure, None),
+    }
+    result
+}
+
+async fn finish_login(
+    state: &AppState,
+    provider: &OidcFlowService,
+    attempt: &LoginAttempt,
+    code: &str,
+    pending: &OidcPendingSession,
+) -> Result<CallbackDone, ApiError> {
+    let identity = provider
+        .complete_login(code, &attempt.state, pending)
         .await
         .map_err(map_oidc_service_error)?;
+    let claims = identity.claims;
 
-    let record = resolve_or_create_oidc_user(&state, &identity).await?;
-    let mut record = record;
-    let login = issue_login_tokens(&state, &mut record, "oidc_login").await?;
-
-    if let Some(success_url) = service.config().success_redirect_url.clone() {
-        let mut url = url::Url::parse(&success_url)
-            .map_err(|e| ApiError::Internal(format!("invalid success redirect: {e}")))?;
-        url.query_pairs_mut()
-            .append_pair("access_token", &login.access_token)
-            .append_pair(
-                "refresh_token",
-                login.refresh_token.as_deref().unwrap_or(""),
-            )
-            .append_pair("token_type", &login.token_type)
-            .append_pair("expires_in", &login.expires_in.to_string());
-        return Ok(Redirect::to(url.as_str()).into_response());
-    }
-
-    Ok((StatusCode::OK, Json(login)).into_response())
-}
-
-async fn resolve_or_create_oidc_user(
-    state: &AppState,
-    identity: &crate::services::oidc_flow::OidcIdentity,
-) -> Result<UserRecord, ApiError> {
-    let storage = &state.storage;
-    let pg_runtime = PostgresRuntime::from_ref(state);
-    let security = &state.security;
-
-    if let Some(existing) =
-        find_user_by_login(storage, Some(&pg_runtime), security, &identity.email).await?
-    {
-        let mut record = get_record_by_id(
-            storage,
-            Some(&pg_runtime),
-            security,
-            state.operational_stores.identity.as_deref(),
-            &existing.user_id,
-        )
-        .await?
-        .ok_or_else(|| ApiError::Internal("user record missing".into()))?;
-        crate::services::login_lockout::ensure_login_allowed(&record)?;
-        if !record.is_active {
-            return Err(ApiError::forbidden_reason("account_inactive"));
-        }
-        record
-            .metadata
-            .insert("oidc_subject".into(), serde_json::json!(identity.subject));
-        record.updated_at = Utc::now();
-        persist_user_record(
-            storage,
-            Some(&pg_runtime),
-            security,
-            state.operational_stores.identity.as_deref(),
-            &record,
-        )
-        .await?;
-        return Ok(record);
-    }
-
-    let auth = &state.auth;
-    let password_hash = auth
-        .password
-        .hash_unvalidated_secret(&Uuid::new_v4().to_string())
-        .map_err(|e| ApiError::Internal(format!("oidc password hash: {e}")))?;
-
-    let role = Role::parse(&auth.config.default_role);
-    let user_id = Uuid::new_v4().to_string();
-    let now = Utc::now();
-    let record = UserRecord {
-        user_id,
-        username: identity.username.clone(),
-        email: identity.email.clone(),
-        password_hash,
-        role: role.to_string(),
-        is_active: true,
-        created_at: now,
-        updated_at: now,
-        last_login_at: Some(now),
-        failed_login_attempts: 0,
-        locked_until: None,
-        metadata: std::collections::HashMap::from([
-            (
-                "oidc_subject".to_string(),
-                serde_json::json!(identity.subject),
-            ),
-            ("auth_provider".to_string(), serde_json::json!("oidc")),
-        ]),
-    };
-
-    persist_user_record(
-        storage,
-        Some(&pg_runtime),
-        security,
-        state.operational_stores.identity.as_deref(),
-        &record,
+    let mut login = resolve_federated_login(
+        state,
+        provider,
+        &claims,
+        attempt.organization_hint.as_deref(),
     )
     .await?;
-    Ok(record)
-}
 
-async fn issue_login_tokens(
-    state: &AppState,
-    record: &mut UserRecord,
-    audit_action: &str,
-) -> Result<LoginResponse, ApiError> {
-    let auth = &state.auth;
-    let storage = &state.storage;
-    let pg_runtime = PostgresRuntime::from_ref(state);
-    let security = &state.security;
-    let compliance = ComplianceRuntime::from_ref(state);
-
+    let pg = PostgresRuntime::from_ref(state);
     crate::services::login_lockout::record_successful_login(
-        storage,
-        Some(&pg_runtime),
-        security,
+        &state.storage,
+        Some(&pg),
+        &state.security,
         state.operational_stores.identity.as_deref(),
-        record,
+        &mut login.record,
     )
     .await?;
 
-    let user_uuid = Uuid::parse_str(&record.user_id)
-        .map_err(|_| ApiError::Internal("invalid user id".into()))?;
-    let expiry_seconds = auth.jwt.expiry_duration().as_secs() as i64;
-    let claims = crate::services::identity_storage::access_token_claims(
-        user_uuid,
-        Role::parse(&record.role),
-        expiry_seconds,
-    );
-    let access_token = auth
-        .jwt
-        .generate_token_with_claims(claims)
-        .map_err(|e| ApiError::Internal(format!("token_generation failed: {e}")))?;
-
-    let refresh_token = Uuid::new_v4().to_string();
-    let refresh_expiry = Utc::now() + Duration::days(30);
-    let refresh_record = RefreshTokenRecord {
-        token: refresh_token.clone(),
-        user_id: record.user_id.clone(),
-        family_id: Uuid::new_v4(),
-        status: "active".to_string(),
-        created_at: Utc::now(),
-        expires_at: refresh_expiry,
-        revoked: false,
+    let ctx = SessionContext {
+        auth: &state.auth,
+        storage: &state.storage,
+        pg: &pg,
+        security: &state.security,
+        stores: &state.operational_stores,
     };
-    crate::services::session_storage::persist_refresh_token(
-        storage,
-        Some(&pg_runtime),
-        security,
-        state.operational_stores.sessions.as_deref(),
-        &refresh_record,
+    let session = issue_session(
+        &ctx,
+        &login.record.user_id,
+        login.session_role.clone(),
+        &login.tenant.scope(),
+    )
+    .await?;
+    state
+        .auth
+        .federation
+        .put_session(&FederatedSession {
+            family_id: session.family_id,
+            user_id: uuid::Uuid::parse_str(&login.record.user_id)
+                .map_err(|_| ApiError::Internal("invalid user id".into()))?,
+            provider_slug: provider.slug().to_string(),
+            issuer: claims.issuer.clone(),
+            subject: claims.subject.clone(),
+            idp_sid: claims.session_id.clone(),
+            tenant_id: login.tenant.tenant_id,
+            workspace_id: login.tenant.workspace_id,
+            created_at: Utc::now(),
+            revoked_at: None,
+        })
+        .await?;
+    crate::services::federation::access_jti::remember_access_token(
+        state.auth.federation.as_ref(),
+        session.family_id,
+        &session.access_token,
     )
     .await?;
 
-    info!("OIDC login successful for user: {}", record.username);
+    info!(
+        user_id = %login.record.user_id,
+        tenant = %login.tenant.slug,
+        provider = %provider.slug(),
+        origin = ?login.origin,
+        membership_role = ?login.membership_role,
+        "SSO login successful"
+    );
+    Ok(CallbackDone {
+        login,
+        session,
+        redirect_after: attempt.redirect_after.clone(),
+    })
+}
 
+/// JSON mode (no SPA redirect configured): API / test clients receive the session directly.
+fn json_login(done: CallbackDone) -> Response {
+    let body = LoginResponse {
+        access_token: done.session.access_token,
+        token_type: "Bearer".to_string(),
+        expires_in: done.session.expires_in,
+        refresh_token: Some(done.session.refresh_token),
+        user: UserInfo::from(&done.login.record),
+    };
+    (StatusCode::OK, Json(body)).into_response()
+}
+
+/// Browser mode: cookie + opaque code only — **no token ever appears in the URL**.
+async fn handoff_redirect(
+    state: &AppState,
+    headers: &HeaderMap,
+    provider: &OidcFlowService,
+    success_url: &str,
+    done: CallbackDone,
+) -> Result<Response, ApiError> {
+    let user_id = uuid::Uuid::parse_str(&done.login.record.user_id)
+        .map_err(|_| ApiError::Internal("invalid user id".into()))?;
+    let code = create_handoff(
+        &state.auth.federation,
+        NewHandoff {
+            user_id,
+            family_id: done.session.family_id,
+            provider_slug: provider.slug(),
+            scope: done.login.tenant.scope(),
+            redirect_after: done.redirect_after,
+        },
+    )
+    .await?;
+    let mut url = url::Url::parse(success_url)
+        .map_err(|e| ApiError::Internal(format!("invalid success redirect: {e}")))?;
+    url.query_pairs_mut().append_pair("code", &code);
+
+    let mut response = Redirect::to(url.as_str()).into_response();
+    response.headers_mut().insert(
+        header::SET_COOKIE,
+        set_refresh_cookie_header(
+            &done.session.refresh_token,
+            cookie_secure_from_headers(headers),
+        ),
+    );
+    Ok(response)
+}
+
+/// Failure in browser mode: return to the SPA with a short machine code (no details leaked).
+fn error_redirect(success_url: &str, error: &ApiError) -> Response {
+    let Ok(mut url) = url::Url::parse(success_url) else {
+        return StatusCode::BAD_GATEWAY.into_response();
+    };
+    url.query_pairs_mut()
+        .append_pair("error", &error_code(error));
+    Redirect::to(url.as_str()).into_response()
+}
+
+/// Same-origin Next proxy: a relative callback keeps the user on the UI host.
+const RELATIVE_SSO_CALLBACK: &str = "/auth/callback";
+
+fn prefers_html_navigation(headers: &HeaderMap) -> bool {
+    let accept = headers
+        .get(header::ACCEPT)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    if accept.contains("text/html") {
+        return true;
+    }
+    headers.get("sec-fetch-mode").and_then(|v| v.to_str().ok()) == Some("navigate")
+}
+
+/// Browser SSO start must not dump a JSON 503; API clients still get 503.
+fn spa_sso_unavailable(
+    headers: &HeaderMap,
+    success_url: Option<&str>,
+    error: &ApiError,
+) -> Option<Response> {
+    if let Some(url) = success_url.filter(|u| !u.is_empty()) {
+        return Some(error_redirect(url, error));
+    }
+    if prefers_html_navigation(headers) {
+        return Some(
+            Redirect::to(&format!(
+                "{RELATIVE_SSO_CALLBACK}?error={}",
+                error_code(error)
+            ))
+            .into_response(),
+        );
+    }
+    None
+}
+
+/// Stable, non-sensitive machine code for an error (also drives the SPA message).
+pub(crate) fn error_code(error: &ApiError) -> String {
+    match error {
+        ApiError::Forbidden(Some(reason)) => reason.clone(),
+        ApiError::Conflict(code) => code.clone(),
+        ApiError::AccountLocked => "account_locked".into(),
+        ApiError::Unauthorized(_) => "unauthorized".into(),
+        ApiError::ServiceUnavailable { .. } => "sso_unavailable".into(),
+        _ => "login_failed".into(),
+    }
+}
+
+fn audit(state: &AppState, action: &str, result: AuditResult, user_id: Option<String>) {
     record_compliance_event_runtime(
-        &compliance,
+        &ComplianceRuntime::from_ref(state),
         "default",
         AuditEventType::Authentication,
-        audit_action,
-        AuditResult::Success,
+        action,
+        result,
         None,
-        Some(record.user_id.clone()),
+        user_id,
         None,
     );
-
-    Ok(LoginResponse {
-        access_token,
-        token_type: "Bearer".to_string(),
-        expires_in: expiry_seconds,
-        refresh_token: Some(refresh_token),
-        user: UserInfo::from(&*record),
-    })
 }
 
 pub fn map_oidc_service_error(err: OidcServiceError) -> ApiError {
@@ -270,6 +426,54 @@ pub fn map_oidc_service_error(err: OidcServiceError) -> ApiError {
         OidcServiceError::StateMismatch => {
             ApiError::auth_unauthorized("oidc_callback", "state_mismatch", None)
         }
+        OidcServiceError::Unavailable(_) => ApiError::ServiceUnavailable {
+            message: "The identity provider is unreachable; use password sign-in or retry."
+                .to_string(),
+            retry_after_secs: 5,
+        },
+        OidcServiceError::Rejected(_) => {
+            ApiError::auth_unauthorized("oidc_callback", "idp_rejected", None)
+        }
         OidcServiceError::Provider(msg) => ApiError::Internal(format!("oidc: {msg}")),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn error_codes_are_stable_and_non_sensitive() {
+        assert_eq!(
+            error_code(&ApiError::forbidden_reason("org_unknown")),
+            "org_unknown"
+        );
+        assert_eq!(
+            error_code(&ApiError::Conflict("account_exists_unlinked".into())),
+            "account_exists_unlinked"
+        );
+        assert_eq!(
+            error_code(&ApiError::Internal("secret db detail".into())),
+            "login_failed"
+        );
+        assert_eq!(
+            error_code(&ApiError::ServiceUnavailable {
+                message: "The identity provider is unreachable; use password sign-in or retry."
+                    .into(),
+                retry_after_secs: 5,
+            }),
+            "sso_unavailable"
+        );
+    }
+
+    #[test]
+    fn html_accept_is_treated_as_browser_navigation() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            header::ACCEPT,
+            "text/html,application/xhtml+xml".parse().unwrap(),
+        );
+        assert!(prefers_html_navigation(&headers));
+        assert!(!prefers_html_navigation(&HeaderMap::new()));
     }
 }

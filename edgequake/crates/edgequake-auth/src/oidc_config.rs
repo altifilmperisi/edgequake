@@ -1,7 +1,8 @@
 //! OpenID Connect configuration (SPEC-027 phase 54).
 //!
-//! OIDC is **opt-in** via `EDGEQUAKE_OIDC_ENABLED=true`. When disabled, enterprise SSO
-//! remains external (oauth2-proxy per `EXTERNAL_SSO_PATTERN`).
+//! OIDC is **opt-in** via `EDGEQUAKE_OIDC_ENABLED=true` (SPEC-158: Keycloak-first enterprise SSO,
+//! see `docs/security/authentication/`). When disabled, SSO can still be provided externally
+//! (oauth2-proxy per `EXTERNAL_SSO_PATTERN`).
 
 use crate::config::parse_bool_env;
 
@@ -22,7 +23,8 @@ pub struct OidcConfig {
     pub client_id: String,
     pub client_secret: Option<String>,
     pub redirect_uri: String,
-    /// Optional frontend URL to redirect after successful OIDC (tokens in query).
+    /// Optional SPA URL to return to after OIDC. EdgeQuake appends only an opaque single-use
+    /// `?code=` (redeemed at `POST /auth/handoff`) or `?error=<code>` — never a token (SPEC-158).
     pub success_redirect_url: Option<String>,
 }
 

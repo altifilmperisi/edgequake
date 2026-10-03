@@ -4,6 +4,42 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.30.0] — 2026-10-03
+
+Minor: **SPEC-158** enterprise authentication. Keycloak Organizations map to
+existing tenant slugs (never auto-created). Browser SSO uses a BFF HS256
+session, an HttpOnly refresh cookie, and a single-use `?code=` handoff.
+Schema train moves **163 → 165**. Upgrade:
+[`docs/operations/upgrade-to-0.30.0.md`](docs/operations/upgrade-to-0.30.0.md).
+
+**CD:** GHCR `edgequake`, `edgequake-frontend`, `edgequake-postgres`, and
+`edgequake-keycloak` (realm import) on tag `v0.30.0`.
+
+**SPEC-001 Acc:** attested from existing
+[`publish/latest`](specs/001-benchmark/e2e/artifacts/publish/latest/)
+(`valid: true`, medical-mid, `2026-08-15T11:02:18Z`) — no fresh n=200 run.
+This cut does not change query, ingestion, or PDF scoring.
+
+### Added
+- Federation plane: identity providers, `(issuer, sub)` identities, durable
+  OIDC login attempts, handoff codes, back-channel logout, access-jti map
+  (migrations **164** and **165**).
+- WebUI: SSO buttons, `/auth/callback`, settings identity-provider card.
+- `make dev-sso`, `make spec158-proof-e2e`, `scripts/keycloak_smoke.py`.
+
+### Changed
+- Interactive document list returns the page when the 2.5s read budget is
+  nearly spent, instead of 503 `read_path_busy` after optional AGE/task enrich.
+- Browser `GET /auth/oidc/login` with SSO disabled redirects to
+  `/auth/callback?error=sso_unavailable`. API clients with no HTML Accept
+  still receive 503.
+
+### Residuals
+- `keycloak_smoke.py --broker` still stops at Keycloak first-broker login when
+  Organizations scopes are on the client. Link policy is gated by
+  `e2e_spec158_federation::github_broker_unverified_email_does_not_link`.
+- Live Playwright (`E2E_SSO=1`) is opt-in and is not part of `make release-gates`.
+
 ## [0.29.0] — 2026-10-02
 
 Minor: **SPEC-157** side-by-side query companion, **SPEC-155** documents

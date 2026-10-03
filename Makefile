@@ -145,6 +145,7 @@ release: ## Bump all crate versions and tag release using cargo-release (uses VE
         openapi-snapshot codegen-openapi codegen-openapi-refresh codegen-openapi-live \
         codegen-vision-prompts \
         db-start postgres-start db-start-pg16 db-start-pg17 db-start-pg18 db-stop db-wait db-logs db-shell postgres-image-build postgres-image-build-pg17 postgres-image-build-pg18 postgres-image-build-pg18-vectorscale postgres-image-build-unified check-extension-pins postgres-battle-test hnsw-dimension-battle-test spec042-battle-test-all spec044-battle-test-all dev-e2e-proof dev-e2e-proof-all docker-network-diagnose stop-docker-services check-no-orbstack-kill \
+        dev-sso dev-sso-down keycloak-smoke spec158-proof-up spec158-proof-down spec158-proof-e2e \
         docker-build docker-up docker-prebuilt docker-prebuilt-down docker-prebuilt-logs docker-ps-prebuilt docker-api-only docker-down docker-logs \
         langfuse-up langfuse-down langfuse-logs langfuse-status langfuse-smoke langfuse-reset spec124-langfuse-e2e \
         langfuse-3.1-up langfuse-3.1-down langfuse-3.1-reset spec124-langfuse-3.1-e2e \
@@ -2147,6 +2148,50 @@ docker-down: ## Stop Docker stack
 	@echo "$(BLUE)Stopping Docker stack...$(RESET)"
 	@cd $(DOCKER_DIR) && docker compose down
 	@echo "$(GREEN)✓ Docker stack stopped$(RESET)"
+
+# ── SPEC-158: enterprise SSO (Keycloak overlay) ─────────────────────────────────
+SSO_COMPOSE = docker compose -f docker-compose.quickstart.yml -f docker-compose.keycloak.yml
+
+dev-sso: ## Quickstart stack + Keycloak SSO overlay (one-time: echo "127.0.0.1 keycloak" >> /etc/hosts)
+	@grep -qE '^[^#]*[[:space:]]keycloak([[:space:]]|$$)' /etc/hosts || \
+		echo "$(YELLOW)! add once: echo '127.0.0.1 keycloak' | sudo tee -a /etc/hosts (browser must resolve the issuer host)$(RESET)"
+	@$(SSO_COMPOSE) up -d --build
+	@echo "$(GREEN)✓ Keycloak http://keycloak:8081 (admin/admin) · demo users alice, bob, carol$(RESET)"
+	@echo "  next: make keycloak-smoke"
+
+dev-sso-down: ## Stop the SSO overlay stack
+	@$(SSO_COMPOSE) down
+
+# Isolated live proof (does not bind :8080/:8081). Keycloak :18081, API :18080, WebUI :13010.
+spec158-proof-up: ## Isolated Keycloak + working-tree API/WebUI for SPEC-158 --deep/--broker
+	@chmod +x scripts/spec158_proof_stack.sh
+	@./scripts/spec158_proof_stack.sh up
+
+spec158-proof-down: ## Stop the isolated SPEC-158 proof stack (leaves OrbStack and :8080 alone)
+	@./scripts/spec158_proof_stack.sh down
+
+keycloak-smoke: ## Headless auth-code+PKCE smoke; --api only if /health is EdgeQuake JSON
+	@API_ARGS=""; \
+	for u in $${EQ_SSO_API:-http://localhost:18080} http://localhost:8080; do \
+	  if python3 -c "import json,urllib.request,sys; d=json.loads(urllib.request.urlopen(sys.argv[1]+'/health',timeout=2).read()); sys.exit(0 if isinstance(d,dict) and 'storage_mode' in d else 1)" "$$u"; then \
+	    API_ARGS="--api $$u --web-callback $${EQ_WEB_PUBLIC_URL:-http://localhost:13010}/auth/callback --admin-password $${EDGEQUAKE_BOOTSTRAP_ADMIN_PASSWORD:-Admin-dev-only-change-me-1}"; \
+	    break; \
+	  fi; \
+	done; \
+	python3 scripts/keycloak_smoke.py --resolve 127.0.0.1 \
+		--kc $${EQ_SSO_KC:-http://localhost:18081} \
+		--redirect-uri $${EQ_SSO_REDIRECT:-http://localhost:13010/api/v1/auth/oidc/callback} \
+		$$API_ARGS \
+		$${KEYCLOAK_SMOKE_DEEP:+--deep} $${KEYCLOAK_SMOKE_BROKER:+--broker} $${KEYCLOAK_SMOKE_REALM_RESTART:+--realm-restart}
+
+spec158-proof-e2e: spec158-proof-up ## Live Keycloak PKCE, handoff, and --deep back-channel logout
+	@python3 scripts/keycloak_smoke.py --resolve 127.0.0.1 \
+		--kc http://localhost:18081 \
+		--api http://localhost:18080 \
+		--web-callback http://localhost:13010/auth/callback \
+		--redirect-uri http://localhost:13010/api/v1/auth/oidc/callback \
+		--admin-password $${EDGEQUAKE_BOOTSTRAP_ADMIN_PASSWORD:-Admin-dev-only-change-me-1} \
+		--deep
 
 docker-logs: ## View Docker logs
 	@cd $(DOCKER_DIR) && docker compose logs -f

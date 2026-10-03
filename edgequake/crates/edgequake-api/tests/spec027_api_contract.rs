@@ -909,8 +909,10 @@ fn spec027_identity_storage_ssot_phase33() {
     let auth_mod = read_crate_src("src/handlers/auth/mod.rs");
     assert!(auth_mod.contains("persist_user_record"));
     assert!(auth_mod.contains("get_record_by_id"));
-    let session = read_crate_src("src/handlers/auth/session.rs");
+    // SPEC-158: password + SSO sessions share one issuer (login_tokens) built on the SSOT claims.
+    let session = read_crate_src("src/services/login_tokens.rs");
     assert!(session.contains("access_token_claims"));
+    assert!(read_crate_src("src/handlers/auth/session.rs").contains("login_tokens::"));
     let middleware = read_crate_src("src/middleware.rs");
     assert!(middleware.contains("membership_bind_scope"));
     assert!(middleware.contains("enforce_membership_bind"));
@@ -1044,7 +1046,9 @@ fn spec027_session_storage_pg_phase39() {
     assert!(session.contains("find_active_api_keys_by_prefix"));
     assert!(session.contains("refresh_token_lookup_hash"));
     let session_handler = read_crate_src("src/handlers/auth/session.rs");
-    assert!(session_handler.contains("session_storage::persist_refresh_token"));
+    let login_tokens = read_crate_src("src/services/login_tokens.rs");
+    assert!(login_tokens.contains("session_storage::persist_refresh_token"));
+    assert!(session_handler.contains("persist_new_refresh"));
     assert!(session_handler.contains("session_storage::load_refresh_token"));
     let api_keys = read_crate_src("src/handlers/auth/api_keys.rs");
     assert!(api_keys.contains("session_storage::persist_api_key"));
@@ -1164,9 +1168,13 @@ fn spec027_auth_memory_store_phase55() {
     let session = read_crate_src("src/services/session_storage.rs");
     assert!(session.contains("auth_memory_store::"));
     assert!(!session.contains("auth_kv_store"));
-    let oidc_pending = read_crate_src("src/services/oidc_pending.rs");
-    assert!(oidc_pending.contains("auth_memory_store"));
-    assert!(!oidc_pending.contains("kv_storage"));
+    // SPEC-158: OIDC login attempts live in the FederationStore (memory + PG), not KV.
+    let fed_memory = read_crate_src("src/services/federation/memory_store.rs");
+    assert!(fed_memory.contains("put_login_attempt"));
+    assert!(!fed_memory.contains("kv_storage"));
+    let fed_pg = read_crate_src("src/services/federation/pg_store.rs");
+    assert!(fed_pg.contains("oidc_login_attempts"));
+    assert!(!fed_pg.contains("kv_storage"));
     let services_mod = read_crate_src("src/services/mod.rs");
     assert!(services_mod.contains("pub mod auth_memory_store"));
     assert!(!services_mod.contains("auth_kv_store"));
@@ -1304,8 +1312,12 @@ fn spec027_oauth2_oidc_not_builtin_phase49() {
     assert!(health_types.contains("auth_kv_harness_active"));
     assert!(health_types.contains("external_sso_pattern"));
     let health = read_crate_src("src/handlers/health.rs");
-    assert!(health.contains("resolved_auth_mechanisms"));
-    assert!(health.contains("is_runtime_builtin"));
+    // SPEC-158: health delegates to `AuthRuntime` (env shim + provider registry).
+    assert!(health.contains("auth.auth_mechanisms()"));
+    assert!(health.contains("auth.sso_active()"));
+    let auth_runtime = read_crate_src("src/state/auth_runtime.rs");
+    assert!(auth_runtime.contains("resolved_auth_mechanisms"));
+    assert!(auth_runtime.contains("is_runtime_builtin"));
     let kv_store = read_crate_src("src/services/auth_memory_store.rs");
     assert!(kv_store.contains("persist_user_record"));
     assert!(
@@ -1408,7 +1420,6 @@ fn spec027_auth_memory_store_callers_only_phase55() {
         "src/services/auth_memory_store.rs",
         "src/services/identity_storage.rs",
         "src/services/session_storage.rs",
-        "src/services/oidc_pending.rs",
         "src/services/mod.rs",
         "src/state/memory.rs",
         "src/state/postgres.rs",
@@ -1439,7 +1450,7 @@ fn spec027_auth_memory_store_callers_only_phase55() {
     }
     assert!(
         offenders.is_empty(),
-        "auth_memory_store must be referenced only from identity/session/oidc_pending (+ mod); found: {offenders:?}"
+        "auth_memory_store must be referenced only from identity/session (+ mod); found: {offenders:?}"
     );
 }
 
@@ -1517,16 +1528,16 @@ fn spec027_oauth2_oidc_builtin_wiring_phase54() {
     assert!(cargo.contains("openidconnect"));
     let oidc_flow = read_crate_src("src/services/oidc_flow.rs");
     assert!(oidc_flow.contains("PkceCodeChallenge"));
-    let oidc_pending = read_crate_src("src/services/oidc_pending.rs");
-    assert!(oidc_pending.contains("store_oidc_pending"));
-    assert!(!oidc_pending.contains("kv_storage"));
+    let fed_store = read_crate_src("src/services/federation/store.rs");
+    assert!(fed_store.contains("put_login_attempt"));
+    assert!(!fed_store.contains("kv_storage"));
     let oidc_config = read_crate_src("../edgequake-auth/src/oidc_config.rs");
     assert!(oidc_config.contains("EDGEQUAKE_OIDC_ENABLED"));
     assert!(oidc_config.contains("MECHANISM_OIDC"));
     let auth_config = read_crate_src("../edgequake-auth/src/config.rs");
     assert!(auth_config.contains("OAUTH2_OIDC_BUILTIN: bool = false"));
     let health = read_crate_src("src/handlers/health.rs");
-    assert!(health.contains("resolved_auth_mechanisms"));
+    assert!(health.contains("auth.auth_mechanisms()"));
     assert!(health.contains("builtin-oidc"));
     let middleware = read_crate_src("src/middleware.rs");
     assert!(middleware.contains("/auth/oidc/login"));
@@ -1591,10 +1602,12 @@ fn spec027_oauth2_oidc_no_protocol_routes_phase53() {
 #[test]
 fn spec027_auth_session_api_keys_use_session_storage_phase52() {
     let session = read_crate_src("src/handlers/auth/session.rs");
-    assert!(session.contains("session_storage::persist_refresh_token"));
+    let login_tokens = read_crate_src("src/services/login_tokens.rs");
+    assert!(login_tokens.contains("session_storage::persist_refresh_token"));
     assert!(session.contains("session_storage::load_refresh_token"));
-    assert!(session.contains("identity_storage::access_token_claims"));
+    assert!(login_tokens.contains("identity_storage::access_token_claims"));
     assert!(!session.contains("auth_kv_store"));
+    assert!(!login_tokens.contains("auth_kv_store"));
     let api_keys = read_crate_src("src/handlers/auth/api_keys.rs");
     assert!(api_keys.contains("session_storage::persist_api_key"));
     assert!(api_keys.contains("session_storage::list_api_keys_for_user"));

@@ -5,14 +5,16 @@ use std::time::Duration;
 /// Default JWT secret when `JWT_SECRET` is unset — **must not** be used in production.
 pub const DEFAULT_INSECURE_JWT_SECRET: &str = "change-me-in-production-256-bit-secret-key";
 
-/// Built-in authentication mechanisms (SPEC-027 phase 49). OAuth2/OIDC is **not** in-process.
+/// Always-on authentication mechanisms (SPEC-027 phase 49). OIDC SSO (SPEC-158) is built in but
+/// opt-in at runtime; `/health` then adds `"oidc"` to the advertised mechanisms.
 pub const BUILTIN_AUTH_MECHANISMS: &[&str] = &["jwt_password", "api_key"];
 
 /// Compile-time marker: in-process OIDC is opt-in at runtime via `OidcConfig`.
 /// `/health` uses `OidcConfig::is_runtime_builtin()` when OIDC env is set.
 pub const OAUTH2_OIDC_BUILTIN: bool = false;
 
-/// Recommended external pattern for enterprise SSO (documented in `docs/security/best-practices.md`).
+/// Legacy external SSO pattern reported by `/health` while built-in OIDC is off. Built-in Keycloak/OIDC
+/// SSO (SPEC-158, `docs/security/authentication/`) is the primary route; oauth2-proxy stays supported.
 pub const EXTERNAL_SSO_PATTERN: &str = "oauth2-proxy";
 
 /// Authentication service configuration.

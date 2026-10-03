@@ -114,6 +114,12 @@ impl FromRef<AppState> for ApiSecurityConfig {
     }
 }
 
+impl FromRef<AppState> for super::SharedWorkspaceService {
+    fn from_ref(state: &AppState) -> Self {
+        Arc::clone(&state.workspace_service)
+    }
+}
+
 impl FromRef<AppState> for Arc<crate::read_path::ReadPathDbPermit> {
     fn from_ref(state: &AppState) -> Self {
         Arc::clone(&state.read_path_db)

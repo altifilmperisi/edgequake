@@ -8,6 +8,7 @@
 
 export * from "./edgequake/health";
 export * from "./edgequake/auth";
+export * from "./edgequake/sso";
 export * from "./edgequake/workspaces";
 export * from "./edgequake/documents";
 export * from "./edgequake/document-cancel";

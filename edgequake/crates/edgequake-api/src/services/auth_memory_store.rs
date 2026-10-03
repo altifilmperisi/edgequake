@@ -1,7 +1,8 @@
 //! In-memory auth storage for tests without PostgreSQL (SPEC-027 phase 55).
 //!
 //! Authentication data **never** uses KV `auth:*` keys. Production SSOT is PostgreSQL;
-//! this store is the sole non-PG fallback for identity, sessions, and OIDC pending state.
+//! this store is the sole non-PG fallback for identity and sessions (OIDC pending state moved to
+//! `services/federation` — SPEC-158 LAW-158-11).
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -15,7 +16,6 @@ use crate::oauth::types::{
     OAuthAuthorizationCode, OAuthClientRegistration, OAuthRefreshGrant, OAuthRefreshStatus,
     TakeRefreshOutcome,
 };
-use crate::services::oidc_flow::OidcPendingSession;
 
 #[derive(Default)]
 struct AuthMemoryState {
@@ -24,7 +24,6 @@ struct AuthMemoryState {
     email_index: HashMap<String, String>,
     refresh_tokens: HashMap<String, RefreshTokenRecord>,
     api_keys: HashMap<String, ApiKeyRecord>,
-    oidc_pending: HashMap<String, OidcPendingSession>,
     oauth_clients: HashMap<String, OAuthClientRegistration>,
     oauth_codes: HashMap<String, OAuthAuthorizationCode>,
     oauth_refresh: HashMap<String, OAuthRefreshGrant>,
@@ -159,6 +158,15 @@ pub(crate) async fn revoke_refresh_token(
     Ok(true)
 }
 
+/// Revoke every token in a rotation family (SPEC-158 back-channel logout).
+pub(crate) async fn revoke_refresh_family(
+    store: &AuthMemoryStore,
+    family_id: uuid::Uuid,
+) -> Result<(), ApiError> {
+    revoke_family_web_locked(&mut *store.inner.write().await, family_id);
+    Ok(())
+}
+
 /// Consume an active web refresh token (rotate); reuse revokes the family.
 pub(crate) async fn take_web_refresh(
     store: &AuthMemoryStore,
@@ -252,29 +260,6 @@ pub(crate) async fn revoke_api_key(
         return Ok(Some(record.clone()));
     }
     Ok(None)
-}
-
-// ── OIDC pending (ephemeral — not identity SSOT) ─────────────────────────────
-
-pub(crate) async fn store_oidc_pending(
-    store: &AuthMemoryStore,
-    csrf_token: &str,
-    pending: &OidcPendingSession,
-) -> Result<(), ApiError> {
-    store
-        .inner
-        .write()
-        .await
-        .oidc_pending
-        .insert(csrf_token.to_string(), pending.clone());
-    Ok(())
-}
-
-pub(crate) async fn take_oidc_pending(
-    store: &AuthMemoryStore,
-    csrf_token: &str,
-) -> Result<Option<OidcPendingSession>, ApiError> {
-    Ok(store.inner.write().await.oidc_pending.remove(csrf_token))
 }
 
 // ── MCP OAuth AS (ephemeral client / code / refresh) ─────────────────────────

@@ -64,6 +64,7 @@ async fn connect_and_bootstrap() -> Option<sqlx::PgPool> {
     use sqlx::postgres::PgPoolOptions;
 
     let database_url = common::spec013_postgres::try_database_url()?;
+    std::env::set_var("EDGEQUAKE_MIGRATE_CLI", "1");
     let pool = PgPoolOptions::new()
         .max_connections(5)
         .connect(&database_url)

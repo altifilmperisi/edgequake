@@ -108,9 +108,12 @@ pub struct ApiCapabilities {
     /// Built-in auth mechanisms (`jwt_password`, `api_key`) — SPEC-027 phase 49.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub auth_mechanisms: Option<Vec<String>>,
-    /// Whether OAuth2/OIDC login is implemented in-process (always `false` today).
+    /// Whether at least one OAuth2/OIDC provider is runtime-active (SPEC-027 / SPEC-158).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub oauth2_oidc_builtin: Option<bool>,
+    /// SPEC-158: number of runtime-active SSO providers (env shim + registry).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sso_providers: Option<usize>,
     /// Whether in-memory auth harness is active (no PG pool — not KV).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub auth_kv_harness_active: Option<bool>,

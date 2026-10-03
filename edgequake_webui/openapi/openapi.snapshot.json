@@ -9,7 +9,7 @@
     "license": {
       "name": "Apache-2.0"
     },
-    "version": "0.29.0"
+    "version": "0.30.0"
   },
   "servers": [
     {
@@ -354,6 +354,134 @@
           },
           "500": {
             "description": "Apply failed"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/identity-providers": {
+      "get": {
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "GET /api/v1/admin/identity-providers — persisted provider definitions (admin).",
+        "operationId": "admin_list_identity_providers",
+        "responses": {
+          "200": {
+            "description": "Stored identity providers",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/StoredProvider"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Admin role required"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
+    "/api/v1/admin/identity-providers/{slug}": {
+      "put": {
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "PUT /api/v1/admin/identity-providers/{slug} — upsert a provider and reload the registry.",
+        "operationId": "admin_upsert_identity_provider",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Provider slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StoredProvider"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoredProvider"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid provider definition"
+          },
+          "403": {
+            "description": "Admin role required"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          },
+          {
+            "api_key": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "DELETE /api/v1/admin/identity-providers/{slug}",
+        "operationId": "admin_delete_identity_provider",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "description": "Provider slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "403": {
+            "description": "Admin role required"
+          },
+          "404": {
+            "description": "Unknown provider"
           }
         },
         "security": [
@@ -873,6 +1001,44 @@
         ]
       }
     },
+    "/api/v1/auth/handoff": {
+      "post": {
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "POST /api/v1/auth/handoff — redeem a single-use SSO handoff code.",
+        "operationId": "redeem_sso_handoff",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HandoffRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Access token for the SSO session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HandoffResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unknown, expired or already redeemed code"
+          },
+          "403": {
+            "description": "Tenant suspended or membership revoked"
+          }
+        },
+        "security": []
+      }
+    },
     "/api/v1/auth/login": {
       "post": {
         "tags": [
@@ -989,19 +1155,47 @@
         ]
       }
     },
+    "/api/v1/auth/oidc/backchannel-logout": {
+      "post": {
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "POST /api/v1/auth/oidc/backchannel-logout",
+        "operationId": "oidc_backchannel_logout",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/BackchannelLogoutForm"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Logout token accepted; matching sessions revoked"
+          },
+          "400": {
+            "description": "Invalid, unverifiable or replayed logout token"
+          }
+        },
+        "security": []
+      }
+    },
     "/api/v1/auth/oidc/callback": {
       "get": {
         "tags": [
           "Authentication"
         ],
-        "summary": "GET /api/v1/auth/oidc/callback — complete OIDC flow and issue EdgeQuake JWT.",
+        "summary": "GET /api/v1/auth/oidc/callback — complete OIDC flow and issue an EdgeQuake session.",
         "operationId": "oidc_callback",
         "parameters": [
           {
             "name": "code",
             "in": "query",
             "description": "Authorization code from IdP",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -1010,7 +1204,16 @@
             "name": "state",
             "in": "query",
             "description": "CSRF state from login redirect",
-            "required": true,
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "error",
+            "in": "query",
+            "description": "IdP error code",
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -1018,7 +1221,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Login successful (JSON tokens)",
+            "description": "Login successful (JSON tokens; no success redirect configured)",
             "content": {
               "application/json": {
                 "schema": {
@@ -1027,11 +1230,17 @@
               }
             }
           },
-          "302": {
-            "description": "Redirect to EDGEQUAKE_OIDC_SUCCESS_REDIRECT_URL with tokens in query"
+          "303": {
+            "description": "Redirect to the SPA with an opaque single-use `code` (never tokens)"
           },
           "401": {
-            "description": "State mismatch or expired pending session"
+            "description": "State mismatch, replayed or expired pending session"
+          },
+          "403": {
+            "description": "Tenant / provider policy denial"
+          },
+          "409": {
+            "description": "Email belongs to an unlinked local account"
           },
           "503": {
             "description": "OIDC not enabled"
@@ -1047,12 +1256,41 @@
         ],
         "summary": "GET /api/v1/auth/oidc/login — redirect to IdP authorization endpoint (PKCE).",
         "operationId": "oidc_login",
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "query",
+            "description": "Provider slug",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "org",
+            "in": "query",
+            "description": "Organization alias hint",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "redirect",
+            "in": "query",
+            "description": "Same-origin path after login",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
-          "302": {
+          "303": {
             "description": "Redirect to OIDC provider authorization URL"
           },
           "503": {
-            "description": "OIDC not enabled (EDGEQUAKE_OIDC_ENABLED=false)"
+            "description": "OIDC not enabled or provider unknown"
           }
         },
         "security": []
@@ -1089,6 +1327,28 @@
           },
           "401": {
             "description": "Invalid or expired refresh token"
+          }
+        },
+        "security": []
+      }
+    },
+    "/api/v1/auth/sso/providers": {
+      "get": {
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "GET /api/v1/auth/sso/providers — public, secret-free list for the login page.",
+        "operationId": "list_sso_providers",
+        "responses": {
+          "200": {
+            "description": "Configured SSO providers",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SsoProvidersResponse"
+                }
+              }
+            }
           }
         },
         "security": []
@@ -3217,8 +3477,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-job-type": "recover_stuck",
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
+        "x-edgequake-v2-job-type": "recover_stuck"
       }
     },
     "/api/v1/documents/reprocess": {
@@ -3275,8 +3535,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-job-type": "reprocess_failed",
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
+        "x-edgequake-v2-job-type": "reprocess_failed"
       }
     },
     "/api/v1/documents/scan": {
@@ -9489,8 +9749,8 @@
             "workspace_id": []
           }
         ],
-        "x-edgequake-v2-job-type": "rebuild_embeddings",
-        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog"
+        "x-edgequake-v2-catalog": "/api/v2/workspaces/{workspace_id}/jobs/catalog",
+        "x-edgequake-v2-job-type": "rebuild_embeddings"
       }
     },
     "/api/v1/workspaces/{workspace_id}/rebuild-knowledge-graph": {
@@ -10238,8 +10498,8 @@
             "description": "WebSocket upgrade failed"
           }
         },
-        "x-edgequake-upgrade": "RFC6455",
-        "x-edgequake-transport": "websocket"
+        "x-edgequake-transport": "websocket",
+        "x-edgequake-upgrade": "RFC6455"
       }
     },
     "/ws/progress/{track_id}": {
@@ -10484,7 +10744,7 @@
               "boolean",
               "null"
             ],
-            "description": "Whether OAuth2/OIDC login is implemented in-process (always `false` today)."
+            "description": "Whether at least one OAuth2/OIDC provider is runtime-active (SPEC-027 / SPEC-158)."
           },
           "openapi_url": {
             "type": "string",
@@ -10507,6 +10767,14 @@
           "shared_conversations_prefix": {
             "type": "string",
             "description": "Public shared-conversation path prefix."
+          },
+          "sso_providers": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "SPEC-158: number of runtime-active SSO providers (env shim + registry).",
+            "minimum": 0
           },
           "swagger_ui_url": {
             "type": "string",
@@ -10740,6 +11008,21 @@
           "active_llm_provider": {},
           "embedding_providers": [],
           "llm_providers": []
+        }
+      },
+      "BackchannelLogoutForm": {
+        "type": "object",
+        "required": [
+          "logout_token"
+        ],
+        "properties": {
+          "logout_token": {
+            "type": "string",
+            "description": "Signed `logout_token` JWT (`application/x-www-form-urlencoded`, OIDC BCL §2.5)."
+          }
+        },
+        "example": {
+          "logout_token": {}
         }
       },
       "BatchDegreeRequest": {
@@ -17638,6 +17921,72 @@
           "start_node": {}
         }
       },
+      "HandoffRequest": {
+        "type": "object",
+        "required": [
+          "code"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "One-time code from the SSO redirect (`?code=…`)."
+          }
+        },
+        "example": {
+          "code": {}
+        }
+      },
+      "HandoffResponse": {
+        "type": "object",
+        "required": [
+          "access_token",
+          "token_type",
+          "expires_in",
+          "user",
+          "tenant_id"
+        ],
+        "properties": {
+          "access_token": {
+            "type": "string"
+          },
+          "expires_in": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "redirect_after": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Validated same-origin path to navigate to (never an absolute URL)."
+          },
+          "tenant_id": {
+            "type": "string"
+          },
+          "token_type": {
+            "type": "string",
+            "description": "Always `Bearer`."
+          },
+          "user": {
+            "$ref": "#/components/schemas/UserInfo"
+          },
+          "workspace_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "example": {
+          "access_token": {},
+          "expires_in": {},
+          "redirect_after": {},
+          "tenant_id": {},
+          "token_type": {},
+          "user": {},
+          "workspace_id": {}
+        }
+      },
       "HealthAttributionSummary": {
         "type": "object",
         "required": [
@@ -24282,6 +24631,37 @@
           "storage": {}
         }
       },
+      "ProviderSummary": {
+        "type": "object",
+        "description": "Public, secret-free provider description for the login page.",
+        "required": [
+          "slug",
+          "display_name",
+          "kind",
+          "login_path"
+        ],
+        "properties": {
+          "display_name": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "login_path": {
+            "type": "string",
+            "description": "Relative login entrypoint (the SPA appends `org` / `redirect`)."
+          },
+          "slug": {
+            "type": "string"
+          }
+        },
+        "example": {
+          "display_name": {},
+          "kind": {},
+          "login_path": {},
+          "slug": {}
+        }
+      },
       "ProvidersHealth": {
         "type": "object",
         "description": "Combined provider health for LLM and embedding.\n\nWHY: OODA-11 - Mission requirement: \"know all parts of the applied\nconfiguration (llm provider, embedding provider, models used)\".",
@@ -28320,6 +28700,23 @@
           "start_line": {}
         }
       },
+      "SsoProvidersResponse": {
+        "type": "object",
+        "required": [
+          "providers"
+        ],
+        "properties": {
+          "providers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProviderSummary"
+            }
+          }
+        },
+        "example": {
+          "providers": []
+        }
+      },
       "StageHealth": {
         "type": "object",
         "description": "Per-stage status payload.",
@@ -28753,6 +29150,98 @@
           "operator_action": {},
           "retract_on_cancel_total": {},
           "vector_dim_mismatch_rejected_total": {}
+        }
+      },
+      "StoredProvider": {
+        "type": "object",
+        "description": "Persisted provider definition (`identity_providers` row).",
+        "required": [
+          "slug",
+          "kind",
+          "display_name",
+          "issuer",
+          "client_id",
+          "redirect_uri",
+          "scopes",
+          "trust_email",
+          "link_policy",
+          "jit_enabled",
+          "role_claim",
+          "role_map",
+          "max_role",
+          "enabled",
+          "metadata"
+        ],
+        "properties": {
+          "client_id": {
+            "type": "string"
+          },
+          "client_secret_ref": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Environment variable name holding the client secret (never the secret)."
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "issuer": {
+            "type": "string"
+          },
+          "jit_enabled": {
+            "type": "boolean"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "link_policy": {
+            "type": "string"
+          },
+          "max_role": {
+            "type": "string"
+          },
+          "metadata": {},
+          "redirect_uri": {
+            "type": "string"
+          },
+          "role_claim": {
+            "type": "string"
+          },
+          "role_map": {},
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "slug": {
+            "type": "string"
+          },
+          "trust_email": {
+            "type": "boolean"
+          }
+        },
+        "example": {
+          "client_id": {},
+          "client_secret_ref": {},
+          "display_name": {},
+          "enabled": {},
+          "issuer": {},
+          "jit_enabled": {},
+          "kind": {},
+          "link_policy": {},
+          "max_role": {},
+          "metadata": {},
+          "redirect_uri": {},
+          "role_claim": {},
+          "role_map": {},
+          "scopes": [],
+          "slug": {},
+          "trust_email": {}
         }
       },
       "StreamQueryRequest": {
@@ -31522,7 +32011,7 @@
     "asyncapi": "2.6.0",
     "info": {
       "title": "EdgeQuake WebSocket Progress",
-      "version": "0.29.0",
+      "version": "0.30.0",
       "description": "Real-time pipeline and document processing progress over WebSocket (RFC 6455). SPEC-149: clients subscribe to owned track_ids on the global channel; events use a tagged {type,data} envelope."
     },
     "defaultContentType": "application/json",

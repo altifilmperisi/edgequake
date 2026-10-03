@@ -1402,5 +1402,48 @@
     "banner": {
       "working": "Working"
     }
+  },
+  "auth": {
+    "sso": {
+      "continueWith": "Continuer avec {{name}}",
+      "orLocal": "ou connectez-vous avec un mot de passe",
+      "orgLabel": "Organisation (facultatif)",
+      "orgPlaceholder": "votre-entreprise",
+      "orgHint": "Laissez vide si vous appartenez à une seule organisation.",
+      "signingIn": "Redirection vers votre fournisseur d'identité…",
+      "completing": "Finalisation de la connexion…",
+      "backToLogin": "Retour à la connexion",
+      "pickOrg": "Choisissez une organisation",
+      "pickOrgHint": "Votre compte appartient à plusieurs organisations. Choisissez celle à utiliser.",
+      "errors": {
+        "generic": "L'authentification unique a échoué. Réessayez ou contactez votre administrateur.",
+        "orgUnknown": "Cette organisation n'existe pas ou vous n'en êtes pas membre.",
+        "orgMissing": "Votre fournisseur d'identité n'a pas transmis d'organisation. Contactez votre administrateur.",
+        "orgAmbiguous": "Votre compte appartient à plusieurs organisations. Choisissez celle à utiliser.",
+        "tenantSuspended": "Cette organisation est suspendue. Contactez votre administrateur.",
+        "hdMismatch": "Ce compte Google n'appartient pas au domaine autorisé.",
+        "idpTenantNotAllowed": "Votre annuaire (tenant) n'est pas autorisé à se connecter ici.",
+        "jitDisabled": "Votre compte n'a pas été provisionné. Demandez une invitation à un administrateur.",
+        "maxUsers": "Cette organisation a atteint sa limite d'utilisateurs.",
+        "membershipRevoked": "Votre accès à cette organisation a été retiré.",
+        "tenantAccessDenied": "Vous n'avez pas accès à cette organisation.",
+        "accountExistsUnlinked": "Un compte avec cet e-mail existe déjà. Connectez-vous avec votre mot de passe, puis liez le SSO depuis votre profil.",
+        "accessDenied": "La connexion a été annulée ou refusée par le fournisseur d'identité.",
+        "invalidHandoff": "Ce lien de connexion a expiré ou a déjà été utilisé. Recommencez.",
+        "ssoUnavailable": "Le fournisseur d'identité est injoignable. Connectez-vous avec un mot de passe ou réessayez.",
+        "title": "Échec de la connexion"
+      },
+      "admin": {
+        "title": "Fournisseurs d'identité",
+        "description": "Fournisseurs d'authentification unique disponibles à la connexion. Ceux configurés par variables d'environnement sont en lecture seule.",
+        "empty": "Aucun fournisseur SSO n'est configuré (connexion par mot de passe uniquement).",
+        "provider": "Fournisseur",
+        "issuer": "Émetteur",
+        "policy": "Politique",
+        "env": "environnement",
+        "trustEmail": "e-mail approuvé",
+        "noTrustEmail": "e-mail non approuvé"
+      }
+    }
   }
 }

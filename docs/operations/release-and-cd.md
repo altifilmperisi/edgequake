@@ -4,11 +4,11 @@ title: "Release & CD Cycle"
 
 # Release & CD Cycle
 
-> **Product: v0.29.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
+> **Product: v0.30.0** · Contract: OpenAPI · Spec ops: [Ingestion cancel & fairness](../ingestion-cancel-and-fairness.md)
 >
-> Upgrade: [upgrade-to-0.29.0.md](upgrade-to-0.29.0.md) (SPEC-157/155/156; schema **163**). Prior: [upgrade-to-0.28.5.md](upgrade-to-0.28.5.md) (docs/CI honesty; schema **162**), [upgrade-to-0.28.4.md](upgrade-to-0.28.4.md) (SPEC-154; schema **162**), [upgrade-to-0.28.3.md](upgrade-to-0.28.3.md).
+> Upgrade: [upgrade-to-0.30.0.md](upgrade-to-0.30.0.md) (SPEC-158; schema **165**). Prior: [upgrade-to-0.29.0.md](upgrade-to-0.29.0.md) (SPEC-157/155/156; schema **163**), [upgrade-to-0.28.5.md](upgrade-to-0.28.5.md) (docs/CI honesty; schema **162**).
 >
-> **SPEC-001 Acc (this cut):** attested existing [`publish/latest`](../../specs/001-benchmark/e2e/artifacts/publish/latest/) (`valid: true`, medical-mid, `2026-08-15T11:02:18Z`) — no fresh n=200 run; **query, ingestion, and PDF geometry not re-scored**.
+> **SPEC-001 Acc (this cut):** attested existing [`publish/latest`](../../specs/001-benchmark/e2e/artifacts/publish/latest/) (`valid: true`, medical-mid, `2026-08-15T11:02:18Z`) — no fresh n=200 run; **query, ingestion, and PDF geometry not re-scored**. SSO and the document-list deadline do not change retrieval.
 >
 > **crates.io deps:** `edgequake-llm` **0.10.9**, `edgequake-pdf2md` **0.9.11**, `edgeparse-core` **0.3.2**, `edgequake-sdk` **0.4.0** (workspace crates remain GHCR-only).
 
@@ -185,6 +185,7 @@ See [AGENTS.md](../../AGENTS.md) for the full developer workflow, including:
 | `ghcr.io/raphaelmansuy/edgequake` | `VERSION`, `latest` | Backend API server |
 | `ghcr.io/raphaelmansuy/edgequake-frontend` | `VERSION`, `latest` | Next.js web UI |
 | `ghcr.io/raphaelmansuy/edgequake-postgres` | `VERSION`, `VERSION-pg16`, `VERSION-pg17`, `VERSION-pg18`, `latest` | PostgreSQL with pgvector + AGE |
+| `ghcr.io/raphaelmansuy/edgequake-keycloak` | `VERSION`, `latest` | Keycloak >= 26.8 + EdgeQuake realm (SPEC-158; `.github/workflows/release-keycloak.yml` smokes `scripts/keycloak_smoke.py` before publishing) |
 
 ## PostgreSQL Version Tiers
 

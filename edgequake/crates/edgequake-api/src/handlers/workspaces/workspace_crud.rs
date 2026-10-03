@@ -208,7 +208,7 @@ pub async fn list_workspaces(
     Path(tenant_id): Path<Uuid>,
     Query(params): Query<ListWorkspacesParams>,
 ) -> Result<Json<WorkspaceListResponse>, ApiError> {
-    crate::read_path::run_with_read_path_guard(&state.read_path_db, || async move {
+    crate::read_path::run_with_read_path_guard(&state.read_path_db, |_| async move {
         let include_stats = params.include_stats;
         let limit = params.limit.min(100);
 

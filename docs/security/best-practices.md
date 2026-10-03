@@ -4,7 +4,7 @@ title: 'Security Best Practices'
 
 # Security Best Practices
 
-> **Product: v0.29.0** · See also: [Runtime auth hardening](/docs/operations/runtime-auth-hardening/)
+> **Product: v0.30.0** · See also: [Runtime auth hardening](/docs/operations/runtime-auth-hardening/)
 
 > **Securing Your EdgeQuake Deployment**
 
@@ -212,9 +212,16 @@ export GOOGLE_APPLICATION_CREDENTIALS="/path/to/sa.json"  # or use gcloud ADC
 
 The Settings → Provider Status Hub shows **Identity (ADC)** for Vertex. Treat service-account JSON like any other secret (Vault, K8s Secret, not Git).
 
-### External authentication proxy
+### Enterprise SSO (Keycloak / OIDC)
 
-For SSO in front of the WebUI, use an authentication proxy:
+Preferred: the built-in OIDC SSO with the shipped Keycloak image (`make dev-sso`). Tenants come from
+Keycloak Organizations, roles from realm roles, and tokens never appear in URLs. Start at
+[Authentication & SSO](/docs/security/authentication/) and follow the
+[production hardening checklist](/docs/security/authentication/production-hardening/).
+
+### External authentication proxy (alternative)
+
+If you cannot use the built-in SSO, put an authentication proxy in front of the WebUI:
 
 **OAuth2 Proxy (for SSO)**:
 

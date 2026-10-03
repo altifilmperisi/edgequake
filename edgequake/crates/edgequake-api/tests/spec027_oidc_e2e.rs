@@ -131,6 +131,33 @@ async fn spec027_oidc_disabled_login_returns_503() {
 }
 
 #[tokio::test]
+async fn spec027_oidc_disabled_login_redirects_browser_to_sso_unavailable() {
+    let app = build_app(AppState::test_state());
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/v1/auth/oidc/login?provider=keycloak")
+                .header(header::ACCEPT, "text/html,application/xhtml+xml")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+    let loc = response
+        .headers()
+        .get(header::LOCATION)
+        .unwrap()
+        .to_str()
+        .unwrap();
+    assert!(
+        loc.contains("error=sso_unavailable"),
+        "browser must not see a JSON 503: {loc}"
+    );
+}
+
+#[tokio::test]
 async fn spec027_oidc_disabled_callback_returns_503() {
     let app = build_app(AppState::test_state());
     let response = app

@@ -6,7 +6,11 @@ use axum::{
 use uuid::Uuid;
 
 use super::helpers::generate_slug;
+use super::tenant_access::{
+    member_tenants, membership_scoped, require_platform_admin, require_tenant_access, TenantAccess,
+};
 use crate::error::ApiError;
+use crate::handlers::auth::ApiAuthenticated;
 use crate::handlers::workspaces_types::*;
 use crate::state::AppState;
 
@@ -35,9 +39,12 @@ use crate::state::AppState;
 )]
 pub async fn create_tenant(
     State(state): State<AppState>,
+    auth: ApiAuthenticated,
     Json(request): Json<CreateTenantRequest>,
 ) -> Result<(StatusCode, Json<TenantResponse>), ApiError> {
     use edgequake_core::{Tenant, TenantPlan};
+
+    require_platform_admin(auth.context())?;
 
     let slug = request.slug.unwrap_or_else(|| generate_slug(&request.name));
 
@@ -240,22 +247,35 @@ pub async fn create_tenant(
 )]
 pub async fn list_tenants(
     State(state): State<AppState>,
+    auth: ApiAuthenticated,
     Query(params): Query<PaginationParams>,
 ) -> Result<Json<TenantListResponse>, ApiError> {
-    crate::read_path::run_with_read_path_guard(&state.read_path_db, || async move {
+    let read_path_db = state.read_path_db.clone();
+    crate::read_path::run_with_read_path_guard(&read_path_db, |_| async move {
         let limit = params.limit.min(100);
+        let ctx = auth.context();
 
-        // SPEC-140: `total` is COUNT(*), never page length (LAW-140-2).
-        let total = state
-            .workspace_service
-            .count_tenants()
-            .await
-            .map_err(|e| ApiError::Internal(e.to_string()))?;
-        let tenants = state
-            .workspace_service
-            .list_tenants(limit, params.offset)
-            .await
-            .map_err(|e| ApiError::Internal(e.to_string()))?;
+        let (total, tenants) =
+            if matches!(ctx.role, edgequake_auth::Role::Admin) || !membership_scoped(&state) {
+                // SPEC-140: `total` is COUNT(*), never page length (LAW-140-2).
+                let total = state
+                    .workspace_service
+                    .count_tenants()
+                    .await
+                    .map_err(|e| ApiError::Internal(e.to_string()))?;
+                let tenants = state
+                    .workspace_service
+                    .list_tenants(limit, params.offset)
+                    .await
+                    .map_err(|e| ApiError::Internal(e.to_string()))?;
+                (total, tenants)
+            } else {
+                // SPEC-158 LAW-158-6: members see only their own tenants.
+                let all = member_tenants(&state, ctx).await?;
+                let total = all.len();
+                let page = all.into_iter().skip(params.offset).take(limit).collect();
+                (total, page)
+            };
 
         let items: Vec<TenantResponse> = tenants
             .into_iter()
@@ -312,8 +332,10 @@ pub async fn list_tenants(
 )]
 pub async fn get_tenant(
     State(state): State<AppState>,
+    auth: ApiAuthenticated,
     Path(tenant_id): Path<Uuid>,
 ) -> Result<Json<TenantResponse>, ApiError> {
+    require_tenant_access(&state, auth.context(), tenant_id, TenantAccess::Read).await?;
     let tenant = state
         .workspace_service
         .get_tenant(tenant_id)
@@ -370,9 +392,11 @@ pub async fn get_tenant(
 )]
 pub async fn update_tenant(
     State(state): State<AppState>,
+    auth: ApiAuthenticated,
     Path(tenant_id): Path<Uuid>,
     Json(request): Json<UpdateTenantRequest>,
 ) -> Result<Json<TenantResponse>, ApiError> {
+    require_tenant_access(&state, auth.context(), tenant_id, TenantAccess::Manage).await?;
     // Get existing tenant
     let mut tenant = state
         .workspace_service
@@ -510,8 +534,10 @@ pub async fn update_tenant(
 )]
 pub async fn delete_tenant(
     State(state): State<AppState>,
+    auth: ApiAuthenticated,
     Path(tenant_id): Path<Uuid>,
 ) -> Result<StatusCode, ApiError> {
+    require_platform_admin(auth.context())?;
     tracing::info!(tenant_id = %tenant_id, "Deleting tenant");
 
     state

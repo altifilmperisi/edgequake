@@ -80,9 +80,9 @@ pub async fn eq_document_list(
     let read_path = state.read_path_db.clone();
     let tenant = tenant_ctx.clone();
 
-    let resp = run_with_read_path_guard(&read_path, || {
+    let resp = run_with_read_path_guard(&read_path, |deadline| {
         crate::handlers::documents::list_documents_for_mcp(
-            storage, pg, budget_cfg, tasks, tenant, params,
+            storage, pg, budget_cfg, tasks, tenant, params, deadline,
         )
     })
     .await?;
@@ -147,9 +147,9 @@ pub async fn eq_document_get(
     let tasks = state.tasks.clone();
     let read_path = state.read_path_db.clone();
     let tenant = tenant_ctx.clone();
-    let resp = run_with_read_path_guard(&read_path, || {
+    let resp = run_with_read_path_guard(&read_path, |deadline| {
         crate::handlers::documents::list_documents_for_mcp(
-            storage, pg, budget_cfg, tasks, tenant, params,
+            storage, pg, budget_cfg, tasks, tenant, params, deadline,
         )
     })
     .await?;

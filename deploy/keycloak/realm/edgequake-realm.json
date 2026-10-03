@@ -1,0 +1,171 @@
+{
+  "realm": "edgequake",
+  "displayName": "EdgeQuake",
+  "enabled": true,
+  "organizationsEnabled": true,
+  "registrationAllowed": false,
+  "registrationEmailAsUsername": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "verifyEmail": false,
+  "bruteForceProtected": true,
+  "sslRequired": "${EQ_KC_SSL_REQUIRED:external}",
+  "accessTokenLifespan": 300,
+  "ssoSessionIdleTimeout": 1800,
+  "ssoSessionMaxLifespan": 36000,
+  "roles": {
+    "realm": [
+      {
+        "name": "eq-user",
+        "description": "EdgeQuake member"
+      },
+      {
+        "name": "eq-admin",
+        "description": "EdgeQuake tenant administrator"
+      },
+      {
+        "name": "eq-owner",
+        "description": "EdgeQuake tenant owner (mapped only if EDGEQUAKE_OIDC_MAX_ROLE=owner)"
+      }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "edgequake-web",
+      "name": "EdgeQuake",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "secret": "${EQ_KC_CLIENT_SECRET}",
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "frontchannelLogout": false,
+      "redirectUris": [
+        "http://localhost:8080/api/v1/auth/oidc/callback",
+        "${EQ_API_PUBLIC_URL}/api/v1/auth/oidc/callback"
+      ],
+      "webOrigins": [],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "backchannel.logout.url": "${EQ_API_INTERNAL_URL}/api/v1/auth/oidc/backchannel-logout",
+        "backchannel.logout.session.required": "true",
+        "backchannel.logout.revoke.offline.tokens": "false"
+      },
+      "protocolMappers": [
+        {
+          "name": "realm-roles-in-id-token",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "multivalued": "true",
+            "claim.name": "realm_access.roles",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "alice",
+      "email": "alice@acme.example",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "Alice",
+      "lastName": "Acme",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${EQ_KC_DEMO_PASSWORD}",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "eq-user",
+        "eq-admin"
+      ]
+    },
+    {
+      "username": "bob",
+      "email": "bob@globex.example",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "Bob",
+      "lastName": "Globex",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${EQ_KC_DEMO_PASSWORD}",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "eq-user"
+      ]
+    },
+    {
+      "username": "carol",
+      "email": "carol@acme.example",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "Carol",
+      "lastName": "Both",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${EQ_KC_DEMO_PASSWORD}",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "eq-user"
+      ]
+    }
+  ],
+  "organizations": [
+    {
+      "name": "Acme",
+      "alias": "acme",
+      "enabled": true,
+      "domains": [
+        {
+          "name": "acme.example",
+          "verified": false
+        }
+      ],
+      "members": [
+        {
+          "username": "alice"
+        },
+        {
+          "username": "carol"
+        }
+      ]
+    },
+    {
+      "name": "Globex",
+      "alias": "globex",
+      "enabled": true,
+      "domains": [
+        {
+          "name": "globex.example",
+          "verified": false
+        }
+      ],
+      "members": [
+        {
+          "username": "bob"
+        },
+        {
+          "username": "carol"
+        }
+      ]
+    }
+  ]
+}

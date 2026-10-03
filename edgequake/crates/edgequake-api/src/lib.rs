@@ -133,6 +133,7 @@ pub mod server;
 pub mod server_config_store;
 pub mod services;
 pub mod startup_security;
+pub mod startup_sso;
 pub mod state;
 pub mod storage_inspector;
 pub mod store_contention;

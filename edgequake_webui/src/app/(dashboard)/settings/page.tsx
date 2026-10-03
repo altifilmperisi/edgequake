@@ -7,6 +7,7 @@ import { ConfigExplainabilityPanel } from '@/components/settings/config-explaina
 import { PdfParserSettingsCard } from '@/components/settings/pdf-parser-settings-card';
 import { ProviderStatusCard } from '@/components/settings/provider-status-card';
 import { LangfuseObservabilityCard } from '@/components/settings/langfuse-observability-card';
+import { IdentityProvidersCard } from '@/components/settings/identity-providers-card';
 import { UserManagementCard } from '@/components/settings/user-management-card';
 import { VisionLLMSettingsCard } from '@/components/settings/vision-llm-settings-card';
 import { PageHeader } from '@/components/shared/page-header';
@@ -639,6 +640,8 @@ export default function SettingsPage() {
 
       {/* Admin section — only fetches and renders for admin users (SPEC-0001) */}
       <AdminQuotaSection />
+      {/* SPEC-158 — admin-only, read-only SSO provider overview */}
+      <IdentityProvidersCard />
       {/* User management — Issue #205: admin-only user CRUD */}
       <UserManagementCard />
       </PageShell>

@@ -1,0 +1,96 @@
+name: Release — Keycloak image (GHCR)
+
+# SPEC-158 W4: publish ghcr.io/<repo>-keycloak (Keycloak + EdgeQuake realm import) on every product tag.
+on:
+  push:
+    tags: ['v[0-9]+.[0-9]+.[0-9]+']
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Tag name to publish (e.g. v0.30.0)'
+        required: true
+  pull_request:
+    paths:
+      - 'deploy/keycloak/**'
+      - 'docker-compose.keycloak.yml'
+      - 'scripts/keycloak_smoke.py'
+      - '.github/workflows/release-keycloak.yml'
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE: ghcr.io/${{ github.repository }}-keycloak
+
+jobs:
+  build-and-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build image (local)
+        uses: docker/build-push-action@v6
+        with:
+          context: deploy/keycloak
+          file: deploy/keycloak/Containerfile
+          load: true
+          tags: edgequake-keycloak:ci
+
+      - name: Start Keycloak (realm import)
+        run: |
+          docker network create eqkc
+          docker run -d --name kcdb --network eqkc -e POSTGRES_DB=keycloak -e POSTGRES_USER=keycloak \
+            -e POSTGRES_PASSWORD=keycloak postgres:16-alpine
+          sleep 5
+          docker run -d --name kc --network eqkc --network-alias keycloak -p 8081:8081 -p 9000:9000 \
+            -e KC_DB=postgres -e KC_DB_URL=jdbc:postgresql://kcdb:5432/keycloak \
+            -e KC_DB_USERNAME=keycloak -e KC_DB_PASSWORD=keycloak \
+            -e KC_HTTP_PORT=8081 -e KC_HOSTNAME=http://keycloak:8081 -e KC_HTTP_ENABLED=true \
+            -e KC_BOOTSTRAP_ADMIN_USERNAME=admin -e KC_BOOTSTRAP_ADMIN_PASSWORD=admin \
+            -e EQ_KC_CLIENT_SECRET=edgequake_dev_only_secret_change_me \
+            -e EQ_KC_DEMO_PASSWORD=demo-password-change-me -e EQ_KC_SSL_REQUIRED=none \
+            -e EQ_API_PUBLIC_URL=http://localhost:8080 -e EQ_API_INTERNAL_URL=http://api:8080 \
+            edgequake-keycloak:ci start-dev --import-realm
+          for i in $(seq 1 60); do
+            curl -sf http://localhost:9000/health/ready >/dev/null && exit 0; sleep 5
+          done
+          docker logs kc; exit 1
+
+      - name: Smoke (auth-code + PKCE, org claim, roles, sid)
+        run: python3 scripts/keycloak_smoke.py --resolve 127.0.0.1
+
+  publish:
+    needs: build-and-smoke
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve version
+        id: v
+        env:
+          INPUT_TAG_NAME: ${{ inputs.tag_name }}
+        run: |
+          TAG="${INPUT_TAG_NAME:-$GITHUB_REF_NAME}"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push (multi-arch)
+        uses: docker/build-push-action@v6
+        with:
+          context: deploy/keycloak
+          file: deploy/keycloak/Containerfile
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: |
+            ${{ env.IMAGE }}:${{ steps.v.outputs.version }}
+            ${{ env.IMAGE }}:latest

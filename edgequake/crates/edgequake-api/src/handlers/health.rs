@@ -200,10 +200,11 @@ pub async fn health_check(State(state): State<AppState>) -> ApiResult<Json<Healt
             dev_mode: Some(state.auth.config.dev_mode),
             kv_identity_mirror_configured: Some(state.security.kv_identity_mirror),
             kv_identity_mirror_effective: Some(identity_policy.kv_mirror),
-            auth_mechanisms: Some(state.auth.oidc_config.resolved_auth_mechanisms()),
-            oauth2_oidc_builtin: Some(state.auth.oidc_config.is_runtime_builtin()),
+            auth_mechanisms: Some(state.auth.auth_mechanisms()),
+            oauth2_oidc_builtin: Some(state.auth.sso_active()),
+            sso_providers: Some(state.auth.all_providers().len()),
             auth_kv_harness_active: Some(!identity_policy.pg_primary),
-            external_sso_pattern: if state.auth.oidc_config.is_runtime_builtin() {
+            external_sso_pattern: if state.auth.sso_active() {
                 Some("builtin-oidc".to_string())
             } else {
                 Some(edgequake_auth::EXTERNAL_SSO_PATTERN.to_string())

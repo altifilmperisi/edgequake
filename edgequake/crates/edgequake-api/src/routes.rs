@@ -266,6 +266,22 @@ fn api_v1_routes(state: AppState) -> Router<AppState> {
         .route("/auth/me", get(handlers::get_me))
         .route("/auth/oidc/login", get(handlers::oidc_login))
         .route("/auth/oidc/callback", get(handlers::oidc_callback))
+        // SPEC-158: SSO handoff, back-channel logout, provider discovery + admin
+        .route("/auth/handoff", post(handlers::redeem_sso_handoff))
+        .route(
+            "/auth/oidc/backchannel-logout",
+            post(handlers::oidc_backchannel_logout),
+        )
+        .route("/auth/sso/providers", get(handlers::list_sso_providers))
+        .route(
+            "/admin/identity-providers",
+            get(handlers::admin_list_identity_providers),
+        )
+        .route(
+            "/admin/identity-providers/{slug}",
+            put(handlers::admin_upsert_identity_provider)
+                .delete(handlers::admin_delete_identity_provider),
+        )
         // SPEC-101: Secure first-run setup (public)
         .route("/setup/status", get(handlers::setup_status))
         .route("/setup/initialize", post(handlers::setup_initialize))

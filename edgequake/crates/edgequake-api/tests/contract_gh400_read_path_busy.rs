@@ -169,7 +169,7 @@ async fn contract_gh400_permit_released_after_work_deadline() {
 
     std::env::set_var("EDGEQUAKE_DOCUMENTS_READ_TIMEOUT_MS", "500");
     let permits = ReadPathDbPermit::new(1);
-    let _ = run_with_read_path_guard(&permits, || async {
+    let _ = run_with_read_path_guard(&permits, |_| async {
         tokio::time::sleep(Duration::from_millis(800)).await;
         Ok::<_, ApiError>(())
     })

@@ -1402,5 +1402,48 @@
   "theme": {
     "light": "Light theme",
     "dark": "Dark theme"
+  },
+  "auth": {
+    "sso": {
+      "continueWith": "Continue with {{name}}",
+      "orLocal": "or sign in with a password",
+      "orgLabel": "Organization (optional)",
+      "orgPlaceholder": "your-company",
+      "orgHint": "Leave empty if you belong to a single organization.",
+      "signingIn": "Redirecting to your identity provider…",
+      "completing": "Completing sign-in…",
+      "backToLogin": "Back to sign in",
+      "pickOrg": "Choose an organization",
+      "pickOrgHint": "Your account belongs to several organizations. Pick the one to sign in to.",
+      "errors": {
+        "generic": "Single sign-on failed. Try again or contact your administrator.",
+        "orgUnknown": "That organization does not exist or you are not a member of it.",
+        "orgMissing": "Your identity provider did not report an organization. Contact your administrator.",
+        "orgAmbiguous": "Your account belongs to several organizations. Choose which one to sign in to.",
+        "tenantSuspended": "This organization is suspended. Contact your administrator.",
+        "hdMismatch": "This Google account is not in the allowed domain.",
+        "idpTenantNotAllowed": "Your directory (tenant) is not allowed to sign in here.",
+        "jitDisabled": "Your account has not been provisioned. Ask an administrator to invite you.",
+        "maxUsers": "This organization has reached its user limit.",
+        "membershipRevoked": "Your access to this organization was removed.",
+        "tenantAccessDenied": "You do not have access to this organization.",
+        "accountExistsUnlinked": "An account with this email already exists. Sign in with your password, then link SSO from your profile.",
+        "accessDenied": "Sign-in was cancelled or denied by the identity provider.",
+        "invalidHandoff": "This sign-in link expired or was already used. Start again.",
+        "ssoUnavailable": "The identity provider is unreachable. Sign in with a password or try again.",
+        "title": "Sign-in failed"
+      },
+      "admin": {
+        "title": "Identity providers",
+        "description": "Single sign-on providers available at login. Environment-configured providers are read-only here.",
+        "empty": "No SSO provider is configured (password login only).",
+        "provider": "Provider",
+        "issuer": "Issuer",
+        "policy": "Policy",
+        "env": "environment",
+        "trustEmail": "trusts email",
+        "noTrustEmail": "email not trusted"
+      }
+    }
   }
 }

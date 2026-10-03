@@ -174,7 +174,7 @@ pub async fn search_documents(
     tenant_ctx: TenantContext,
     Query(params): Query<DocumentSearchRequest>,
 ) -> ApiResult<Json<DocumentSearchResponse>> {
-    run_with_read_path_guard(&read_path_db, || {
+    run_with_read_path_guard(&read_path_db, |_| {
         search_documents_inner(storage, pg_runtime, tenant_ctx, params)
     })
     .await

@@ -52,7 +52,8 @@ pub(crate) async fn revoke_jti_parts(
             .bind(expires_at)
             .bind(reason)
             .execute(pool)
-            .await;
+            .await
+            .map_err(|e| ApiError::Internal(format!("jti denylist persist: {e}")))?;
         }
     }
     #[cfg(not(feature = "postgres"))]

@@ -13,15 +13,17 @@ use axum::{
     response::{IntoResponse, Response},
     Json,
 };
-use chrono::{Duration, Utc};
 use tracing::info;
-use uuid::Uuid;
 
 use edgequake_audit::{AuditEventType, AuditResult};
 use edgequake_auth::Role;
 
 use crate::error::ApiError;
 use crate::handlers::auth::ApiAuthenticated;
+use crate::services::federation::scope_guard::revalidate_scope;
+use crate::services::login_tokens::{
+    issue_session, mint_access_token, persist_new_refresh, SessionContext, SessionScope,
+};
 use crate::services::record_compliance_event_runtime;
 use crate::state::{
     ApiSecurityConfig, AuthRuntime, ComplianceRuntime, OperationalStores, PostgresRuntime,
@@ -32,9 +34,7 @@ use super::refresh_cookie::{
     clear_refresh_cookie_header, cookie_secure_from_headers, refresh_token_for_json_body,
     resolve_refresh_token, set_refresh_cookie_header,
 };
-use super::{
-    find_user_by_login, get_record_by_id, get_user_by_id, RefreshTokenRecord, RequestAuthContext,
-};
+use super::{find_user_by_login, get_record_by_id, get_user_by_id, RequestAuthContext};
 pub use crate::handlers::auth_types::{
     GetMeResponse, LoginRequest, LoginResponse, RefreshTokenRequest, RefreshTokenResponse, UserInfo,
 };
@@ -147,45 +147,22 @@ pub async fn login(
     )
     .await?;
 
-    let user_uuid = Uuid::parse_str(&record.user_id)
-        .map_err(|_| ApiError::Internal("Invalid user ID format".to_string()))?;
-
-    let expiry_seconds = auth.jwt.expiry_duration().as_secs() as i64;
-    let claims = crate::services::identity_storage::access_token_claims(
-        user_uuid,
-        Role::parse(&record.role),
-        expiry_seconds,
-    );
-    let access_token = auth
-        .jwt
-        .generate_token_with_claims(claims)
-        .map_err(|e| ApiError::Internal(format!("token_generation failed: {e}")))?;
-
-    let refresh_token = Uuid::new_v4().to_string();
-    let refresh_expiry = Utc::now() + Duration::days(30);
-
-    let refresh_record = RefreshTokenRecord {
-        token: refresh_token.clone(),
-        user_id: record.user_id.clone(),
-        family_id: Uuid::new_v4(),
-        status: "active".to_string(),
-        created_at: Utc::now(),
-        expires_at: refresh_expiry,
-        revoked: false,
+    let ctx = SessionContext {
+        auth: &auth,
+        storage: &storage,
+        pg: &pg_runtime,
+        security: &security,
+        stores: &stores,
     };
-
-    crate::services::session_storage::persist_refresh_token(
-        &storage,
-        Some(&pg_runtime),
-        &security,
-        stores.sessions.as_deref(),
-        &refresh_record,
+    let issued = issue_session(
+        &ctx,
+        &record.user_id,
+        Role::parse(&record.role),
+        &SessionScope::default_scope(),
     )
     .await?;
 
     info!("Login successful for user: {}", record.username);
-
-    let expires_in = expiry_seconds;
 
     record_compliance_event_runtime(
         &compliance,
@@ -200,13 +177,13 @@ pub async fn login(
 
     Ok(with_refresh_cookie(
         LoginResponse {
-            access_token,
+            access_token: issued.access_token,
             token_type: "Bearer".to_string(),
-            expires_in,
-            refresh_token: refresh_token_for_json_body(&headers, &refresh_token),
+            expires_in: issued.expires_in,
+            refresh_token: refresh_token_for_json_body(&headers, &issued.refresh_token),
             user: UserInfo::from(&record),
         },
-        &refresh_token,
+        &issued.refresh_token,
         cookie_secure_from_headers(&headers),
     ))
 }
@@ -224,12 +201,14 @@ pub async fn login(
         (status = 401, description = "Invalid or expired refresh token")
     )
 )]
+#[allow(clippy::too_many_arguments)]
 pub async fn refresh_token(
     State(auth): State<AuthRuntime>,
     State(storage): State<StorageRuntime>,
     State(pg_runtime): State<PostgresRuntime>,
     State(security): State<ApiSecurityConfig>,
     State(stores): State<OperationalStores>,
+    State(workspaces): State<crate::state::SharedWorkspaceService>,
     headers: HeaderMap,
     Json(request): Json<RefreshTokenRequest>,
 ) -> Result<Response, ApiError> {
@@ -275,37 +254,42 @@ pub async fn refresh_token(
         None,
     ))?;
 
-    let user_uuid = Uuid::parse_str(&user.user_id)
+    let user_uuid = uuid::Uuid::parse_str(&user.user_id)
         .map_err(|_| ApiError::Internal("Invalid user ID format".to_string()))?;
 
-    // SPEC-154 Wave 4: rotate — issue successor in the same family.
-    let new_refresh = Uuid::new_v4().to_string();
-    let refresh_expiry = Utc::now() + Duration::days(30);
-    let refresh_record = RefreshTokenRecord {
-        token: new_refresh.clone(),
-        user_id: record.user_id.clone(),
-        family_id: record.family_id,
-        status: "active".to_string(),
-        created_at: Utc::now(),
-        expires_at: refresh_expiry,
-        revoked: false,
-    };
-    crate::services::session_storage::persist_refresh_token(
-        &storage,
-        Some(&pg_runtime),
-        &security,
-        stores.sessions.as_deref(),
-        &refresh_record,
+    // SPEC-158: SSO sessions keep their tenant scope and are re-validated on every renewal.
+    let (scope, role) = refresh_scope(
+        &auth,
+        workspaces.as_ref(),
+        record.family_id,
+        user_uuid,
+        &user.role,
     )
     .await?;
 
-    let expires_in = auth.jwt.expiry_duration().as_secs() as i64;
-    let claims =
-        crate::services::identity_storage::access_token_claims(user_uuid, user.role, expires_in);
-    let access_token = auth
-        .jwt
-        .generate_token_with_claims(claims)
-        .map_err(|e| ApiError::Internal(format!("Token generation error: {}", e)))?;
+    // SPEC-154 Wave 4: rotate — issue successor in the same family.
+    let ctx = SessionContext {
+        auth: &auth,
+        storage: &storage,
+        pg: &pg_runtime,
+        security: &security,
+        stores: &stores,
+    };
+    let new_refresh = persist_new_refresh(&ctx, &record.user_id, record.family_id).await?;
+    let (access_token, expires_in) = mint_access_token(&auth, user_uuid, role, &scope)?;
+    if auth
+        .federation
+        .get_session(record.family_id)
+        .await?
+        .is_some()
+    {
+        crate::services::federation::access_jti::remember_access_token(
+            auth.federation.as_ref(),
+            record.family_id,
+            &access_token,
+        )
+        .await?;
+    }
 
     Ok(with_refresh_cookie(
         RefreshTokenResponse {
@@ -379,14 +363,14 @@ pub async fn logout(
                 .or_else(|_| auth.jwt.decode_unverified(token));
             if let Ok(claims) = claims {
                 let expires_at = crate::services::jti_denylist::exp_claim_to_utc(claims.exp);
-                let _ = crate::services::jti_denylist::revoke_jti_parts(
+                crate::services::jti_denylist::revoke_jti_parts(
                     &auth.jwt,
                     pg_runtime.optional_pg_pool(),
                     &claims.jti,
                     expires_at,
                     "logout",
                 )
-                .await;
+                .await?;
             }
         }
     }
@@ -408,6 +392,32 @@ pub async fn logout(
         .headers_mut()
         .insert(SET_COOKIE, clear_refresh_cookie_header(secure));
     Ok(response)
+}
+
+/// Tenant scope + role for a refreshed access token (default scope for non-SSO sessions).
+async fn refresh_scope(
+    auth: &AuthRuntime,
+    workspaces: &dyn edgequake_core::WorkspaceService,
+    family_id: uuid::Uuid,
+    user_id: uuid::Uuid,
+    local_role: &Role,
+) -> Result<(SessionScope, Role), ApiError> {
+    let Some(session) = auth.federation.get_session(family_id).await? else {
+        return Ok((SessionScope::default_scope(), local_role.clone()));
+    };
+    if session.revoked_at.is_some() {
+        return Err(ApiError::auth_unauthorized(
+            "refresh",
+            "session_revoked",
+            None,
+        ));
+    }
+    let scope = SessionScope {
+        tenant_id: session.tenant_id,
+        workspace_id: session.workspace_id,
+    };
+    let role = revalidate_scope(workspaces, user_id, &scope, &local_role.to_string()).await?;
+    Ok((scope, role))
 }
 
 fn with_refresh_cookie<T: serde::Serialize>(

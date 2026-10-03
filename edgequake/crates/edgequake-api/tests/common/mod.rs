@@ -961,3 +961,8 @@ pub async fn list_all_graph_edges(
         .expect("list_edges_filtered")
         .items
 }
+
+// SPEC-158 federation e2e harness (wiremock IdP + in-memory AppState).
+pub mod federation_contract;
+pub mod rsa_fixtures;
+pub mod spec158;

@@ -138,8 +138,25 @@ pub fn documents_read_pg_timeout_ms() -> u32 {
 }
 
 /// Remaining budget until `deadline` (zero if already elapsed).
-fn remaining_until(deadline: Instant) -> Duration {
+pub fn remaining_until(deadline: Instant) -> Duration {
     deadline.saturating_duration_since(Instant::now())
+}
+
+/// Skip AGE / task-stats probes unless at least this much envelope remains.
+///
+/// `should_skip_entity_reconcile` can wait 550ms; AGE reconcile can wait 400ms.
+/// Running either in the last second of a 2500ms list turns a successful KV
+/// load into 503 `work_deadline` (documents page: "list timed out under load").
+pub const LIST_AGE_RECONCILE_HEADROOM: Duration = Duration::from_millis(1_000);
+
+/// Cancel-intent / queue / serving enrich for the visible page.
+pub const LIST_PAGE_ENRICH_HEADROOM: Duration = Duration::from_millis(250);
+
+/// Relational backfill when KV already produced rows.
+pub const LIST_RELATIONAL_HEADROOM: Duration = Duration::from_millis(350);
+
+pub fn has_read_budget(deadline: Instant, need: Duration) -> bool {
+    remaining_until(deadline) >= need
 }
 
 /// Run an interactive read under the bulkhead + a **single** wall-clock deadline.
@@ -151,7 +168,7 @@ pub async fn run_with_read_path_guard<T, F, Fut>(
     work: F,
 ) -> ApiResult<T>
 where
-    F: FnOnce() -> Fut,
+    F: FnOnce(Instant) -> Fut,
     Fut: std::future::Future<Output = ApiResult<T>>,
 {
     let timeout = documents_read_timeout();
@@ -174,7 +191,7 @@ where
             "work_deadline",
         ));
     }
-    match timeout_at(deadline, work()).await {
+    match timeout_at(deadline, work(deadline)).await {
         Ok(result) => result,
         Err(_) => {
             warn!(
@@ -252,6 +269,15 @@ mod tests {
     use super::*;
 
     #[test]
+    fn optional_list_work_requires_headroom() {
+        let deadline = Instant::now() + Duration::from_millis(200);
+        assert!(!has_read_budget(deadline, LIST_AGE_RECONCILE_HEADROOM));
+        assert!(!has_read_budget(deadline, LIST_PAGE_ENRICH_HEADROOM));
+        let plenty = Instant::now() + Duration::from_secs(5);
+        assert!(has_read_budget(plenty, LIST_AGE_RECONCILE_HEADROOM));
+    }
+
+    #[test]
     fn permit_size_is_at_least_two() {
         assert_eq!(ReadPathDbPermit::from_pool_size(8).max_concurrent(), 2);
         assert_eq!(ReadPathDbPermit::from_pool_size(32).max_concurrent(), 4);
@@ -296,7 +322,7 @@ mod tests {
             .expect("hold");
 
         let started = Instant::now();
-        let err = run_with_read_path_guard(&permits, || async { Ok::<_, ApiError>(()) })
+        let err = run_with_read_path_guard(&permits, |_| async { Ok::<_, ApiError>(()) })
             .await
             .expect_err("should busy under saturation");
         assert_eq!(err.code(), "read_path_busy");
@@ -325,7 +351,7 @@ mod tests {
         std::env::set_var("EDGEQUAKE_DOCUMENTS_READ_TIMEOUT_MS", "500");
         let permits = ReadPathDbPermit::new(1);
         let started = Instant::now();
-        let err = run_with_read_path_guard(&permits, || async {
+        let err = run_with_read_path_guard(&permits, |_| async {
             tokio::time::sleep(Duration::from_millis(800)).await;
             Ok::<_, ApiError>(())
         })
@@ -345,7 +371,7 @@ mod tests {
     async fn permit_released_after_work_timeout() {
         std::env::set_var("EDGEQUAKE_DOCUMENTS_READ_TIMEOUT_MS", "500");
         let permits = ReadPathDbPermit::new(1);
-        let _ = run_with_read_path_guard(&permits, || async {
+        let _ = run_with_read_path_guard(&permits, |_| async {
             tokio::time::sleep(Duration::from_millis(800)).await;
             Ok::<_, ApiError>(())
         })

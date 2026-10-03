@@ -32,6 +32,11 @@ describe("proxy-guards (SPEC-144)", () => {
     expect(isPublicPath("/documents")).toBe(false);
   });
 
+  it("isPublicPath allows the SPEC-158 SSO landing page (single-use ?code= / ?error=)", () => {
+    expect(isPublicPath("/auth/callback")).toBe(true);
+    expect(isPublicPath("/auth/other")).toBe(false);
+  });
+
   it("isPublicPath allows MCP OAuth discovery paths", () => {
     expect(isPublicPath("/mcp")).toBe(true);
     expect(isPublicPath("/.well-known/oauth-protected-resource")).toBe(true);

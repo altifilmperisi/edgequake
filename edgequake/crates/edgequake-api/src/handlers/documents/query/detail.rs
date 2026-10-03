@@ -40,7 +40,7 @@ pub async fn get_document(
     tenant_ctx: TenantContext,
     axum::extract::Path(document_id): axum::extract::Path<String>,
 ) -> ApiResult<Json<DocumentDetailResponse>> {
-    run_with_read_path_guard(&read_path_db, || {
+    run_with_read_path_guard(&read_path_db, |_| {
         get_document_inner(
             storage,
             pg_runtime,
